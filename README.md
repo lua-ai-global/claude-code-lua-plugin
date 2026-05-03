@@ -2,6 +2,8 @@
 
 A [Claude Code](https://code.claude.com) marketplace + plugin for building, testing, and deploying [Lua AI agents](https://heylua.ai) directly from inside your Claude Code session.
 
+📖 **[Read the full User Guide →](./docs/USER_GUIDE.md)** — installation, walkthroughs, slash commands reference, hooks, MCP tools, safety model, troubleshooting, FAQ.
+
 ## Install
 
 ```
