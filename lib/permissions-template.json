@@ -1,0 +1,50 @@
+{
+  "_comment": "Permission rules the plugin REQUIRES for the §3.7 single-permission contract and the §3.3 deploy-safety gates to function. Plugin-level settings.json's `permissions` block is silently ignored by Claude Code (verified iter-12 audit, 2026-05-02), so these rules can't ship as plugin defaults. The /lua-doctor offers to merge this into the user's `.claude/settings.json` (project-level) on first run; the user accepts once and the rules persist for the project. If the rules are absent at runtime, the plugin still works but: every safe Bash invocation triggers a permission prompt (degrades §3.7 contract), and the deploy-deny rule doesn't fire (degrades §3.3 defence-in-depth — the hook still gates, but as the only line of defence rather than the second).",
+  "permissions": {
+    "allow": [
+      "Bash(lua --version)",
+      "Bash(lua --help*)",
+      "Bash(lua * --help*)",
+      "Bash(lua init --ci*)",
+      "Bash(lua compile --ci*)",
+      "Bash(lua test --ci*)",
+      "Bash(lua sync --check)",
+      "Bash(lua sync --pull*)",
+      "Bash(lua sync --push*)",
+      "Bash(lua chat --ci -m*)",
+      "Bash(lua chat --ci -e * -m*)",
+      "Bash(lua logs --ci*)",
+      "Bash(lua agents *)",
+      "Bash(lua skills view --ci*)",
+      "Bash(lua skills versions --ci*)",
+      "Bash(lua auth configure --api-key * --ci)",
+      "Bash(lua auth configure --email * --ci)",
+      "Bash(lua auth configure --email * --otp * --ci)",
+      "Bash(lua push * --ci --force*)",
+      "Bash(LUA_DEPLOY_CONFIRMED=1 lua deploy*)",
+      "Bash(env LUA_DEPLOY_CONFIRMED=1 lua deploy*)",
+      "Bash(node --version)",
+      "Bash(npm --version)",
+      "Bash(pnpm --version)",
+      "Bash(yarn --version)",
+      "Bash(git status*)",
+      "Bash(git log --oneline*)",
+      "Bash(git log -*)",
+      "Bash(git diff*)"
+    ],
+    "ask": [
+      "Bash(npm install -g lua-cli*)",
+      "Bash(lua * delete*)",
+      "Bash(lua sync --pull --force*)",
+      "Bash(brew install*)",
+      "Bash(winget install*)",
+      "Bash(corepack*)"
+    ],
+    "deny": [
+      "Bash(lua deploy*)",
+      "Bash(lua * --auto-deploy*)",
+      "Bash(lua push * --auto-deploy*)",
+      "Bash(lua auth key*)"
+    ]
+  }
+}

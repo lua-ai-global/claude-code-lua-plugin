@@ -1,0 +1,96 @@
+name: release-prod
+
+on:
+  push:
+    branches: [main]
+
+# Production release: every merge to `main` cuts a stable release.
+#
+# Versioning: uses package.json version EXACTLY. The developer must bump
+# package.json on the staging→main PR before merging. If the tag already
+# exists (i.e. version wasn't bumped), the workflow fails — explicit, not
+# silent.
+#
+# This is a deliberate gate: production releases require a thoughtful
+# version bump, not auto-numbering. Beta releases auto-version because
+# they're meant to be many; prod releases should be intentional.
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install plugin deps
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test plugin
+        run: npm test -- --coverage
+
+      - name: Verify per-file coverage gate
+        run: node scripts/check-coverage.mjs
+
+      - name: Install MCP deps
+        working-directory: mcp/lua-platform
+        run: npm ci
+
+      - name: Test MCP
+        working-directory: mcp/lua-platform
+        run: npm test
+
+      - name: Build MCP bundle
+        working-directory: mcp/lua-platform
+        run: npm run build
+
+      - name: Verify bundle size
+        run: node scripts/check-bundle-size.mjs
+
+      - name: Read version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "${VERSION}" == *"-beta"* || "${VERSION}" == *"-rc"* || "${VERSION}" == *"-alpha"* ]]; then
+            echo "::error::Production release requires a stable version in package.json (no -beta/-rc/-alpha suffix). Got: ${VERSION}"
+            exit 1
+          fi
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Production version: ${VERSION}"
+
+      - name: Verify tag does not already exist
+        run: |
+          if git rev-parse "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+            echo "::error::Tag ${{ steps.version.outputs.tag }} already exists. Bump package.json version before merging to main."
+            exit 1
+          fi
+
+      - name: Build release tarball
+        # scripts/pack.mjs handles the MCP dist/ inclusion. Production
+        # tags use the package.json version verbatim — no override needed.
+        run: |
+          node scripts/pack.mjs
+          TARBALL="claude-code-lua-plugin-${{ steps.version.outputs.version }}.tar.gz"
+          ls -lh "${TARBALL}"
+          echo "TARBALL=${TARBALL}" >> "$GITHUB_ENV"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          prerelease: false
+          generate_release_notes: true
+          target_commitish: main
+          files: ${{ env.TARBALL }}

@@ -1,0 +1,12 @@
+node_modules/
+coverage/
+*.log
+.DS_Store
+*.tar.gz
+
+# mcp/*/dist/ is intentionally NOT gitignored.
+# Public-marketplace consumers install the plugin via Claude Code, which
+# copies the directory verbatim — no build step runs. The bundled MCP
+# server (mcp/lua-platform/dist/server.js) MUST be committed so the plugin
+# works on install. Run `cd mcp/lua-platform && npm run build` after any
+# change to src/ and commit the updated dist/ alongside.

@@ -1,0 +1,88 @@
+name: release-beta
+
+on:
+  push:
+    branches: [staging]
+
+# Beta release: every merge to `staging` produces a uniquely-versioned
+# pre-release tarball attached to a GitHub Release marked as prerelease.
+#
+# Versioning: ${packageVersion}-beta.${runNumber}
+# Example: package.json version 1.0.0 + run 42 → tag v1.0.0-beta.42
+#
+# No manual version bump needed for betas — the run number gives uniqueness.
+# Bump package.json's base version when you intentionally start a new beta cycle.
+
+permissions:
+  contents: write   # Required for creating GitHub Releases and pushing tags
+
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install plugin deps
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test plugin
+        run: npm test -- --coverage
+
+      - name: Verify per-file coverage gate
+        run: node scripts/check-coverage.mjs
+
+      - name: Install MCP deps
+        working-directory: mcp/lua-platform
+        run: npm ci
+
+      - name: Test MCP
+        working-directory: mcp/lua-platform
+        run: npm test
+
+      - name: Build MCP bundle
+        working-directory: mcp/lua-platform
+        run: npm run build
+
+      - name: Verify bundle size
+        run: node scripts/check-bundle-size.mjs
+
+      - name: Compute beta version
+        id: version
+        run: |
+          BASE=$(node -p "require('./package.json').version")
+          BETA_VERSION="${BASE}-beta.${{ github.run_number }}"
+          echo "tag=v${BETA_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version=${BETA_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Beta version: ${BETA_VERSION}"
+
+      - name: Build release tarball
+        # scripts/pack.mjs handles the MCP dist/ inclusion (gitignored —
+        # has to be added after `git archive`). PLUGIN_VERSION_OVERRIDE
+        # forces the tarball name to the beta version (package.json still
+        # holds the base version).
+        env:
+          PLUGIN_VERSION_OVERRIDE: ${{ steps.version.outputs.version }}
+        run: |
+          node scripts/pack.mjs
+          TARBALL="claude-code-lua-plugin-${{ steps.version.outputs.version }}.tar.gz"
+          ls -lh "${TARBALL}"
+          echo "TARBALL=${TARBALL}" >> "$GITHUB_ENV"
+
+      - name: Create GitHub prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          prerelease: true
+          generate_release_notes: true
+          target_commitish: staging
+          files: ${{ env.TARBALL }}

@@ -1,0 +1,12 @@
+# MCP server build output (esbuild-bundled, minified)
+mcp/*/dist/
+
+# MCP server's own node_modules and tests (linted by their own pipeline)
+mcp/*/node_modules/
+mcp/*/coverage/
+
+# Coverage output
+coverage/
+
+# Plugin node_modules (default, but explicit)
+node_modules/

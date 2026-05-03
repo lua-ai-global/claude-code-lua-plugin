@@ -1,0 +1,22 @@
+{
+  "root": true,
+  "parserOptions": { "ecmaVersion": 2022, "sourceType": "module" },
+  "env": { "node": true, "jest": true, "es2022": true },
+  "extends": ["eslint:recommended"],
+  "rules": {
+    "no-console": ["error", { "allow": ["warn", "error"] }],
+    "no-throw-literal": "error",
+    "prefer-const": "error",
+    "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
+  },
+  "overrides": [
+    {
+      "files": ["hooks/**/*.mjs", "scripts/**/*.mjs"],
+      "rules": { "no-console": "off" }
+    },
+    {
+      "files": ["test/**/*.mjs"],
+      "rules": { "no-console": "off" }
+    }
+  ]
+}

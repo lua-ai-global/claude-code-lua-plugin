@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "lua-platform": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/lua-platform/dist/server.js"],
+      "env": {
+        "LUA_API_KEY": "${LUA_API_KEY}"
+      }
+    }
+  }
+}
