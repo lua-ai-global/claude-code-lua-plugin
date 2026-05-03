@@ -35,7 +35,12 @@ This duplicates what the integration's MCP already provides.
 
 > "Connect Google Calendar via `lua integrations connect --integration googlecalendar`. Activate the MCP via `lua integrations mcp activate --connection <id>` — the agent now has read/write calendar access through MCP tools (no code needed). Add webhook triggers for `calendar_event.created` and `calendar_event.updated` if the agent should react to changes. The only custom tool worth building is `find_optimal_meeting_slot` — it queries the MCP to get availability across multiple calendars and applies scheduling logic the MCP can't do on its own."
 
-The MCP server provides operations like `list-events`, `get-event`, `create-event`, `update-event`, `delete-event`, `list-calendars`, etc. — directly accessible to the agent. Test what's available via `lua integrations mcp list` after connecting.
+The MCP server provides operations like `list-events`, `get-event`, `create-event`, `update-event`, `delete-event`, `list-calendars`, etc. — directly accessible to the agent. **Don't assume — verify the actual tool surface before planning custom tools:**
+
+- `lua integrations mcp list` → shows MCP **status** for each connection (Active / Inactive). Use this to confirm the MCP is activated, not to list tools.
+- To list the tools the MCP exposes, either (a) inspect the user's Claude Code session for `mcp__<integration>__*` entries, or (b) run `lua chat -e sandbox -m "Enumerate every tool you have available, grouped by source. Don't call any." -t mcp-discovery-1` and have the agent itself recite its tool surface.
+
+Coverage varies by integration and by OAuth scopes granted; the catalog gives you the shape, the discovery step gives you the truth.
 
 ### Decision tree for "do I need a custom tool?"
 
@@ -170,18 +175,52 @@ Lua exposes integration events via two mechanisms:
 
 ### Setting up triggers
 
-After `lua integrations connect`:
+**Two paths — pick one based on whether the events are decided up front:**
+
+**Path A — inline at connect time** (recommended when you already know which events the agent should react to):
 
 ```bash
-# Pick the events you care about
-lua integrations webhooks events --integration <name>   # see what's available
-
-# Create the trigger
-lua integrations webhooks create
-# → asks for connection ID, object type (e.g. calendar_event), event (created/updated/deleted)
+lua integrations connect --integration <name> --auth-method oauth --scopes all \
+  --triggers <event1>,<event2>,<event3>
+# Example:
+lua integrations connect --integration googlecalendar --auth-method oauth --scopes all \
+  --triggers calendar_event.created,calendar_event.updated,calendar_event.deleted
 ```
 
-The trigger will POST to a Lua-managed webhook endpoint. You then write a `LuaWebhook` primitive to handle the payload.
+**Path B — discover-then-subscribe** (when you want to start with the MCP and layer in triggers later):
+
+```bash
+# 1. Connect (no triggers — they're opt-in by default since v3.8)
+lua integrations connect --integration <name> --auth-method oauth --scopes all
+
+# 2. Discover what's available
+lua integrations webhooks events --integration <name> --json
+
+# 3. Check what's already active (avoid duplicates)
+lua integrations webhooks list --json
+# (filter by connectionId in the output to see this integration's triggers)
+
+# 4. Subscribe to one event
+lua integrations webhooks create
+# (interactive: picks connection, object, event)
+# OR alias: lua triggers create
+```
+
+The trigger will POST to a Lua-managed webhook endpoint. You then write a `LuaWebhook` primitive to handle the payload — typically the handler extracts the payload's relevant fields and calls `Agents.invoke` with a system message instructing the agent what to do (e.g. "A new meeting was added: <details>. Acknowledge and offer to prep a summary."). The MCP exposes the integration's API; the webhook handler tells the agent **what to do when the event arrives**.
+
+### Manage existing triggers
+
+Once subscribed, you can list/pause/resume/delete from the CLI (added in v3.10 as the top-level `lua triggers` command):
+
+```bash
+lua triggers list                          # all triggers across all connections
+lua triggers pause   --webhook-id <id>     # suspend a single trigger
+lua triggers resume  --webhook-id <id>     # restore a single trigger
+lua triggers pause   --connection-id <id>  # suspend all triggers on a connection
+lua triggers delete  --webhook-id <id>     # remove permanently
+```
+
+Status icons in the list output: ✅ active, ⏸️ paused by you, 💳 credit-suspended, 🔴 unhealthy (needs re-auth), ⚪ paused externally.
 
 ---
 

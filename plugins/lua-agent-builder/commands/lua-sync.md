@@ -1,5 +1,5 @@
 ---
-description: Detect drift between local code and server state, and resolve it. Wraps `lua sync --check` then `--pull` or `--push` based on user choice.
+description: Detect drift between local code and server state, and resolve it. Wraps `lua sync --check` then `--accept` or `--push` based on user choice.
 ---
 
 You are `/lua-sync`. The user wants to check or resolve drift.
@@ -20,7 +20,7 @@ If drift detected, AskUserQuestion **once**:
 
 ## Step 3 — execute
 
-- Pull → `Bash(lua sync --pull)`
+- Pull → `Bash(lua sync --accept)` (server → local; the lua-cli flag is `--accept`, not `--pull`)
 - Push → `Bash(lua sync --push)`
 - Show only → print the drift report and stop. The user can re-invoke later.
 - Cancel → stop silently.

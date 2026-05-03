@@ -9,7 +9,7 @@
       "Bash(lua compile --ci*)",
       "Bash(lua test --ci*)",
       "Bash(lua sync --check)",
-      "Bash(lua sync --pull*)",
+      "Bash(lua sync --accept*)",
       "Bash(lua sync --push*)",
       "Bash(lua chat --ci -m*)",
       "Bash(lua chat --ci -e * -m*)",
@@ -35,7 +35,7 @@
     "ask": [
       "Bash(npm install -g lua-cli*)",
       "Bash(lua * delete*)",
-      "Bash(lua sync --pull --force*)",
+      "Bash(lua sync --accept --force*)",
       "Bash(brew install*)",
       "Bash(winget install*)",
       "Bash(corepack*)"

@@ -50,6 +50,44 @@ The agent needs to do X involving an external system.
 
 Concrete: if the user says "agent that talks to my Google Calendar", the right plan is "connect via Unified.to calendar integration, activate the MCP, add `calendar_event.created` trigger if needed" — NOT "build `list_events`, `create_event`, `update_event` tools." Those operations are already in the MCP.
 
+### MCP tool discovery (mandatory before listing custom tools in the plan)
+
+The catalog tells you the *category* of operations an integration's MCP exposes; the actual tool list is connection-specific (Unified.to coverage varies by integration, by scopes granted at OAuth time, and over time). **Don't propose a custom tool whose responsibility might already be covered by an MCP tool you didn't check.** The plan should instruct the user to verify the MCP's surface before any custom tool work begins:
+
+1. **Confirm the MCP is activated**: `lua integrations mcp list` — shows each connection with its MCP status (Active / Inactive). If status is Inactive, run `lua integrations mcp activate --connection <id>`.
+
+2. **Inspect the actual tools the MCP exposes**. Two ways:
+   - **In a Claude Code session** (preferred when the user is in the loop with you): once the connection's MCP is activated, the user's next session shows the integration's tools as `mcp__<integration>__<tool-name>` (for example, after activating Google Calendar the user may see entries like `list-events`, `create-event`, `update-event` under that integration's prefix). Ask the user to paste the list — that's the authoritative inventory.
+   - **From the lua-cli sandbox**: `lua chat -e sandbox -m "List every tool you have available, grouped by source. Don't call any of them — just enumerate." -t mcp-discovery-1` — the agent itself enumerates its tool surface, including MCP-provided tools. Use this when you don't have direct visibility.
+
+3. **Cross-check your custom-tool list against the discovered MCP tools**. For every tool you were going to recommend:
+   - Is there a 1-to-1 MCP tool that does the same thing? → drop the custom tool, reference the MCP tool by name in the plan instead (e.g. "agent uses the integration's `create-event` MCP tool directly").
+   - Is there an MCP tool that does *most* of it but not the derived logic? → keep the custom tool but reframe its scope: "wraps the integration's `list-events` MCP tool, applies overlap logic to find free slots".
+   - Is there genuinely no MCP equivalent? → keep the custom tool and note in the plan: "verified no MCP equivalent on <date>".
+
+This step is non-negotiable. The single most common architect failure mode is shipping a plan with three custom tools that the MCP already provides, leading to hours of wasted scaffold work the user later has to delete (the "Cal-style refactor" — see iteration-13/14 audit notes).
+
+### Trigger planning (do this for every integration in the plan)
+
+After the user has run `lua integrations connect`, the integration is connected and its MCP is auto-provisioned — but **no triggers are subscribed yet** (since v3.8 triggers are opt-in by default). The architect's plan must address triggers explicitly. For each integration in the plan:
+
+1. **Recommend a discovery command** the user runs after connecting:
+   - `lua integrations webhooks events --integration <name> --json` — returns the catalog of object/event combinations the integration emits (e.g. `calendar_event.created`, `task_task.updated`).
+   - `lua integrations webhooks list --json` — returns all triggers currently active across all connections (filter by `connectionId` to see this integration's). If a trigger you want is already there, don't duplicate it.
+
+2. **Suggest which events to subscribe to**, derived from the agent's purpose. Don't propose subscribing to everything — every active trigger costs runtime credits and wakes the agent. Be selective:
+   - "Cal-style assistant" agent (reactive scheduler) → `calendar_event.created`, `calendar_event.updated`, `calendar_event.deleted`.
+   - Salesforce CRM agent that just answers questions → no triggers needed; the MCP alone is enough.
+   - Stripe billing agent that should act on payments → `payment_intent.succeeded`, `payment_intent.payment_failed`, `charge.refunded` — but not `customer.created` unless the agent has work to do then.
+
+3. **For each subscribed event, plan a `LuaWebhook` primitive** with explicit instructions for what the agent should do when the event arrives. The MCP exposes the integration's API; the webhook handler is custom code that processes the event payload — it usually either calls `Agents.invoke` to let the agent react in-conversation, or uses `AI.generate` for a silent classify-and-route step. Be concrete in the plan:
+   - `CalendarEventCreatedWebhook` — payload contains the new event; extract attendees + time; call `Agents.invoke` with a system message like "A new meeting was added to the user's calendar: <event-summary>. Acknowledge it briefly and offer to prep a summary or reschedule conflicts."
+   - `PaymentFailedWebhook` — payload contains the invoice + customer; call `Agents.invoke` with "Payment failed for customer X invoice Y. Notify them via their preferred channel and offer to update payment method."
+
+4. **Two ways to create the trigger** — pick the right one in the plan:
+   - **Inline at connect time**: `lua integrations connect --integration <name> --auth-method oauth --scopes all --triggers calendar_event.created,calendar_event.updated` — one command, sets up everything in one go. Best when the events are decided up front.
+   - **After-the-fact**: `lua integrations webhooks create` (interactive) or `lua triggers create` (alias) — adds a single trigger to an existing connection. Best when the user wants to start with the MCP only and layer in triggers later.
+
 Output a structured plan in this format:
 
 ```
@@ -67,7 +105,10 @@ Output a structured plan in this format:
 - ...
 
 ### Webhooks
-- `<webhook-name>` — triggered by <integration> on <event>; mutates <data>
+For each integration trigger the agent should react to, list:
+- `<webhook-name>` — triggered by `<integration>.<object>.<event>` (e.g. `googlecalendar.calendar_event.created`)
+  - Handler responsibility: <what the LuaWebhook does — e.g. "Extract attendees + time, call `Agents.invoke` with: '<system message that tells the agent what to do with this event>'">
+  - Subscribe via: inline at connect (`--triggers <event>`) **or** post-connect (`lua integrations webhooks create`)
 
 ### Jobs
 - `<job-name>` — <schedule>; does <what>
@@ -81,10 +122,16 @@ Output a structured plan in this format:
 - E-commerce primitives: <yes/no, why>
 
 ## Integrations
-| System | Type | Setup |
-|---|---|---|
-| Stripe | Unified.to | `lua integrations connect --integration stripe`, then `lua integrations webhooks create` for the events you care about |
-| Internal billing | Custom Tool | `fetch()` + `env('BILLING_API_KEY')` |
+| System | Type | Setup | Triggers to subscribe |
+|---|---|---|---|
+| Stripe | Unified.to | `lua integrations connect --integration stripe --auth-method oauth --scopes all --triggers payment_intent.succeeded,payment_intent.payment_failed,charge.refunded` | (subscribed inline at connect — see column 3) |
+| Google Calendar | Unified.to | `lua integrations connect --integration googlecalendar --auth-method oauth --scopes all` then `lua integrations mcp activate --connection <id>` | (none — MCP only; agent answers ad-hoc) |
+| Internal billing | Custom Tool | `fetch()` + `env('BILLING_API_KEY')` | n/a |
+
+**Trigger discovery checklist** (the user runs these after `connect`, before the build phase begins):
+1. `lua integrations webhooks events --integration <name> --json` — confirm the events you planned actually exist in the integration's catalog (Unified.to coverage varies per connector).
+2. `lua integrations webhooks list --json` — confirm none of the planned triggers are already active for this connection (avoid duplicates).
+3. If the catalog reveals events you didn't plan but that match the agent's purpose, ask the user if they want them added.
 
 ## Build order
 1. <step>
