@@ -18,9 +18,16 @@ on:
 permissions:
   contents: write
 
+defaults:
+  run:
+    working-directory: plugins/lua-agent-builder
+
 jobs:
   release:
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: plugins/lua-agent-builder
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,15 +50,15 @@ jobs:
         run: node scripts/check-coverage.mjs
 
       - name: Install MCP deps
-        working-directory: mcp/lua-platform
+        working-directory: plugins/lua-agent-builder/mcp/lua-platform
         run: npm ci
 
       - name: Test MCP
-        working-directory: mcp/lua-platform
+        working-directory: plugins/lua-agent-builder/mcp/lua-platform
         run: npm test
 
       - name: Build MCP bundle
-        working-directory: mcp/lua-platform
+        working-directory: plugins/lua-agent-builder/mcp/lua-platform
         run: npm run build
 
       - name: Verify bundle size
@@ -70,9 +77,10 @@ jobs:
           echo "Production version: ${VERSION}"
 
       - name: Verify tag does not already exist
+        working-directory: ${{ github.workspace }}
         run: |
           if git rev-parse "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
-            echo "::error::Tag ${{ steps.version.outputs.tag }} already exists. Bump package.json version before merging to main."
+            echo "::error::Tag ${{ steps.version.outputs.tag }} already exists. Bump plugins/lua-agent-builder/package.json version before merging to main."
             exit 1
           fi
 
@@ -83,7 +91,7 @@ jobs:
           node scripts/pack.mjs
           TARBALL="claude-code-lua-plugin-${{ steps.version.outputs.version }}.tar.gz"
           ls -lh "${TARBALL}"
-          echo "TARBALL=${TARBALL}" >> "$GITHUB_ENV"
+          echo "TARBALL=plugins/lua-agent-builder/${TARBALL}" >> "$GITHUB_ENV"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2

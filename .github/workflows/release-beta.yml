@@ -16,9 +16,16 @@ on:
 permissions:
   contents: write   # Required for creating GitHub Releases and pushing tags
 
+defaults:
+  run:
+    working-directory: plugins/lua-agent-builder
+
 jobs:
   release:
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: plugins/lua-agent-builder
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,15 +48,15 @@ jobs:
         run: node scripts/check-coverage.mjs
 
       - name: Install MCP deps
-        working-directory: mcp/lua-platform
+        working-directory: plugins/lua-agent-builder/mcp/lua-platform
         run: npm ci
 
       - name: Test MCP
-        working-directory: mcp/lua-platform
+        working-directory: plugins/lua-agent-builder/mcp/lua-platform
         run: npm test
 
       - name: Build MCP bundle
-        working-directory: mcp/lua-platform
+        working-directory: plugins/lua-agent-builder/mcp/lua-platform
         run: npm run build
 
       - name: Verify bundle size
@@ -75,7 +82,7 @@ jobs:
           node scripts/pack.mjs
           TARBALL="claude-code-lua-plugin-${{ steps.version.outputs.version }}.tar.gz"
           ls -lh "${TARBALL}"
-          echo "TARBALL=${TARBALL}" >> "$GITHUB_ENV"
+          echo "TARBALL=plugins/lua-agent-builder/${TARBALL}" >> "$GITHUB_ENV"
 
       - name: Create GitHub prerelease
         uses: softprops/action-gh-release@v2

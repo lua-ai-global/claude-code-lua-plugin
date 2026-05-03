@@ -10,16 +10,18 @@ on:
 # Lints + tests the plugin only — no real lua-cli, no staging agents,
 # no secrets needed. Fork PRs run cleanly.
 #
-# NOTE: these workflow files are designed for the eventual public repo
-# `lua-ai-global/claude-code-lua-plugin` where this directory IS the repo
-# root. While the plugin lives in the monorepo at
-# `packages/claude-code-lua-plugin/`, GitHub Actions does NOT pick up nested
-# `.github/workflows/` — only the repo-root one — so these don't fire here.
-# When extracted, they will fire as-is.
+# Public-repo CI (lua-ai-global/claude-code-lua-plugin). The repo root is a
+# marketplace catalog (.claude-plugin/marketplace.json) and the plugin
+# itself lives at plugins/lua-agent-builder/ per the canonical Claude Code
+# marketplace+plugin layout.
 #
 # Cross-platform matrix because the plugin must work on macOS, Linux, and
 # Windows (per §3.8 of the feature doc — Node ESM hooks, AbortSignal.timeout,
 # path handling all need verification per cell).
+
+defaults:
+  run:
+    working-directory: plugins/lua-agent-builder
 
 jobs:
   plugin:
@@ -29,6 +31,9 @@ jobs:
         os: [macos-14, ubuntu-22.04, windows-2022]
         node: [18, 20]
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: plugins/lua-agent-builder
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -42,24 +47,27 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage
-          path: coverage/
+          path: plugins/lua-agent-builder/coverage/
           retention-days: 7
 
   mcp:
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: plugins/lua-agent-builder
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
       - name: Install MCP deps
-        working-directory: mcp/lua-platform
+        working-directory: plugins/lua-agent-builder/mcp/lua-platform
         run: npm ci
       - name: Test MCP
-        working-directory: mcp/lua-platform
+        working-directory: plugins/lua-agent-builder/mcp/lua-platform
         run: npm test
       - name: Build MCP bundle
-        working-directory: mcp/lua-platform
+        working-directory: plugins/lua-agent-builder/mcp/lua-platform
         run: npm run build
       - name: Verify bundle size
         run: node scripts/check-bundle-size.mjs

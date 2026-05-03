@@ -1,0 +1,21 @@
+{
+  "name": "claude-code-lua-plugin",
+  "owner": {
+    "name": "Lua AI",
+    "email": "support@heylua.ai",
+    "url": "https://heylua.ai"
+  },
+  "plugins": [
+    {
+      "name": "lua-agent-builder",
+      "source": "./plugins/lua-agent-builder",
+      "description": "Build, test, and deploy Lua AI agents from inside Claude Code",
+      "version": "1.0.0",
+      "homepage": "https://docs.heylua.ai/claude-code-plugin",
+      "repository": "https://github.com/lua-ai-global/claude-code-lua-plugin.git",
+      "license": "MIT",
+      "keywords": ["lua", "ai-agents", "deployment", "lua-cli"],
+      "category": "DevTools"
+    }
+  ]
+}
