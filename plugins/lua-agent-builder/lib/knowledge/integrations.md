@@ -1,12 +1,74 @@
 # Integrations reference
 
-Lua agents connect to external systems through three layers:
+Lua agents connect to external systems through **four layers**, in order of preference:
 
-1. **Built-in channels** (WhatsApp, voice, etc.) — handled by `lua channels`.
-2. **Unified.to integrations** — managed via `lua integrations` (Tier C, terminal-pane handoff). Catalog below.
-3. **Custom HTTP** — when none of the above fit. Build a Tool or Webhook with `fetch()`.
+1. **Built-in channels** (WhatsApp, voice, etc.) — handled by `lua channels`. For user-facing messaging surfaces.
+2. **Unified.to integrations** — managed via `lua integrations`. Catalog below. **Each integration comes with an auto-provisioned MCP server** (see [Architecture pattern](#architecture-pattern-the-right-way-to-use-integrations)) that exposes the integration's CRUD to the agent. This is the canonical way to connect to known SaaS systems.
+3. **Webhook triggers** for the integration — fire when state changes in the external system (new event, updated record, etc.).
+4. **Custom HTTP** — only when none of the above fit. Build a Tool or Webhook with `fetch()`.
 
 This catalog is curated for the architect's decision-making — fall back to `WebFetch https://docs.heylua.ai/integrations` for the live source-of-truth.
+
+---
+
+## Architecture pattern: the right way to use integrations
+
+**THE MOST COMMON ARCHITECT MISTAKE**: proposing custom tools (`list_events`, `create_event`, `update_record`, etc.) when the integration's MCP server already exposes those operations. **Don't do this.** Custom tools are for **derived logic** the MCP doesn't cover.
+
+### When the user wants to build an agent that talks to an external system, the canonical flow is:
+
+1. **Pick the integration** (`crm`, `calendar`, `messaging`, etc. from the catalog below).
+2. **Connect via OAuth**: `lua integrations connect --integration <name>` — opens a browser for OAuth, creates a connection, and **auto-provisions an MCP server** for that connection. The MCP exposes the integration's read/write API as MCP tools the agent can call.
+3. **Activate the MCP for the agent**: `lua integrations mcp activate --connection <connection-id>`. The agent now has direct access to the integration's CRUD without you writing any tool code.
+4. **Add webhook triggers** for events the agent should react to: `lua integrations webhooks create` (interactive) — picks an object type (`calendar_event`, `task_task`, etc.) and event type (`created`, `updated`, `deleted`).
+5. **Add custom tools ONLY for derived logic** not exposed by the MCP — e.g., "find optimal meeting slot given participants' availability" (needs to query calendar + apply business logic), "send Slack notification when calendar event is created" (needs to compose two integrations).
+
+### Concrete example: Google Calendar agent
+
+**Wrong** (what the architect used to do):
+
+> "Build a `calendar` skill with three tools: `list_upcoming_events`, `find_free_slots`, `create_event`."
+
+This duplicates what the integration's MCP already provides.
+
+**Right**:
+
+> "Connect Google Calendar via `lua integrations connect --integration googlecalendar`. Activate the MCP via `lua integrations mcp activate --connection <id>` — the agent now has read/write calendar access through MCP tools (no code needed). Add webhook triggers for `calendar_event.created` and `calendar_event.updated` if the agent should react to changes. The only custom tool worth building is `find_optimal_meeting_slot` — it queries the MCP to get availability across multiple calendars and applies scheduling logic the MCP can't do on its own."
+
+The MCP server provides operations like `list-events`, `get-event`, `create-event`, `update-event`, `delete-event`, `list-calendars`, etc. — directly accessible to the agent. Test what's available via `lua integrations mcp list` after connecting.
+
+### Decision tree for "do I need a custom tool?"
+
+```
+User wants the agent to do X involving an integration.
+├── Is X a single CRUD operation on the integration's API?
+│   └── YES → use the integration's MCP. No custom tool. Done.
+├── Is X a "react to event Y in the integration"?
+│   └── YES → add a webhook trigger via `lua integrations webhooks create`. Maybe one
+│             custom LuaWebhook to do something with the event payload. Done.
+├── Is X a derived computation across multiple data points (find best slot,
+│   summarize last week's meetings, detect duplicates)?
+│   └── YES → custom Tool that queries the MCP under the hood + applies the logic
+└── Is X cross-integration (calendar + Slack, CRM + email)?
+    └── YES → custom Tool or Webhook that orchestrates calls across multiple MCPs
+```
+
+### What the architect's plan should look like
+
+For an agent that uses an integration, the plan section should be:
+
+```markdown
+## Integration setup
+- `lua integrations connect --integration <name>`  → OAuth + MCP auto-provisioned
+- `lua integrations mcp activate --connection <id>` → MCP available to the agent
+
+## Webhooks (only the events the agent should react to)
+- `<object_type>.<event>` — e.g. `calendar_event.created` to react to new meetings
+
+## Tools (only the derived logic NOT exposed by the MCP)
+- `find_optimal_meeting_slot` — queries calendar via MCP, applies scheduling logic
+- (if no derived logic needed: NONE — the MCP is the agent's interface)
+```
 
 ---
 
@@ -14,10 +76,21 @@ This catalog is curated for the architect's decision-making — fall back to `We
 
 ```
 External system needed?
-├── Yes — does Lua have a built-in channel for it?
-│   ├── Yes → use Channel (run `lua channels` and follow the interactive prompts — there is no non-interactive `add` action)
-│   └── No — is it a known SaaS (Stripe, Gmail, Salesforce, ...)?
-│       ├── Yes → use Unified.to integration (lua integrations connect)
+├── Yes — does Lua have a built-in channel for it (whatsapp, voice, email, sms, etc.)?
+│   ├── Yes → use Channel (run `lua channels` and follow the interactive prompts —
+│   │         there is no non-interactive `add` action)
+│   └── No — is it a known SaaS (Stripe, Gmail, Salesforce, Google Calendar, ...)?
+│       ├── Yes → Unified.to integration:
+│       │       1. `lua integrations connect --integration <name>` (OAuth + MCP auto-
+│       │          provisioned)
+│       │       2. `lua integrations mcp activate --connection <id>` (agent gets MCP
+│       │          access — most CRUD operations are now available without writing
+│       │          any tool code)
+│       │       3. `lua integrations webhooks create` (only for the events the agent
+│       │          should react to — don't subscribe to everything)
+│       │       4. Custom Tools/Webhooks ONLY for derived logic the MCP doesn't
+│       │          expose (cross-integration orchestration, business-specific
+│       │          computations)
 │       └── No → custom Tool/Webhook with fetch()
 └── No — task is self-contained → just a Tool with logic
 ```
@@ -40,7 +113,7 @@ External system needed?
 
 ## Unified.to integration catalog
 
-Lua uses Unified.to for SaaS connectors. **Canonical category list**:
+Lua uses Unified.to for SaaS connectors. **Every connector comes with an MCP server** (auto-provisioned on `lua integrations connect`) that exposes the connector's CRUD operations as MCP tools. **Canonical category list**:
 
 | Category    | What it covers              | Common integrations the architect should know |
 |-------------|------------------------------|------------------------------------------------|
@@ -67,11 +140,11 @@ Lua uses Unified.to for SaaS connectors. **Canonical category list**:
 | `scim`      | Identity provisioning        | Okta, Azure AD                                 |
 | `shipping`  | Shipping / fulfilment        | Shippo, EasyPost                               |
 
-The category names are **canonical** — they're what `lua integrations list` returns and what the architect's recommendations should reference. The integration roster within each category comes from Unified.to's catalog and is **runtime-discoverable** via the `lua integrations` command (Tier C — interactive). Don't claim a specific connector exists if you're not sure; instead say "in the `<category>` category" and let the user confirm via the live list.
+The category names are **canonical** — they're what `lua integrations list` returns and what the architect's recommendations should reference. The integration roster within each category comes from Unified.to's catalog and is **runtime-discoverable** via the `lua integrations` command. Don't claim a specific connector exists if you're not sure; instead say "in the `<category>` category" and let the user confirm via the live list.
 
 ### Role-based suggestion shortcuts (lua-api feature)
 
-The lua-api server defines a `KEYWORD_CATEGORY_MAP` that maps user roles to relevant categories. The architect should leverage this when the user describes the agent's audience:
+The lua-api server defines a `KEYWORD_CATEGORY_MAP` that maps user roles to relevant categories:
 
 | User role          | Suggested categories                               |
 |--------------------|----------------------------------------------------|
@@ -88,26 +161,84 @@ When the architect asks "Who's the user?" in Step 1, it should map the answer to
 
 ---
 
-## Triggers vs polling
+## Triggers (webhooks) vs polling
 
-Lua exposes integrations via two mechanisms:
+Lua exposes integration events via two mechanisms:
 
-- **Triggers** — Unified.to webhooks → Lua webhook → your `LuaWebhook`. Real-time. Preferred.
-- **Polling** — a `LuaJob` that calls the integration's API directly via `fetch()` (passing the connection's bearer token from `env`), or hits Unified.to's REST endpoints. The CLI does not expose a generic data-fetch subcommand under `lua integrations`.
+- **Triggers** — `lua integrations webhooks create` sets up a Unified.to webhook → Lua webhook → your `LuaWebhook` runs. Real-time. **Always preferred.**
+- **Polling** — a `LuaJob` that calls the MCP (or the integration's REST API directly) on a schedule. Last resort, only when triggers aren't supported by the integration or the trigger frequency is impractical (e.g. you only need a daily snapshot).
 
-**Decision**: always prefer triggers when the integration supports them. Polling is only for systems without webhooks (rare) or when the trigger frequency is impractical (e.g. you only need a daily snapshot).
+### Setting up triggers
+
+After `lua integrations connect`:
+
+```bash
+# Pick the events you care about
+lua integrations webhooks events --integration <name>   # see what's available
+
+# Create the trigger
+lua integrations webhooks create
+# → asks for connection ID, object type (e.g. calendar_event), event (created/updated/deleted)
+```
+
+The trigger will POST to a Lua-managed webhook endpoint. You then write a `LuaWebhook` primitive to handle the payload.
 
 ---
 
-## When to build custom
+## Integration auth
 
-Use a custom Tool with `fetch()` when:
+Unified.to integrations require OAuth — handled via `lua integrations connect` which opens a browser. The architect should:
 
-1. The integration isn't in the Unified.to catalog above.
-2. The Unified.to abstraction loses fidelity you need (e.g. you need raw Salesforce SOQL, not the abstracted Lead/Contact shape).
-3. You're integrating with an internal system (your own API).
+1. Identify which integration is needed.
+2. Tell the user to run `lua integrations connect --integration <name>` (Tier C terminal pass-through — opens browser for OAuth).
+3. After OAuth completes, the connection ID is shown; the user runs `lua integrations mcp activate --connection <connection-id>` to make the MCP available to the agent.
+4. Configure triggers if real-time events are needed: `lua integrations webhooks create` (interactive) or `lua triggers create` (alias). Don't confuse this with `lua webhooks subscribe`, which is for user-defined `LuaWebhook` primitives subscribing to PLATFORM events like `message.delivered`.
 
-**Pattern**:
+---
+
+## When to build custom tools (the rare cases)
+
+After the integration's MCP is activated, the agent can already do most CRUD operations. **Don't build custom tools that duplicate MCP capabilities.** Custom tools (and custom webhook handlers) are appropriate when:
+
+1. **Derived computations** the MCP doesn't expose:
+   - "Find the next 30-min slot when both Alice and Bob are free" → custom tool that queries calendar via MCP, applies overlap logic
+   - "Summarize last quarter's deals over $10k" → custom tool that queries CRM via MCP, applies filtering + summarization
+2. **Cross-integration orchestration**:
+   - "When a calendar event is created, post a summary to Slack" → custom webhook that handles the calendar trigger, then calls the Slack MCP
+3. **Custom output formatting**:
+   - "Render upcoming meetings as a markdown agenda the user can copy-paste" → custom tool that queries calendar via MCP, formats the output
+4. **Integration not in the catalog**:
+   - Internal company API → custom Tool with `fetch()`
+5. **MCP doesn't expose the operation you need**:
+   - Some integrations have limited MCP surface; run `lua integrations mcp list` after connecting to see all your connections and their MCP status. The exposed MCP tools are visible in the agent's session via the `mcp__<integration>__*` tool prefix once activated.
+
+**Pattern for custom tools that compose with an MCP**:
+
+```typescript
+import { LuaTool } from 'lua-cli';
+import { z } from 'zod';
+
+export default class FindOptimalSlotTool implements LuaTool {
+  name = 'find_optimal_slot';
+  description = 'Find the next 30-minute window when all listed participants are free';
+  inputSchema = z.object({
+    participants: z.array(z.string()),  // emails
+    durationMinutes: z.number().default(30),
+    horizonDays: z.number().default(7),
+  });
+
+  async execute({ participants, durationMinutes, horizonDays }: z.infer<typeof this.inputSchema>) {
+    // The agent's main loop calls list-events (Calendar MCP) for each
+    // participant — this tool just composes the results.
+    // (In practice, the agent does the MCP calls; this tool receives
+    // pre-fetched calendar data and applies the slot-finding logic.)
+    // ...
+  }
+}
+```
+
+**Pattern for custom HTTP tools** (integration not in catalog, or internal API):
+
 ```typescript
 import { LuaTool, env } from 'lua-cli';
 import { z } from 'zod';
@@ -132,22 +263,11 @@ export default class CustomApiTool implements LuaTool {
 
 ---
 
-## Integration auth
-
-Unified.to integrations require OAuth — handled via `lua integrations connect` which opens a browser. The architect should:
-
-1. Identify which integration is needed.
-2. Tell the user to run `/lua integrations connect <name>` (Tier C terminal pass-through per §3.1.2).
-3. After connection, identify the connection ID via `lua integrations list`.
-4. Configure Unified.to triggers if real-time events are needed: `lua integrations webhooks create` (interactive) or `lua triggers create` (alias). Don't confuse this with `lua webhooks subscribe`, which is for user-defined `LuaWebhook` primitives subscribing to PLATFORM events like `message.delivered`.
-
----
-
 ## Cost model considerations
 
 When recommending integrations, the architect should mention cost surfaces:
 
-- **Unified.to connectors** — per-API-call pricing on Lua's side.
+- **Unified.to connectors** — per-API-call pricing on Lua's side. MCP calls are also per-call.
 - **WhatsApp Business** — per-message cost via Meta.
 - **Voice (LiveKit)** — per-minute billing.
 - **AI.generate** — per-token; cheap LLM calls for classification.

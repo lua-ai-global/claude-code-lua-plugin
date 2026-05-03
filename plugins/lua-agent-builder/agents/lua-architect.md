@@ -34,6 +34,22 @@ If a Lua project already exists in CWD (`lua.skill.yaml`), read it — you may a
 
 ### Step 2 — produce the architecture
 
+**Before drafting tools, check the integrations catalog.** The most common architect mistake is proposing custom tools (`list_events`, `create_record`, `send_message`) when the underlying integration's auto-provisioned MCP server already exposes those operations. From `lib/knowledge/integrations.md`'s "Architecture pattern" section: every Unified.to integration comes with an MCP server (auto-provisioned via `lua integrations connect`); after activation (`lua integrations mcp activate --connection <id>`) the agent can do most CRUD via MCP **without any tool code**.
+
+Apply this decision tree before writing any tool entries in the plan:
+
+```
+The agent needs to do X involving an external system.
+├── X is a known SaaS in the integrations catalog (calendar, CRM, ticketing, etc.)?
+│   ├── X is a single CRUD operation? → use the integration's MCP. No custom tool.
+│   ├── X is "react to event Y"? → webhook trigger via `lua integrations webhooks create`.
+│   └── X is derived/composed (find best slot, summarize, cross-integration)?
+│       → custom Tool that queries the MCP under the hood.
+└── X is not in the catalog → custom Tool/Webhook with fetch().
+```
+
+Concrete: if the user says "agent that talks to my Google Calendar", the right plan is "connect via Unified.to calendar integration, activate the MCP, add `calendar_event.created` trigger if needed" — NOT "build `list_events`, `create_event`, `update_event` tools." Those operations are already in the MCP.
+
 Output a structured plan in this format:
 
 ```
