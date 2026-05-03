@@ -15,7 +15,7 @@
 // the developer is expected to know what they're doing.
 
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { join, extname } from 'node:path';
+import { join, extname, basename } from 'node:path';
 
 const ROOT = '.';
 const SCAN_DIRS = ['lib', 'hooks', 'scripts'];
@@ -30,8 +30,10 @@ const PATH_HELPER_RE = /(?<![.\w])(join|resolve|relative)\(\s*['"][^'"]*\/[^'"]*
 let failed = false;
 
 // Self-exclude: lint-paths.mjs inherently contains the patterns it warns
-// against (in error messages and examples). Listed here, not detected.
-const SELF_EXCLUDE = new Set(['scripts/lint-paths.mjs']);
+// against (in error messages and examples). Compare by basename so the
+// check is cross-platform (Windows yields 'scripts\\lint-paths.mjs' from
+// walk(), POSIX yields 'scripts/lint-paths.mjs' — basename normalises both).
+const SELF_EXCLUDE = new Set(['lint-paths.mjs']);
 
 async function* walk(dir) {
   for (const entry of await readdir(dir)) {
@@ -45,8 +47,7 @@ async function* walk(dir) {
 for (const dir of SCAN_DIRS) {
   try {
     for await (const file of walk(join(ROOT, dir))) {
-      const relative = file.replace(/^\.\//, '');
-      if (SELF_EXCLUDE.has(relative)) continue;
+      if (SELF_EXCLUDE.has(basename(file))) continue;
       const content = await readFile(file, 'utf8');
       const matches = content.match(PATH_HELPER_RE);
       if (matches) {

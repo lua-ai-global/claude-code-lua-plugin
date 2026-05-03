@@ -1,6 +1,6 @@
 {
   "name": "claude-code-lua-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Plugin assets for the lua-agent-builder Claude Code plugin",
   "private": true,
   "type": "module",
