@@ -143,7 +143,7 @@ Lua uses Unified.to for SaaS connectors. **Every connector comes with an MCP ser
 | `ats`       | Applicant tracking           | Greenhouse, Lever, Workable                    |
 | `lms`       | Learning management          | Cornerstone, Docebo                            |
 | `scim`      | Identity provisioning        | Okta, Azure AD                                 |
-| `shipping`  | Shipping / fulfillment        | Shippo, EasyPost                               |
+| `shipping`  | Shipping / fulfillment       | Shippo, EasyPost                               |
 
 The category names are **canonical** — they're what `lua integrations list` returns and what the architect's recommendations should reference. The integration roster within each category comes from Unified.to's catalog and is **runtime-discoverable** via the `lua integrations` command. Don't claim a specific connector exists if you're not sure; instead say "in the `<category>` category" and let the user confirm via the live list.
 
