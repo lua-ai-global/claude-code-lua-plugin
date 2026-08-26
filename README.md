@@ -12,7 +12,7 @@ A [Claude Code](https://code.claude.com) marketplace + plugin for building, test
 /reload-plugins
 ```
 
-Then `/lua-auth` to authenticate (email + OTP, or paste an existing API key from [admin.heylua.ai](https://admin.heylua.ai)), and `/lua-doctor` to verify the full environment.
+Then `/lua-auth` to create a scoped 90-day CLI key with email + OTP, or install an existing scoped key from **Settings → API Keys** at [admin.heylua.ai](https://admin.heylua.ai). Run `/lua-doctor` to verify the full environment.
 
 Once it's on the official Anthropic marketplace, install will simplify to:
 

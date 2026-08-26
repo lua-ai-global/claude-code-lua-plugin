@@ -1,5 +1,5 @@
 ---
-description: Authenticate with Lua via email+OTP or paste an existing API key. Stores credentials in ~/.lua-cli/credentials. Run this once after installing the plugin.
+description: Create or install a scoped, expiring Lua CLI credential. Stores only the credential envelope in ~/.lua-cli/credentials.
 x-lua-multi-step: true
 ---
 
@@ -22,11 +22,11 @@ The follow-up "what's your email/OTP/key?" prompts are **information collection*
 1. Ask: "Email for your Lua account?" (free-text — don't validate format; lua-cli does that). Store as `<email>`.
 2. Run `Bash(lua auth configure --email <email> --ci)`. This sends a 6-digit OTP to the user's inbox. The command prints a confirmation; surface that to the user verbatim so they know to check their email.
 3. Ask: "Enter the 6-digit code from the email." (free-text). Store as `<code>`.
-4. Run `Bash(lua auth configure --email <email> --otp <code> --ci)`. This verifies the OTP and writes the API key to `~/.lua-cli/credentials` (mode 0600, plain text per `lua-cli/src/services/auth.ts:65-67`).
+4. Run `Bash(lua auth configure --email <email> --otp <code> --ci)`. With one workspace, this creates a personal 90-day developer key for that workspace and its current agents. With several, the command lists workspace IDs and exits: ask the user which one, then rerun with `--org-id <id>`. Use `--agent-id <id...>` when the user wants a narrower agent set. The CLI writes a versioned credential envelope to `~/.lua-cli/credentials` (mode 0600).
 
 ### Path B — Paste API key
 
-1. Ask: "Paste your API key (starts with `lk_`). Get one from https://admin.heylua.ai if you don't have one." (free-text). Store as `<key>`.
+1. Ask: "Paste your scoped API key (starts with `api_`). Create one under Settings → API Keys at https://admin.heylua.ai if you don't have one." (free-text). Store as `<key>`.
 2. Run `Bash(lua auth configure --api-key <key> --ci)`.
 
 ## Step 3 — verify
