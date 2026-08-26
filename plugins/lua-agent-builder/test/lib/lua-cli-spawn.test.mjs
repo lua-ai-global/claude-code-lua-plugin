@@ -62,7 +62,9 @@ describe('spawnLua', () => {
 
     const callEnv = spawnMock.mock.calls[0][2].env;
     expect(callEnv.LUA_API_KEY).toBe('k');
-    expect(callEnv.PATH).toBe(process.env.PATH);  // process.env spread
+    const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === 'path');
+    expect(pathKey).toBeDefined();
+    expect(callEnv[pathKey]).toBe(process.env[pathKey]);  // process.env spread, casing is OS-defined
   });
 
   test('returns clean result on normal exit', async () => {

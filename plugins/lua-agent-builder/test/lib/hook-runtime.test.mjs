@@ -1,6 +1,7 @@
 import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globals';
 import { Readable } from 'node:stream';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { resolve } from 'node:path';
 import {
   readStdin,
   log,
@@ -133,7 +134,7 @@ describe('isMainScript', () => {
 
   test('returns true when import.meta.url matches process.argv[1]', () => {
     const original = process.argv[1];
-    const url = 'file:///tmp/test-script.mjs';
+    const url = pathToFileURL(resolve('test-script.mjs')).href;
     process.argv[1] = fileURLToPath(url);
     try {
       expect(isMainScript(url)).toBe(true);
