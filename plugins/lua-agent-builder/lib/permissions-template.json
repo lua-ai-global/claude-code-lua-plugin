@@ -17,9 +17,6 @@
       "Bash(lua agents *)",
       "Bash(lua skills view --ci*)",
       "Bash(lua skills versions --ci*)",
-      "Bash(lua auth configure --api-key * --ci)",
-      "Bash(lua auth configure --email * --ci)",
-      "Bash(lua auth configure --email * --otp * --ci)",
       "Bash(lua push * --ci --force*)",
       "Bash(LUA_DEPLOY_CONFIRMED=1 lua deploy*)",
       "Bash(env LUA_DEPLOY_CONFIRMED=1 lua deploy*)",
@@ -44,6 +41,7 @@
       "Bash(lua deploy*)",
       "Bash(lua * --auto-deploy*)",
       "Bash(lua push * --auto-deploy*)",
+      "Bash(lua auth configure*)",
       "Bash(lua auth key*)"
     ]
   }

@@ -9,7 +9,7 @@ Once approved on the official Anthropic marketplace:
 ```
 /plugin install lua-agent-builder@claude-plugins-official
 /reload-plugins
-/lua-auth          # email + OTP, or paste an API key
+/lua-auth          # private typed login through lua-cli 3.28.0+
 ```
 
 After auth, `/lua-doctor` to verify the environment, then `/lua-init` to scaffold a new agent project.
@@ -108,18 +108,18 @@ itself only — no integration with lua-cli or lua-api in CI.**
 
 ## M1 status
 
-- 9 hooks, 100% coverage on every metric (statements, branches, functions, lines)
+- 10 hooks, 100% coverage on every metric (statements, branches, functions, lines)
 - 5 subagents, 14 slash commands
 
 ### First-run
 
 After installing and activating the plugin:
 
-1. Start any Claude Code session — the `check-lua-auth` SessionStart hook detects you have lua-cli installed but no API key, and surfaces a "run `/lua-auth`" prompt.
-2. Run `/lua-auth` to authenticate. Pick **Email + OTP** (we send a 6-digit code to your inbox) or **Paste API key** (from https://admin.heylua.ai). The slash stores credentials in `~/.lua-cli/credentials`.
+1. Start any Claude Code session. The `check-lua-auth` SessionStart hook detects lua-cli without a working credential and shows a "run `/lua-auth`" prompt.
+2. Run `/lua-auth`. A working `LUA_API_KEY`, `.env`, or credentials-file value stays unchanged. For a new login, use lua-cli 3.28.0 or newer and run `lua auth configure` in a private terminal. Select the organization, exact agents, and role there.
 3. From here on, every Lua slash works: `/lua-init`, `/lua-new`, `/lua-test`, `/lua-deploy`, etc.
 
-For the full environment diagnostic (Node version, npm/pnpm, lua-cli version, auth, permission rules) use `/lua-doctor` instead — its Step 4 runs the same OTP flow as `/lua-auth`.
+For the full environment diagnostic, use `/lua-doctor`. Its authentication step delegates new login to `/lua-auth`.
 - 3 GitHub Actions workflows (ci, release-beta, release-prod)
 - 9 lint scripts: `lint-permissions`, `lint-paths`, `lint-single-permission`,
   `lint-mcp-refs`, `lint-mcp-config`, `lint-pinned-version`, `lint-hooks-json`,

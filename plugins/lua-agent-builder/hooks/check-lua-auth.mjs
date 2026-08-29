@@ -33,8 +33,8 @@ export function decide(versionResult, authResult) {
 
   return {
     warn:
-      '🔐 Lua plugin loaded but you\'re not authenticated. Run `/lua-auth` to set up — ' +
-      'pick `Email + OTP` (we\'ll send a 6-digit code to your inbox) or paste an existing API key. ' +
+      '🔐 Lua plugin loaded but you\'re not authenticated. Run `/lua-auth` to set up a typed credential. ' +
+      'The setup keeps your email, OTP, and credential in a private terminal. ' +
       'Until then, every `/lua-*` slash that needs the platform will fail.',
   };
 }

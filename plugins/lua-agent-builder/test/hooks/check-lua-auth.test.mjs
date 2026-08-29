@@ -35,12 +35,13 @@ describe('check-lua-auth decide()', () => {
     expect(result?.warn).toContain('/lua-auth');
   });
 
-  test('warning message mentions both Email + OTP and API key paths', () => {
+  test('warning keeps the new login outside the conversation', () => {
     const versionOK = { exitCode: 0, stdout: '3.12.3\n', stderr: '' };
     const authFail = { exitCode: 1, stdout: '', stderr: '' };
     const result = decide(versionOK, authFail);
-    expect(result?.warn).toContain('Email + OTP');
-    expect(result?.warn).toContain('API key');
+    expect(result?.warn).toContain('typed credential');
+    expect(result?.warn).toContain('private terminal');
+    expect(result?.warn).not.toMatch(/paste.*key/i);
   });
 
   test('warning explains the user-visible consequence', () => {

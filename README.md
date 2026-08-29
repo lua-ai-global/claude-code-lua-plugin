@@ -12,7 +12,7 @@ A [Claude Code](https://code.claude.com) marketplace + plugin for building, test
 /reload-plugins
 ```
 
-Then `/lua-auth` to authenticate (email + OTP, or paste an existing API key from [admin.heylua.ai](https://admin.heylua.ai)), and `/lua-doctor` to verify the full environment.
+Then run `/lua-auth`. For a new login, the plugin sends you to `lua auth configure` in a private terminal. The CLI issues a typed credential bound to the organization, agents, and role you select.
 
 Once it's on the official Anthropic marketplace, install will simplify to:
 
@@ -26,7 +26,7 @@ This repo is a **marketplace catalog** that ships one plugin:
 
 | Plugin | Description |
 |---|---|
-| [`lua-agent-builder`](./plugins/lua-agent-builder/) | The full Lua agent toolchain — 14 slash commands, 5 subagents, 9 hooks, MCP server with 5 read-only platform tools |
+| [`lua-agent-builder`](./plugins/lua-agent-builder/) | The full Lua agent toolchain: 14 slash commands, 5 subagents, 10 hooks, and an MCP server with 5 read-only platform tools |
 
 See [`plugins/lua-agent-builder/README.md`](./plugins/lua-agent-builder/README.md) for the plugin's own docs (layout, hooks list, slash commands, design rationale).
 
@@ -42,7 +42,7 @@ claude-code-lua-plugin/
 │       │   └── plugin.json     ← plugin manifest
 │       ├── commands/           ← 14 slash commands
 │       ├── agents/             ← 5 subagents
-│       ├── hooks/              ← 9 hooks
+│       ├── hooks/              ← 10 hooks
 │       ├── lib/                ← shared utilities + permissions template
 │       ├── mcp/lua-platform/   ← MCP server source + bundled dist/
 │       ├── scripts/            ← 16 lints + 2 check scripts
@@ -76,7 +76,7 @@ The plugin enforces several gates that show up at install time via `/lua-doctor`
 - **§3.3 deploy gate** — bare `lua deploy` is denied at the permissions layer; defense-in-depth via the `confirm-deploy.mjs` PreToolUse hook.
 - **`--auto-deploy` block** — denied at permissions + blocked at the hook layer.
 - **§3.7 single-permission contract** — each slash asks at most one prompt (multi-step diagnostic slashes use the documented `x-lua-multi-step: true` opt-out).
-- **Credential isolation** — API key never enters the Claude conversation transcript; `/lua-doctor` Step 4 uses an authenticated metadata probe (`lua agents --json --ci`), not a key-printing command.
+- **Credential isolation** — new login runs in a private terminal. Hooks deny model-run `lua auth configure` and `lua auth key*` commands.
 
 See [`plugins/lua-agent-builder/SECURITY.md`](./plugins/lua-agent-builder/SECURITY.md) for the disclosure path and a fuller scope statement.
 

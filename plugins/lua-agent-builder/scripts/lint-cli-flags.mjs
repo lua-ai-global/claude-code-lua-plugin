@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Denylist of known-wrong lua-cli flag combinations that have shipped to the
-// plugin in the past. Standalone-repo friendly: doesn't need lua-cli source
+// Denylist of known-wrong or unsafe lua-cli command references that have shipped
+// in the plugin. Standalone-repo friendly: doesn't need lua-cli source
 // (unlike lint-knowledge-commands.mjs, which is skipped without it).
 //
 // History:
@@ -20,9 +20,13 @@ const DENY = [
   // Pattern → reason
   { pattern: 'lua sync --pull', reason: 'real flag is `lua sync --accept` (server → local)' },
   { pattern: 'sync --pull',     reason: 'permission rule must allow `--accept`, not `--pull`' },
+  { pattern: 'lua auth configure --email', reason: 'email and OTP input must stay in a private terminal', authFlow: true },
+  { pattern: 'lua auth configure --api-key', reason: 'credentials must stay out of the model conversation', authFlow: true },
 ];
 
 const SCAN_DIRS = ['commands', 'agents', 'hooks', 'lib', 'scripts', 'mcp'];
+const AUTH_DOC_DIRS = ['../../docs'];
+const AUTH_DOC_FILES = ['README.md', 'SECURITY.md', '../../README.md'];
 const SCAN_EXT = new Set(['.md', '.json', '.mjs', '.js', '.ts']);
 
 let failed = false;
@@ -40,23 +44,31 @@ async function* walk(dir) {
 }
 
 let scanned = 0;
+async function scan(path, { authOnly = false } = {}) {
+  const content = await readFile(path, 'utf8');
+  for (const { pattern, reason, authFlow } of DENY) {
+    if (authOnly && !authFlow) continue;
+    if (content.includes(pattern)) {
+      fail(`${path}: contains denylisted CLI reference \`${pattern}\` — ${reason}`);
+    }
+  }
+  scanned++;
+}
+
 for (const dir of SCAN_DIRS) {
   for await (const path of walk(dir)) {
     // Don't lint this script itself — it has to mention the deny patterns.
     if (path.endsWith('lint-cli-flags.mjs')) continue;
-    const content = await readFile(path, 'utf8');
-    for (const { pattern, reason } of DENY) {
-      if (content.includes(pattern)) {
-        fail(`${path}: contains denylisted CLI reference \`${pattern}\` — ${reason}`);
-      }
-    }
-    scanned++;
+    await scan(path);
   }
 }
+for (const dir of AUTH_DOC_DIRS) {
+  for await (const path of walk(dir)) await scan(path, { authOnly: true });
+}
+for (const path of AUTH_DOC_FILES) await scan(path, { authOnly: true });
 
 if (failed) {
-  console.error(`\nFix the references above. These flags do not exist in lua-cli; shipping them ` +
-    `breaks the user's first attempt to use the slash/agent that referenced them.`);
+  console.error('\nFix the references above. These commands are wrong or unsafe in a model-run plugin flow.');
   process.exit(1);
 }
 console.log(`✓ CLI flag denylist: ${scanned} file(s) scanned, no known-wrong flags found.`);
