@@ -4,7 +4,20 @@
 // 401 / 403 / generic-error paths, and query-string handling.
 
 import { describe, test, expect, beforeEach, afterEach } from '@jest/globals';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { apiRequest } from '../src/api-client.mjs';
+
+const SOURCE_DIRECTORY = fileURLToPath(new URL('../src/', import.meta.url));
+const PLUGIN_PACKAGE = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8'));
+
+function sourceFiles(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    return entry.isDirectory() ? sourceFiles(path) : [path];
+  });
+}
 
 function mockFetch(scripted) {
   const calls = [];
@@ -49,6 +62,22 @@ describe('apiRequest', () => {
     const fetchFn = mockFetch(jsonResponse({ ok: true }));
     await apiRequest('/agents', { fetchFn });
     expect(fetchFn.calls[0].init.headers['Content-Type']).toBe('application/json');
+  });
+
+  test('identifies direct requests as the versioned Claude plugin', async () => {
+    const fetchFn = mockFetch(jsonResponse({ ok: true }));
+    await apiRequest('/agents', { fetchFn });
+    expect(fetchFn.calls[0].init.headers['X-Lua-Client']).toBe(`claude-plugin/${PLUGIN_PACKAGE.version}`);
+  });
+
+  test('keeps every direct Lua API call behind the identified wrapper', () => {
+    const directCallers = sourceFiles(SOURCE_DIRECTORY)
+      .filter((path) => path.endsWith('.mjs'))
+      .filter((path) => /\b(?:fetch|fetchFn)\s*\(/.test(readFileSync(path, 'utf8')))
+      .map((path) => relative(SOURCE_DIRECTORY, path))
+      .sort();
+
+    expect(directCallers).toEqual(['api-client.mjs']);
   });
 
   test('uses LUA_API_URL env override when set', async () => {
