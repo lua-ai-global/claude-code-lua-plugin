@@ -1,6 +1,8 @@
 import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globals';
 import { Readable } from 'node:stream';
-import { fileURLToPath } from 'node:url';
+import { pathToFileURL } from 'node:url';
+import { join as pathJoin } from 'node:path';
+import { tmpdir } from 'node:os';
 import {
   readStdin,
   log,
@@ -133,8 +135,9 @@ describe('isMainScript', () => {
 
   test('returns true when import.meta.url matches process.argv[1]', () => {
     const original = process.argv[1];
-    const url = 'file:///tmp/test-script.mjs';
-    process.argv[1] = fileURLToPath(url);
+    const real = pathJoin(tmpdir(), 'test-script.mjs');
+    const url = pathToFileURL(real).href;
+    process.argv[1] = real;
     try {
       expect(isMainScript(url)).toBe(true);
     } finally {
@@ -143,7 +146,7 @@ describe('isMainScript', () => {
   });
 
   test('returns false when import.meta.url differs from process.argv[1]', () => {
-    expect(isMainScript('file:///tmp/different.mjs')).toBe(false);
+    expect(isMainScript(pathToFileURL(pathJoin(tmpdir(), 'different.mjs')).href)).toBe(false);
   });
 
   test('returns false on invalid file URL (catches gracefully)', () => {
