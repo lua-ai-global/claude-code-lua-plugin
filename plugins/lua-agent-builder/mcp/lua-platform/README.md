@@ -32,7 +32,7 @@ The server speaks MCP over stdio. Normally invoked by Claude Code via
 `.mcp.json`; for manual testing:
 
 ```bash
-LUA_API_KEY=lk_... node dist/server.js
+LUA_API_KEY='<existing-credential>' node dist/server.js
 ```
 
 ## Architecture

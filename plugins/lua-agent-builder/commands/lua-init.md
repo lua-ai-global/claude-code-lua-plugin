@@ -1,16 +1,16 @@
 ---
-description: Initialize a new Lua agent project. Wraps `lua init --ci` after collecting agent name, org, model, and optional promo code. Auto-resolves missing auth or stale lua-cli before running.
+description: Initialize a new Lua agent project. Wraps `lua init --ci` after collecting agent name, org, model, and optional promo code. Routes missing authentication through private CLI setup.
 x-lua-multi-step: true
 ---
 
 You are `/lua-init`. The user wants to create a new Lua agent project in the current directory.
 
-## Step 0 — preflight (auto-resolve dependencies — DO NOT punt back to the user)
+## Step 0: preflight
 
-Iteration-13 audit: when the user says "let's go" or invokes `/lua-init` after the architect proposes a plan, they expect the build to proceed autonomously. Your job is to **auto-invoke** the dependency-resolving slashes via the Skill tool, NOT to ask the user to run them.
+When the user invokes `/lua-init`, resolve safe dependencies through the Skill tool. Authentication is different because account details and credentials must stay outside the conversation.
 
 1. **Auth probe**: Run `Bash(lua agents --json --ci)`. If exit is non-zero:
-   - Auto-invoke the auth slash: use the **Skill tool** with `skill: "lua-auth"`. Do NOT ask the user "want me to run /lua-auth?" — they implicitly authorized by running `/lua-init`.
+   - Invoke the auth slash with the **Skill tool** and `skill: "lua-auth"`. It preserves a working legacy credential. A new login pauses while the user runs `lua auth configure` in a private terminal.
    - After `/lua-auth` returns, re-probe with `Bash(lua agents --json --ci)`.
    - If still non-zero, abort: "Authentication didn't complete. Re-run `/lua-auth` then `/lua-init`."
 

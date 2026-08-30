@@ -94,12 +94,10 @@ if (!hasAutoDeployDeny) {
   fail('settings.json must deny patterns containing `--auto-deploy` — required by §3.3 hooks.');
 }
 
-// Iteration-13 audit: `lua auth key` prints the raw API key to stdout. If
-// it's auto-allowed, the key lands in the Claude conversation transcript on
-// every invocation. Must be denied (or at minimum not auto-allowed) so
-// Claude Code prompts the user before printing the credential.
+// Credential display and interactive login both belong in a private terminal.
 const credentialPrinters = [
   { pattern: 'lua auth key', reason: 'prints the raw API key to stdout' },
+  { pattern: 'lua auth configure', reason: 'collects account details and an OTP' },
 ];
 for (const { pattern, reason } of credentialPrinters) {
   for (const allow of allowSet) {
@@ -115,8 +113,8 @@ for (const { pattern, reason } of credentialPrinters) {
 // to a real bash invocation in commands/*.md.
 //
 // Found and fixed in iteration-2 audit (2026-05-02): missing entries for
-// `lua init --ci`, `lua auth configure --`, and `lua skills view --ci`
-// caused the doctor / init / test slashes to prompt unexpectedly.
+// `lua init --ci` and `lua skills view --ci` caused the doctor / init / test
+// slashes to prompt unexpectedly.
 const REQUIRED_ALLOW_PREFIXES = [
   // Critical loop slashes
   'Bash(lua --version',
@@ -132,7 +130,6 @@ const REQUIRED_ALLOW_PREFIXES = [
   // prints the API key to stdout and so leaked it into the conversation
   // transcript every time /lua-doctor ran).
   'Bash(lua agents',
-  'Bash(lua auth configure --',
   // Deploy gate: only the env-prefixed form is allowed
   'Bash(LUA_DEPLOY_CONFIRMED=1 lua deploy',
   // Read-only git probes used by deploy-pilot pre-flight (`git status --short`)

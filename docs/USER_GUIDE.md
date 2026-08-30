@@ -37,7 +37,7 @@ Two ways to think about it:
 - **The CLI guide layer**: every `lua` command becomes accessible via a `/lua-*` slash command that knows the right flags, prompts you for missing inputs, and surfaces errors in a friendlier shape than the raw CLI.
 - **The agent collaborator**: 5 specialised subagents (architect, skill-builder, debug, deploy-pilot, qa) handle the heavyweight tasks — designing an agent's architecture, scaffolding new primitives, diagnosing compile/runtime failures, gating production deploys, running conversational QA — and only ask you for input at the explicit decision points.
 
-Plus 9 hooks that run automatically (auth-state probes, deploy-safety gates, smoke tests, context injection) and an MCP server that exposes 5 read-only platform tools so Claude can answer "what's deployed?" without you typing anything.
+Plus 10 hooks that run automatically (auth-state probes, credential-input isolation, deploy-safety gates, smoke tests, context injection) and an MCP server that exposes 5 read-only platform tools so Claude can answer "what's deployed?" without you typing anything.
 
 ---
 
@@ -70,7 +70,7 @@ Before installing the plugin you need:
 | **Node.js ≥ 18** | The plugin's hooks and MCP server are Node ESM | macOS: `brew install node@20` · Windows: `winget install OpenJS.NodeJS.LTS` · Linux: NodeSource APT or `nvm install 20` |
 | **lua-cli ≥ 3.12.3** | Every slash wraps a `lua` command | `npm install -g lua-cli` |
 | **Claude Code** | The plugin host | https://claude.com/claude-code |
-| **A Lua account + API key** | To talk to `api.heylua.ai` | Sign up at https://admin.heylua.ai (or the plugin's `/lua-auth` will walk you through email + OTP) |
+| **A Lua account** | To talk to `api.heylua.ai` | Sign up at https://admin.heylua.ai. `/lua-auth` guides new credential setup. |
 
 The plugin's `/lua-doctor` slash will check all of these (Node, npm/pnpm, lua-cli, auth, permission rules) and offer to install or fix anything missing — see [Installation](#installation) for the canonical first-run sequence.
 
@@ -108,8 +108,8 @@ This runs a 5-step diagnostic:
 1. **Node ≥ 18** — probes `node --version`. Offers to install if missing.
 2. **Package manager** — probes `npm`, falls back to `pnpm`. Offers to install via `corepack enable`.
 3. **lua-cli ≥ 3.12.3** — probes `lua --version`. Offers `npm install -g lua-cli` if missing or `/lua-update` if too old.
-4. **Authentication** — probes `lua agents --json --ci`. If it fails, kicks off the OTP flow inline (see [Authentication](#authentication)).
-5. **Permission rules** — reads the plugin's `lib/permissions-template.json` (29 allow/ask/deny rules) and offers to merge them into your project's `.claude/settings.json`. **Accept this merge** — it's what stops every `lua` invocation from triggering a permission prompt.
+4. **Authentication** — probes `lua agents --json --ci`. If it fails, `/lua-auth` sends new login to a private terminal.
+5. **Permission rules** — reads the plugin's `lib/permissions-template.json` and offers to merge it into your project's `.claude/settings.json`. Accept the merge to avoid a permission prompt for each safe `lua` invocation.
 
 All 5 steps green = you're ready.
 
@@ -117,32 +117,33 @@ All 5 steps green = you're ready.
 
 ## Authentication
 
-You need a Lua API key. Two options:
+The plugin first checks for a working credential. It uses the existing lookup order: `LUA_API_KEY`, `~/.lua-cli/credentials`, then the project's `.env` file.
 
-### Option A — `/lua-auth` (single-purpose, fastest)
+### Set up a new login
 
 ```
 /lua-auth
 ```
 
-Pick one of:
+If an existing credential works, `/lua-auth` leaves it unchanged. Existing non-dotted legacy keys remain supported and do not require rotation or a new login.
 
-- **Email + OTP**: enter your email → check your inbox → enter the 6-digit code → done. The OTP is verified server-side and an API key is generated and stored at `~/.lua-cli/credentials` (mode 0600, owner-readable only).
-- **Paste API key**: paste a key from [admin.heylua.ai](https://admin.heylua.ai). Stored at the same path.
+For a new login, install `lua-cli` 3.28.0 or newer. `/lua-auth` asks you to open a terminal outside Claude Code and run:
 
-Once stored, every `lua-*` slash and the MCP server pick it up automatically. You can re-run `/lua-auth` any time to switch accounts.
+```bash
+lua auth configure
+```
 
-### Option B — `/lua-doctor` Step 4
+Choose the email option for a new login. The CLI handles your email and OTP in the terminal. You then select an organization, one or more exact agents, and a role. Builder is the default role, but you can select another role that the server allows. The CLI stores the typed personal credential in `~/.lua-cli/credentials` with mode `0600`.
 
-`/lua-doctor` runs the same OTP flow as part of the full diagnostic. Use this if you want to validate the whole environment (Node, lua-cli, permissions) at the same time as auth.
+Never paste an email, an OTP, or a credential into the Claude conversation.
 
-### Option C — manual
+### Keep an existing credential
 
-Set `LUA_API_KEY` in your shell environment, or create `.env` in your project with `LUA_API_KEY=lk_…`. Both are detected by the plugin's credential resolver. Useful for CI/CD.
+Existing `LUA_API_KEY`, `.env`, and `~/.lua-cli/credentials` values keep working. If you already have a credential that is not configured, choose the existing-key option in the private terminal. For CI, set `LUA_API_KEY='<existing-credential>'` in the process environment or a protected secret store.
 
 ### What's NEVER done
 
-The plugin never uses `lua auth key --force` to read the stored key — that command prints the raw API key to stdout, which would land in the Claude conversation transcript. The auth-state probe used everywhere is `lua agents --json --ci` (returns metadata, not credentials). This is enforced by `lib/permissions-template.json`'s deny rule on `lua auth key*`.
+The plugin never runs `lua auth configure` or `lua auth key --force` in the model session. The first command collects account details. The second prints the stored credential. The auth probe is `lua agents --json --ci`, which returns metadata instead of credentials.
 
 ---
 
@@ -289,7 +290,7 @@ That's the full loop.
 | Slash | What it does |
 |---|---|
 | `/lua-doctor` | 5-step environment diagnostic: Node, npm/pnpm, lua-cli, auth, permission rules. Offers fixes for each. |
-| `/lua-auth` | Standalone authentication: email + OTP or paste API key. Stores in `~/.lua-cli/credentials`. |
+| `/lua-auth` | Keeps a working credential or guides typed login through `lua auth configure` in a private terminal. |
 | `/lua-update` | Updates lua-cli to latest via `npm install -g lua-cli@latest`. |
 | `/lua-docs <topic>` | Fetches lua-cli documentation from `docs.heylua.ai/<topic>` via WebFetch. |
 
@@ -342,7 +343,7 @@ The minimal toolsets are intentional — a debug agent doesn't need Write; a dep
 
 ## Hooks — what runs automatically
 
-9 hooks fire on specific Claude Code events. You don't invoke them; they run as subprocesses.
+10 hooks fire on specific Claude Code events. You don't invoke them; they run as subprocesses.
 
 ### `SessionStart` — once per Claude session
 
@@ -364,6 +365,7 @@ The minimal toolsets are intentional — a debug agent doesn't need Write; a dep
 |---|---|
 | `confirm-deploy` | Fires on `lua deploy` invocations. Blocks bare `lua deploy` (must use `LUA_DEPLOY_CONFIRMED=1` prefix from the deploy-pilot subagent). |
 | `block-auto-deploy` | Fires on commands containing `--auto-deploy`. Always blocks — `--auto-deploy` is never appropriate from inside Claude Code. |
+| `block-auth-configure` | Blocks model-run `lua auth configure`. Run interactive login in a private terminal. |
 | `warn-version-zero` | Fires on `lua push --set-version 0.x.y`. Soft-warns that 0.x versions don't deploy to existing 1.x stacks. |
 
 ### `PostToolUse` (matcher: Bash) — after successful bash commands
@@ -503,19 +505,20 @@ The plugin enforces several gates that show up at install time via `/lua-doctor`
 
 ### `permissions.allow` — runs without prompting
 
-29 explicit `lua-cli` patterns covering safe read operations, the canonical `--ci`/`--force` push form, the env-prefixed deploy form, common version probes, and read-only git commands the deploy-pilot uses.
+Explicit `lua-cli` patterns cover safe read operations, the canonical `--ci` and `--force` push form, the env-prefixed deploy form, common version probes, and read-only git commands the deploy-pilot uses.
 
 **Per Claude Code's documented precedence (deny → ask → allow), the ask rules win when they overlap with allow rules.** So `lua sync --pull --force` (matches both ask and allow) prompts the user; `lua sync --pull` (only matches allow) runs silently.
 
 ### The §3.7 single-permission contract
 
-Every slash asks **at most one** permission interaction. Information collection (asking for an email, an OTP code, a project name) doesn't count as a permission interaction — only `AskUserQuestion` calls that gate behaviour do.
+Every slash asks at most one permission interaction. Account details and credentials stay outside the conversation.
 
 Slashes that legitimately need multi-step interaction (`/lua-doctor`, `/lua-auth`) declare `x-lua-multi-step: true` in their frontmatter — a private extension marker that the plugin's `lint-single-permission.mjs` script uses to skip those files. Claude Code itself ignores the marker (it's not a documented frontmatter field).
 
 ### What the plugin never does
 
 - Auto-deploy to production without an explicit prompt
+- Collect your email, OTP, or Lua credential in the conversation
 - Print your API key to stdout
 - Run `--auto-deploy` even if the model asks
 - Mutate server state via the MCP server (all 5 MCP tools are read-only)
@@ -583,13 +586,7 @@ For deeper diagnosis, run `claude --debug` — every hook invocation shows stdin
 
 ### "Authentication failed" after running `/lua-auth`
 
-Check that `~/.lua-cli/credentials` exists and contains a string starting with `lk_`:
-
-```bash
-cat ~/.lua-cli/credentials
-```
-
-If empty or wrong format, re-run `/lua-auth` and pick "Paste API key" instead — the OTP path may have failed silently.
+Run `lua agents --json --ci` in a private terminal. If the command fails, run `lua auth configure` there. Do not print or paste the contents of `~/.lua-cli/credentials`.
 
 ### "Lua plugin loaded but you're not authenticated" appears every session
 
@@ -659,7 +656,7 @@ The plugin's hooks and MCP server make HTTPS calls to `api.heylua.ai` only — n
 /reload-plugins
 ```
 
-Auto-updates happen at session start if you've enabled them in your Claude Code settings. The plugin's `version` field in `marketplace.json` controls when users receive updates — currently pinned to `1.0.0`, will bump on each release.
+Auto-updates happen at session start if you enable them in Claude Code. The plugin's `version` field in `marketplace.json` controls when users receive updates. Release 1.1.0 adds the private typed login flow for lua-cli 3.28.0 and later.
 
 ### Can I customize the slash commands?
 

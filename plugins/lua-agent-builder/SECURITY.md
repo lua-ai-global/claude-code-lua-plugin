@@ -37,7 +37,7 @@ The plugin enforces several safety contracts. Bypasses count as security issues:
 | §3.3 deploy gate: bare `lua deploy` is denied | `lib/permissions-template.json` `deny` list + `hooks/confirm-deploy.mjs` |
 | §3.3 auto-deploy block: `--auto-deploy` is denied | same |
 | §3.7 single-permission contract: each slash asks at most one prompt | `scripts/lint-single-permission.mjs` |
-| Credential isolation: API key never enters Claude conversation transcript | `commands/lua-doctor.md` Step 4 + `lib/permissions-template.json` deny rule on `lua auth key*` (bug 41) |
+| Credential isolation: account details, OTPs, and credentials never enter the Claude conversation | `commands/lua-auth.md` sends new login to a private terminal; `hooks/block-auth-configure.mjs` and `lib/permissions-template.json` deny model-run login; `lua auth key*` remains denied |
 
 If you find a way to bypass any of these without an explicit user prompt, please report.
 

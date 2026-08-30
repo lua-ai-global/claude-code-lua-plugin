@@ -50,6 +50,12 @@
           },
           {
             "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/block-auth-configure.mjs",
+            "if": "Bash(*lua auth configure*)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/warn-version-zero.mjs",
             "if": "Bash(*lua push*--set-version 0.*)",
             "timeout": 5

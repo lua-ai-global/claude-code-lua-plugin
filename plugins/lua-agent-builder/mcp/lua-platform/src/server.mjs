@@ -11,7 +11,7 @@ import * as tools from './tools/index.mjs';
 const TOOL_REGISTRY = Object.values(tools);
 
 const server = new Server(
-  { name: 'lua-platform', version: '1.0.0' },
+  { name: 'lua-platform', version: '1.1.0' },
   { capabilities: { tools: {} } }
 );
 
@@ -46,7 +46,7 @@ process.on('uncaughtException', (err) => {
     kind: 'uncaughtException',
     message: err?.message,
     stack: err?.stack,
-    plugin_version: '1.0.0',
+    plugin_version: '1.1.0',
     lua_cli_version: process.env.LUA_CLI_VERSION ?? null,
     platform: process.platform,
     ts: new Date().toISOString(),
@@ -59,7 +59,7 @@ process.on('unhandledRejection', (reason) => {
     kind: 'unhandledRejection',
     reason: String(reason),
     stack: reason?.stack,
-    plugin_version: '1.0.0',
+    plugin_version: '1.1.0',
     lua_cli_version: process.env.LUA_CLI_VERSION ?? null,
     platform: process.platform,
     ts: new Date().toISOString(),

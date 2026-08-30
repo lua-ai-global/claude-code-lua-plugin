@@ -28,11 +28,7 @@ Run `Bash(lua agents --json --ci)`. The exit code tells us if auth works (0 = au
 
 **Do NOT use `lua auth key --force`** as the auth probe — it prints the raw API key to stdout, which would land in the Claude conversation transcript, the model's context, and Anthropic's request logs. The §3.7 single-permission contract values include "never leak credentials into the transcript."
 
-If exit non-zero, run the OTP orchestration:
-
-- AskUserQuestion: "Email for your Lua account, or paste an existing API key?" with options `[Email + OTP, API key, Cancel]`.
-- If Email: ask for the email, run `lua auth configure --email <email> --ci`, then ask for the OTP code, run `lua auth configure --email <email> --otp <code> --ci`.
-- If API key: ask for the key, run `lua auth configure --api-key <key> --ci`.
+If the command fails, invoke `/lua-auth`. That command preserves any working legacy credential. For a new login, it requires `lua-cli` 3.28.0 or newer and sends the user to `lua auth configure` in a private terminal. Do not collect an email, an OTP, or a credential in this conversation. Do not recreate the old flag-based OTP flow here.
 
 ## Step 5 — permission rules
 
@@ -46,6 +42,6 @@ Plugin-level `settings.json` is silently ignored by Claude Code for `permissions
 
 If the user skips: print a one-line warning that every Bash invocation will trigger a permission prompt and the deploy-deny rule won't fire (the §3.3 hook still gates, but it's the only line of defence rather than the second).
 
-Per §3.7, each step asks AT MOST one permission interaction. Information collection (email, OTP code, settings.json contents) is exempt from the single-permission rule per §3.7's permission-vs-information distinction.
+Per §3.7, each step asks at most one permission interaction. Account details and credentials never enter this conversation.
 
 After all five steps green, print "✓ Lua plugin ready. Try `/lua-init` to start a new agent project."
