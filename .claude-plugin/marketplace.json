@@ -10,7 +10,7 @@
       "name": "lua-agent-builder",
       "source": "./plugins/lua-agent-builder",
       "description": "Build, test, and deploy Lua AI agents from inside Claude Code",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "homepage": "https://docs.heylua.ai/claude-code-plugin",
       "repository": "https://github.com/lua-ai-global/claude-code-lua-plugin.git",
       "license": "MIT",

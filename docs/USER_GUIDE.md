@@ -656,7 +656,7 @@ The plugin's hooks and MCP server make HTTPS calls to `api.heylua.ai` only — n
 /reload-plugins
 ```
 
-Auto-updates happen at session start if you've enabled them in your Claude Code settings. The plugin's `version` field in `marketplace.json` controls when users receive updates — currently pinned to `1.0.0`, will bump on each release.
+Auto-updates happen at session start if you enable them in Claude Code. The plugin's `version` field in `marketplace.json` controls when users receive updates. Release 1.1.0 adds the private typed login flow for lua-cli 3.28.0 and later.
 
 ### Can I customize the slash commands?
 
