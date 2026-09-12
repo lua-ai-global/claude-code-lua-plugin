@@ -17,7 +17,7 @@ AskUserQuestion once: "Do you need a new Lua login, or do you already have a cre
 
 Existing credential → tell the user to run `lua auth configure` in a private terminal and choose the API-key option there, or to set `LUA_API_KEY` in their shell / the project `.env` outside this conversation. Continue to Step 4 after they confirm.
 
-New login → run `Bash(lua --version)`. Typed scoped credentials and the renewable session need lua-cli 3.28.0 / 3.29.0 or newer (the plugin pins 3.33.0). If older, tell the user to run `/lua-update` and stop.
+New login → run `Bash(lua --version)`. Typed scoped credentials and the renewable session are client-side features of lua-cli 3.28.0 / 3.29.0 or newer (the plugin pins 3.33.0; the server enforces no minimum CLI version). If older, tell the user to run `/lua-update` and stop.
 
 ## Step 3: hand the secret input to the terminal
 

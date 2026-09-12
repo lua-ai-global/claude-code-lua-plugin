@@ -13,7 +13,7 @@ A `lua compile --ci`, `lua test --ci` or `lua push` invocation failed, or a work
 
 ## Diagnostic loop
 
-1. **Classify by exit code** (lua-cli 3.33.0): `1` unclassified/compile failed/a prompt hit under `--ci` · `2` usage (bad flag, unknown action, no `lua.skill.yaml`/agentId) · `3` not found · `9` auth (run `/lua-auth`) · `10` forbidden (typed key lacks the agent/role scope) · `11` Lua API unavailable (retry) · `12` model provider refused (key/model/quota) · workflows `4` run failed, `5` cancelled, `6` gated, `7` timeout, `8` parked for a human. Read the one-line `✖ <class>: <message>` and the `💡` hint first.
+1. **Classify by exit code** (lua-cli 3.33.0): `1` unclassified/compile failed/a prompt hit under `--ci` · `2` usage (bad flag, unknown action, no `lua.skill.yaml`/agentId) · `3` not found · `9` auth (run `/lua-auth`) · `10` forbidden (typed key lacks the agent/role scope) · `11` Lua API unavailable (retry) · `12` model provider refused (key/model/quota) · workflows `4` run failed, `5` cancelled, `6` gated, `7` timeout, `8` parked for a human. Read the one-line `✖ <class>: <message>` and the `💡` hint first. An exit `0` whose output is a rendered menu and no result means a raw prompt hit EOF (`lua test skill` without `--name`, bare `lua env`, `lua chat` without `-m`/`-e`) — a false success; re-run with complete flags.
 
 2. **Re-run with detail**: `lua compile --ci --debug --verbose` (plugin-detection trace), or `lua test --ci <type> --name <n> --input '<json>' --json` with `LUA_DEBUG=1` for a stack.
 

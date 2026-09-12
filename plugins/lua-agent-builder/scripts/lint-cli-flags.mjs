@@ -42,6 +42,9 @@ const DENY = [
   { pattern: 'lua integrations add', reason: 'the action is `lua integrations connect --integration <type>`' },
   { pattern: 'lua triggers pause', reason: 'integration triggers moved to `lua integrations webhooks pause --webhook-id <id>`' },
   { pattern: 'lua triggers resume', reason: 'integration triggers moved to `lua integrations webhooks resume --webhook-id <id>`' },
+  // 3.33.0's `lua integrations connect` still prints this as its next step; the
+  // command is a tombstone (prints a redirect, exit 0, creates nothing).
+  { pattern: 'lua triggers create --connection', reason: 'a moved flag — `lua triggers` prints a redirect and creates nothing; subscribe with `lua integrations webhooks create --connection <id> --object <o> --event <e> --hook-url <url>`' },
   { pattern: 'lua channels add', reason: '`lua channels` has only `list`; channel creation is interactive' },
   { pattern: "from 'lua-cli/skill'", reason: 'no `./skill` subpath export — import from `lua-cli`' },
   { pattern: 'defineTool(', reason: '`defineTool` is not exported by lua-cli — use `class X implements LuaTool`' },

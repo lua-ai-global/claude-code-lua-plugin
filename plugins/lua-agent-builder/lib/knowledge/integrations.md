@@ -26,13 +26,14 @@ lua integrations convert --connection-id <id> --force                # re-home a
 lua integrations disconnect --connection-id <id> [--scope user]      # no prompt
 lua integrations mcp list | activate --connection <id> | deactivate --connection <id>
 lua integrations webhooks list [--json] | events (--integration <type> | --connection <id>) [--json]
-                         | create --connection <id> --object <type> --event created|updated|deleted [--hook-url <url>] [--interval 60|120|240|480|720|1440|2880]
+                         | create --connection <id> --object <type> --event created|updated|deleted --hook-url <url> [--interval 60|120|240|480|720|1440|2880]
                          | delete --webhook-id <id> | pause --webhook-id <id> [--reason <t>] | resume --webhook-id <id>
                          | pause --connection-id <id> | resume --connection-id <id>       # all triggers of a connection
 ```
 
 - ⚠ `--json` is honoured only by `info`, `webhooks list` and `webhooks events` (`src/commands/integrations.ts`); `available`, `list` and `mcp list` accept the flag and print text anyway.
-- `webhooks create` is fully non-interactive once `--connection`, `--object` and `--event` are given (the CLI skips its own summary/confirm); add `--interval` for an event `webhooks events` marks `virtual` (polling); `--hook-url` defaults to the agent trigger. Without `--connection` it prompts (exit 1 under `--ci`). `disconnect`, `webhooks delete|pause|resume`, `mcp activate|deactivate` never prompt. Slash: `/lua-integrations`.
+- `webhooks create` is non-interactive **only when `--connection`, `--object`, `--event` and `--hook-url` are all given** (`src/commands/integrations.ts` ~2959-2984: without `--hook-url` it prompts "Where should events be sent?" → exit 1 under `--ci`); `--interval 60|120|240|480|720|1440|2880` is likewise required for an event `webhooks events` marks `virtual` (polling; ~3028-3042). There is **no `--hook-url` default** — the prompt's "Wake up my Lua agent" choice resolves to `AGENT_WEBHOOK_URL` = `<LUA_API_URL>/webhook/unifiedto/data`, i.e. `https://api.heylua.ai/webhook/unifiedto/data` by default — pass that explicitly to wake the agent. Without `--connection` it prompts (exit 1 under `--ci`). `disconnect`, `webhooks delete|pause|resume`, `mcp activate|deactivate` never prompt. Slash: `/lua-integrations`.
+- ⚠ **Ignore the post-connect hint.** A successful `connect` ends with `⚡ Triggers: none (add later with: lua triggers create --connection <id>)` (`integrations.ts` ~1459). That command is a tombstone: `lua triggers` treats `--connection` as a moved flag, prints "Integration triggers now live at `lua integrations webhooks <action>`" and returns exit 0 without creating anything (`src/commands/triggers.ts` ~76-86). The working follow-up is `lua integrations webhooks create --connection <id> --object <object> --event <event> --hook-url https://api.heylua.ai/webhook/unifiedto/data [--interval <min>]`.
 
 - `--scope user` makes a **personal** connection usable by every private agent you own (publishing the agent removes its access). Triggers, account labels and `--hide-sensitive` are agent-scoped only.
 - Multiple accounts of one integration are supported; use `--connection-id` to target one.
@@ -103,8 +104,8 @@ External system needed?
 | `whatsapp` | B2C, mobile-first | 24 h customer-service window; proactive sends outside it need an approved template (`Channels.whatsapp.sendTemplate`) |
 | `facebook` (Messenger), `instagram` | social DMs | warm-only for outbound (a prior inbound message is required) |
 | `slack`, `teams` | internal teams | Teams group chats: `Channels.send({ channel:'teams', to:{ conversationId } })`, never persisted to a user thread; Teams BYO Azure bot supported |
-| `web` (website widget / chat API) | embed on a site, programmatic chat | `Lua.request.channel === 'web'`; widget SDK docs under `/chat-widget/*` |
-| `email` | long-form async | plain text / HTML, no markdown rendering; `Channels.email.send` for proactive |
+| `web` / `pop` (website widget / chat API) | embed on a site, programmatic chat | the deployed widget sends `channel=pop`, so `Lua.request.channel` is `'pop'` for widget turns and `'web'` for the HTTP chat API and other web clients — compare against both (primitives.md §12; the `Channel` typing still spells only `'web'`); widget SDK docs under `/chat-widget/*` |
+| `email` | long-form async | plain text / HTML, no markdown rendering; `Channels.email.send` for proactive (body is `text` / `html` / `richBody`; needs an email channel linked to the agent — or the platform's global one — and a recipient address or a user with a prior email conversation) |
 | `sms` | transactional alerts | outbound via `Channels.send({ channel:'sms' })`; inbound capabilities are partial (see `/channels/channel-capabilities`) |
 | voice (phone / LiveKit / browser) | calls | a `LuaVoice` on the agent; tool latency matters; `Voice.call` for outbound |
 

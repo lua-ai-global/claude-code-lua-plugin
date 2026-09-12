@@ -104,7 +104,7 @@ mkdir -p ~/agents/weather-news && cd ~/agents/weather-news && claude
 
 **7. QA** — `/lua-qa` runs 8–15 conversations on an isolated thread each, offline scenarios for every workflow, scans logs for `subType === 'error'`, and writes a triage report with a fix path per finding.
 
-**8. Ship** — `/lua-deploy`: pick what goes live (`skill`, `webhook`, `trigger`, `job`, `preprocessor`, `postprocessor`, `persona`, `workflow`, `mcp`, `device`, `device-trigger`, `voice`, `agent-version`, `all`), the name and version, confirm once. The deploy pilot then runs: `git status` clean → `lua compile --ci` → `lua status --json` (abort if the server is ahead) → `lua push … --ci --force` → the prefixed production verb (`LUA_DEPLOY_CONFIRMED=1 lua deploy …`, `… lua workflows deploy <n> -v latest`, `… lua mcp activate <n>`, or `lua version create` + `… lua version promote N`) → a log scan and `get_deployment_status`. It reports the rollback command.
+**8. Ship** — `/lua-deploy`: pick what goes live (`skill`, `webhook`, `trigger`, `job`, `preprocessor`, `postprocessor`, `persona`, `workflow`, `mcp`, `device`, `device-trigger`, `voice`, `agent-version`, `all`), the name and version, confirm once. The deploy pilot then runs: `git status` clean → `lua compile --ci` → `lua status --json` (abort if the server is ahead) → `lua push … --ci --force` → the prefixed production verb (`LUA_DEPLOY_CONFIRMED=1 lua deploy …`, `… lua workflows deploy <n> -v latest`, `… lua mcp activate <n>`, or `lua version create` + `… lua version promote N`) → a log scan and `get_deployment_status`. It reports the rollback command. On an agent that has agent versions, skills ship as `lua version create` + `promote` rather than `lua deploy skill`: that verb goes live at once but leaves the active version's snapshot stale, and the next promote (a rollback included) would silently revert it; webhooks, jobs, processors, triggers and workflows get a server-side scoped promote and are fine either way. The persona is live the moment `lua push agent` (or `lua push all`) runs — there is no staged persona; `lua deploy persona <n>` is its rollback.
 
 ---
 
@@ -268,6 +268,6 @@ Precedence is deny → ask → allow. **The production gate is the `confirm-depl
 
 **Where does my code go?** From lua-cli to `api.heylua.ai` (and `webhook.heylua.ai`, `cdn.heylua.ai`). The MCP server talks to `api.heylua.ai` and, for a session login, to Google's token endpoint to refresh the session. Claude Code sends the conversation to Anthropic per its own policy.
 
-**How do I update the plugin?** `/plugin marketplace update claude-code-lua-plugin` then reinstall; 1.2.0 targets lua-cli 3.33.0.
+**How do I update the plugin?** `/plugin marketplace update claude-code-lua-plugin` then reinstall; 1.2.1 targets lua-cli 3.33.0.
 
 **Where do I report bugs?** Plugin: https://github.com/lua-ai-global/claude-code-lua-plugin/issues · Security: security@heylua.ai · lua-cli: https://github.com/lua-ai-global/lua-cli/issues · Docs: https://docs.heylua.ai (and `mcp__plugin_lua-agent-builder_lua-docs__submit_feedback` for a wrong page).
