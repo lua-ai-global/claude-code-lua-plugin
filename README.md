@@ -1,8 +1,10 @@
 # claude-code-lua-plugin
 
-A [Claude Code](https://code.claude.com) marketplace + plugin for building, testing, and deploying [Lua AI agents](https://heylua.ai) directly from inside your Claude Code session.
+A [Claude Code](https://code.claude.com) marketplace + plugin for building, testing, and deploying [Lua AI agents](https://heylua.ai) — skills, webhooks, triggers, jobs, workflows, voice, devices, integrations and marketplace templates — from inside your Claude Code session.
 
-📖 **[Read the full User Guide →](./docs/USER_GUIDE.md)** — installation, walkthroughs, slash commands reference, hooks, MCP tools, safety model, troubleshooting, FAQ.
+📖 **[User Guide →](./docs/USER_GUIDE.md)** — installation, walkthroughs, every slash command, hooks, MCP tools, safety model, troubleshooting.
+
+lua-cli is a TypeScript SDK/CLI. It has nothing to do with the Lua programming language.
 
 ## Install
 
@@ -10,79 +12,42 @@ A [Claude Code](https://code.claude.com) marketplace + plugin for building, test
 /plugin marketplace add lua-ai-global/claude-code-lua-plugin
 /plugin install lua-agent-builder@claude-code-lua-plugin
 /reload-plugins
+/lua-doctor
 ```
 
-Then run `/lua-auth`. For a new login, the plugin sends you to `lua auth configure` in a private terminal. The CLI issues a typed credential bound to the organization, agents, and role you select.
-
-Once it's on the official Anthropic marketplace, install will simplify to:
-
-```
-/plugin install lua-agent-builder@claude-plugins-official
-```
+Then `/lua-auth`: an existing credential is kept; a new login runs `lua auth configure` in your own terminal.
 
 ## What's inside
 
-This repo is a **marketplace catalog** that ships one plugin:
-
 | Plugin | Description |
 |---|---|
-| [`lua-agent-builder`](./plugins/lua-agent-builder/) | The full Lua agent toolchain: 14 slash commands, 5 subagents, 10 hooks, and an MCP server with 5 read-only platform tools |
-
-See [`plugins/lua-agent-builder/README.md`](./plugins/lua-agent-builder/README.md) for the plugin's own docs (layout, hooks list, slash commands, design rationale).
-
-## Layout
-
-```
-claude-code-lua-plugin/
-├── .claude-plugin/
-│   └── marketplace.json        ← marketplace catalog (this file points at the plugin below)
-├── plugins/
-│   └── lua-agent-builder/
-│       ├── .claude-plugin/
-│       │   └── plugin.json     ← plugin manifest
-│       ├── commands/           ← 14 slash commands
-│       ├── agents/             ← 5 subagents
-│       ├── hooks/              ← 10 hooks
-│       ├── lib/                ← shared utilities + permissions template
-│       ├── mcp/lua-platform/   ← MCP server source + bundled dist/
-│       ├── scripts/            ← 16 lints + 2 check scripts
-│       └── test/               ← 216 jest tests
-├── .github/workflows/          ← ci, release-beta, release-prod
-├── LICENSE                     ← (in plugins/lua-agent-builder/)
-├── SECURITY.md                 ← (in plugins/lua-agent-builder/)
-└── README.md                   ← you are here
-```
+| [`lua-agent-builder`](./plugins/lua-agent-builder/) | 20 slash commands, 5 subagents, 10 hooks, a 5-file knowledge base verified against lua-cli 3.33.0 source, a local read-only platform MCP server and the public docs MCP |
 
 ## Quick walkthrough
 
-After install + `/lua-auth`:
-
 ```
-/lua-architect I want to build a refund-handling agent
-   → drafts a plan: persona, primitives, integrations, build order
-/lua-init       → scaffolds project, asks for name + org + model
-/lua-new tool refund_lookup
-   → spawns lua-skill-builder, scaffolds + compiles + tests
-/lua-test       → exercises the tool in sandbox
-/lua-deploy     → ships to production with a single permission gate
+/lua-architect I want an agent that triages support tickets, drafts replies for approval, and posts to Slack
+   → a plan: persona, tools vs integration MCPs, event handlers, a workflow with an approval step, build order
+/lua-init                        → scaffold the project (new / existing / duplicate agent)
+/lua-new skill ticket-triage     → scaffold + register + compile + test
+/lua-new workflow reply-approval → workflow file, offline test with --approve
+/lua-workflow run reply-approval → more offline scenarios
+/lua-qa                          → conversational + workflow QA against sandbox
+/lua-deploy                      → one confirmation, then the gated ship sequence
 ```
-
-For a fuller end-to-end walkthrough see the plugin's README and `/lua-doctor` (5-step environment diagnostic).
 
 ## Safety contracts
 
-The plugin enforces several gates that show up at install time via `/lua-doctor` Step 5:
+- Every production-affecting `lua` verb (`deploy`, `* deploy`, `workflows deploy|activate`, `version promote`, `mcp activate`, `marketplace template publish|apply`, plus every alias spelling lua-cli resolves and the `heylua`/`lua-ai` binaries) is blocked by the `confirm-deploy` hook on every Bash call unless emitted by the deploy flow with the `LUA_DEPLOY_CONFIRMED=1` prefix; a hook block wins over any allow rule. The permission template allows only the prefixed forms (Claude Code's deny/ask rules see through env prefixes, so the bare verbs are deliberately not denied there).
+- `--auto-deploy` is never allowed.
+- Credentials never enter the conversation.
+- One permission prompt per slash.
 
-- **§3.3 deploy gate** — bare `lua deploy` is denied at the permissions layer; defense-in-depth via the `confirm-deploy.mjs` PreToolUse hook.
-- **`--auto-deploy` block** — denied at permissions + blocked at the hook layer.
-- **§3.7 single-permission contract** — each slash asks at most one prompt (multi-step diagnostic slashes use the documented `x-lua-multi-step: true` opt-out).
-- **Credential isolation** — new login runs in a private terminal. Hooks deny model-run `lua auth configure` and `lua auth key*` commands.
-
-See [`plugins/lua-agent-builder/SECURITY.md`](./plugins/lua-agent-builder/SECURITY.md) for the disclosure path and a fuller scope statement.
+See [`plugins/lua-agent-builder/SECURITY.md`](./plugins/lua-agent-builder/SECURITY.md).
 
 ## Contributing
 
-Issues and PRs welcome. The plugin has 16 structural lint scripts that catch known regression classes — if your change adds a new bug class, the right fix is usually "add a lint guard so the next person doesn't repeat it." See `plugins/lua-agent-builder/scripts/lint-*.mjs` for examples.
+`cd plugins/lua-agent-builder && npm ci && npm run lint && npm run test:coverage`. The 17 lint scripts encode known regression classes (wrong flags, dead MCP references, missing `-t` on chat, non-existent log fields, unregistered hooks…); if your change fixes a new bug class, add a guard.
 
 ## License
 

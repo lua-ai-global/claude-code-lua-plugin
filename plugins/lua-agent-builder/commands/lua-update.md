@@ -1,27 +1,21 @@
 ---
-description: Update lua-cli to the latest version. Wraps `npm install -g lua-cli@latest` (lua update itself has no non-interactive flags — see §9.1).
+description: Update lua-cli to the latest published version via `npm install -g lua-cli@latest` (the CLI's own `lua update` has no flags and is interactive-free but we run npm directly so the result is visible).
 ---
 
 You are `/lua-update`. The user wants to update their lua-cli installation.
 
-## Step 1 — capture current version
+## Step 1 — capture the current version
 
-Run `Bash(lua --version)`. Capture the output as `OLD_VERSION`.
+Run `Bash(lua --version)`; capture as `OLD_VERSION`. The plugin targets lua-cli ≥ 3.33.0 (`PINNED_MIN_LUA_CLI` in `${CLAUDE_PLUGIN_ROOT}/hooks/check-lua-version.mjs`).
 
-## Step 2 — collect confirmation (single permission per §3.7)
+## Step 2 — confirm (single permission per §3.7)
 
-AskUserQuestion **once**:
-
-- "Update lua-cli? Current: `<OLD_VERSION>`. The latest will be installed via `npm install -g lua-cli@latest`." (options: `Update now`, `Cancel`)
+AskUserQuestion **once**: "Update lua-cli? Current: `<OLD_VERSION>`. This runs `npm install -g lua-cli@latest`." (options: `Update now`, `Cancel`).
 
 ## Step 3 — run
 
-Run `Bash(npm install -g lua-cli@latest --silent --no-fund --no-audit)`. This is the workaround for §9.1 — `lua update` exposes no non-interactive flags.
+`Bash(npm install -g lua-cli@latest --silent --no-fund --no-audit)`. If the install was made with `npm link` or Homebrew's node, npm may refuse or the binary may not change — report what npm says.
 
 ## Step 4 — verify
 
-Re-run `Bash(lua --version)`. Capture as `NEW_VERSION`.
-
-If `NEW_VERSION === OLD_VERSION`, print "Already on latest." Otherwise print "Updated: `<OLD_VERSION>` → `<NEW_VERSION>`. See https://docs.heylua.ai/changelog for details."
-
-If the new version raises Node minimum, point at `/lua-doctor`.
+`Bash(lua --version)` → `NEW_VERSION`. Equal → "Already on latest." Otherwise "Updated: `<OLD>` → `<NEW>`. Changelog: https://docs.heylua.ai/changelog." If the new version raises the Node minimum, point at `/lua-doctor`.

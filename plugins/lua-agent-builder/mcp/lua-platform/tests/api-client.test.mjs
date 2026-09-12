@@ -7,7 +7,7 @@ import { describe, test, expect, beforeEach, afterEach } from '@jest/globals';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { apiRequest } from '../src/api-client.mjs';
+import { apiRequest, ROUTE_SCOPES } from '../src/api-client.mjs';
 
 const SOURCE_DIRECTORY = fileURLToPath(new URL('../src/', import.meta.url));
 const PLUGIN_PACKAGE = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8'));
@@ -71,13 +71,15 @@ describe('apiRequest', () => {
   });
 
   test('keeps every direct Lua API call behind the identified wrapper', () => {
+    // auth.mjs is the one other caller — it talks to Google's securetoken
+    // endpoint to refresh a lua-cli session, never to the Lua API.
     const directCallers = sourceFiles(SOURCE_DIRECTORY)
       .filter((path) => path.endsWith('.mjs'))
       .filter((path) => /\b(?:fetch|fetchFn)\s*\(/.test(readFileSync(path, 'utf8')))
       .map((path) => relative(SOURCE_DIRECTORY, path))
       .sort();
 
-    expect(directCallers).toEqual(['api-client.mjs']);
+    expect(directCallers).toEqual(['api-client.mjs', 'auth.mjs']);
   });
 
   test('uses LUA_API_URL env override when set', async () => {
@@ -91,13 +93,36 @@ describe('apiRequest', () => {
     }
   });
 
+  // `new URL(path, base)` treats a leading-slash path as host-absolute and
+  // silently drops a base path prefix — a proxy-mounted LUA_API_URL such as
+  // https://host/api would have every call land on https://host/developer/…
+  test('preserves a path prefix on LUA_API_URL instead of resolving against the host root', async () => {
+    process.env.LUA_API_URL = 'https://proxy.example.com/api';
+    const fetchFn = mockFetch(jsonResponse({ ok: true }));
+    try {
+      await apiRequest('/developer/agents/a1/logs', { fetchFn, query: { limit: 5 } });
+      expect(fetchFn.calls[0].url).toBe('https://proxy.example.com/api/developer/agents/a1/logs?limit=5');
+    } finally {
+      delete process.env.LUA_API_URL;
+    }
+  });
+
+  test('tolerates a trailing slash on the base URL without doubling the separator', async () => {
+    const fetchFn = mockFetch(jsonResponse({ ok: true }));
+    await apiRequest('/developer/skills/a1', { fetchFn, baseUrl: 'https://api-staging.heylua.ai/' });
+    expect(fetchFn.calls[0].url).toBe('https://api-staging.heylua.ai/developer/skills/a1');
+
+    await apiRequest('/developer/skills/a1', { fetchFn, baseUrl: 'https://proxy.example.com/api/' });
+    expect(fetchFn.calls[1].url).toBe('https://proxy.example.com/api/developer/skills/a1');
+  });
+
   test('appends query string parameters', async () => {
     const fetchFn = mockFetch(jsonResponse({ ok: true }));
     await apiRequest('/agents/abc/logs', {
       fetchFn,
-      query: { type: 'skill', limit: 50 },
+      query: { logSource: 'skill', limit: 50 },
     });
-    expect(fetchFn.calls[0].url).toMatch(/\?type=skill&limit=50$/);
+    expect(fetchFn.calls[0].url).toMatch(/\?logSource=skill&limit=50$/);
   });
 
   test('serialises body as JSON for POST', async () => {
@@ -110,16 +135,56 @@ describe('apiRequest', () => {
     expect(fetchFn.calls[0].init.body).toBe('{"name":"foo"}');
   });
 
-  test('throws MCP_AUTH_STALE on 401', async () => {
+  test('throws MCP_AUTH_STALE on 401 with the lua auth configure remedy', async () => {
     const fetchFn = mockFetch(jsonResponse({ error: 'unauthorized' }, { status: 401 }));
     await expect(apiRequest('/agents', { fetchFn })).rejects.toThrow(/MCP_AUTH_STALE/);
-    await expect(apiRequest('/agents', { fetchFn })).rejects.toThrow(/Re-run \/lua-doctor/);
+    await expect(apiRequest('/agents', { fetchFn })).rejects.toThrow(/lua auth configure/);
+    await expect(apiRequest('/agents', { fetchFn })).rejects.toThrow(/\/lua-doctor/);
   });
 
-  test('throws MCP_FORBIDDEN on 403 with helpful message', async () => {
+  // Scopes come from the @RequireScope decorators in lua-api
+  // packages/lua-api/src/controllers/developer/**/base.controller.ts —
+  // workflows have their own workflows:read, NOT automations:read.
+  test('throws MCP_FORBIDDEN on 403 naming the correct scope per route family', async () => {
     const fetchFn = mockFetch(jsonResponse({ error: 'forbidden' }, { status: 403 }));
-    await expect(apiRequest('/agents/wrong-id', { fetchFn })).rejects.toThrow(/MCP_FORBIDDEN/);
-    await expect(apiRequest('/agents/wrong-id', { fetchFn })).rejects.toThrow(/different agent or org/);
+    const rejection = expect(apiRequest('/agents/wrong-id', { fetchFn })).rejects;
+    await rejection.toThrow(/MCP_FORBIDDEN/);
+    await expect(apiRequest('/agents/wrong-id', { fetchFn })).rejects.toThrow(/\/agents\/wrong-id/);
+    await expect(apiRequest('/agents/wrong-id', { fetchFn })).rejects.toThrow(
+      /skills\/webhooks\/jobs\/triggers\/preprocessors\/postprocessors need automations:read/
+    );
+    await expect(apiRequest('/agents/wrong-id', { fetchFn })).rejects.toThrow(/workflows need workflows:read/);
+    await expect(apiRequest('/agents/wrong-id', { fetchFn })).rejects.toThrow(/persona needs agents:read/);
+    await expect(apiRequest('/agents/wrong-id', { fetchFn })).rejects.toThrow(/logs need knowledge:read/);
+  });
+
+  test('403 message never files workflows under automations:read', async () => {
+    const fetchFn = mockFetch(jsonResponse({ error: 'forbidden' }, { status: 403 }));
+    let message = '';
+    try { await apiRequest('/developer/workflows/a1', { fetchFn }); } catch (err) { message = err.message; }
+    expect(message).toMatch(/MCP_FORBIDDEN/);
+    // Within the scope clause, the family list in front of "automations:read"
+    // must not include workflows (the request path before it legitimately does).
+    const clauseStart = message.indexOf('the route scope (');
+    expect(clauseStart).toBeGreaterThan(-1);
+    const automationsFamilies = message.slice(clauseStart, message.indexOf('automations:read'));
+    expect(automationsFamilies).not.toMatch(/workflows/);
+    expect(automationsFamilies).toMatch(/skills\/webhooks\/jobs\/triggers\/preprocessors\/postprocessors/);
+  });
+
+  test('ROUTE_SCOPES mirrors the lua-api @RequireScope decorators per family', () => {
+    expect(ROUTE_SCOPES).toEqual({
+      skills: 'automations:read',
+      webhooks: 'automations:read',
+      jobs: 'automations:read',
+      triggers: 'automations:read',
+      preprocessors: 'automations:read',
+      postprocessors: 'automations:read',
+      workflows: 'workflows:read',
+      persona: 'agents:read',
+      logs: 'knowledge:read',
+    });
+    expect(Object.isFrozen(ROUTE_SCOPES)).toBe(true);
   });
 
   test('extracts friendly message from lua-api error envelope', async () => {
@@ -129,6 +194,14 @@ describe('apiRequest', () => {
     }, { status: 404 }));
     await expect(apiRequest('/skills/missing', { fetchFn }))
       .rejects.toThrow(/lua-api 404: Skill not found/);
+  });
+
+  test('prefixes the typed error code when the envelope carries one', async () => {
+    const fetchFn = mockFetch(jsonResponse({
+      success: false,
+      error: { code: 'WORKFLOW_DYNAMIC', statusCode: 409, message: 'composed by chat' },
+    }, { status: 409 }));
+    await expect(apiRequest('/x', { fetchFn })).rejects.toThrow(/lua-api 409: WORKFLOW_DYNAMIC: composed by chat/);
   });
 
   test('extracts top-level "message" field if no nested error envelope', async () => {
@@ -165,7 +238,7 @@ describe('apiRequest', () => {
 
   test('throws auth error when no key resolvable', async () => {
     delete process.env.LUA_API_KEY;
-    process.env.LUA_CREDENTIALS_PATH = '/nonexistent';
+    process.env.LUA_CREDENTIALS_PATH = '/nonexistent/credentials';
     const fetchFn = mockFetch(jsonResponse({ ok: true }));
     try {
       await expect(apiRequest('/agents', { fetchFn })).rejects.toThrow(/MCP_AUTH_STALE/);

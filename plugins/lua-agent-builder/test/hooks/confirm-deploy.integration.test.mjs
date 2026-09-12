@@ -33,11 +33,27 @@ describe('confirm-deploy script entry (spawned)', () => {
     expect(result.stderr).toContain('DEPLOY_DENIED_AUTO');
   });
 
-  test('handles malformed JSON on stdin gracefully (fail-open)', async () => {
-    // runHook helper sends valid JSON; to test malformed, we'd need a raw spawn.
-    // Instead, verify that empty input also fails-open via the empty-stdin path:
+  test('empty stdin passes through (nothing to classify → allow)', async () => {
+    // The hook now runs on EVERY Bash call (no `if` glob in hooks.json), so an
+    // empty / unclassifiable payload must not block unrelated commands.
     const result = await runHook('confirm-deploy.mjs', null);
-    // No tool_input → bare command → block per the decide() logic
+    expect(result.exitCode).toBe(0);
+  });
+
+  test('exits 0 for an unrelated Bash command (the every-call registration must be cheap and silent)', async () => {
+    const result = await runHook('confirm-deploy.mjs', { tool_input: { command: 'git status --short' } });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+  });
+
+  test.each([
+    'lua skills publish --skill-name x --skill-version latest',
+    'lua workflows on outreach',
+    'heylua version promote 3',
+    'lua marketplace template rollout --template-id t --all-installed --force',
+  ])('exits 2 on the alias/binary spelling %s', async (command) => {
+    const result = await runHook('confirm-deploy.mjs', { tool_input: { command } });
     expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain('DEPLOY_DENIED_BARE');
   });
 });

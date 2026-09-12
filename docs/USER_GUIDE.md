@@ -1,695 +1,273 @@
 # Lua Agent Builder — User Guide
 
-A complete walkthrough of the [`lua-agent-builder`](https://github.com/lua-ai-global/claude-code-lua-plugin) Claude Code plugin — what it does, how to install it, the canonical workflows, the safety model, and what to do when things go wrong.
+A complete walkthrough of the [`lua-agent-builder`](https://github.com/lua-ai-global/claude-code-lua-plugin) Claude Code plugin — what it does, how to install it, the canonical build loops (tools, integrations, workflows, templates), the safety model, and what to do when things go wrong.
 
-If you just want to install and start: jump to [Installation](#installation) and [Your first agent](#your-first-agent).
+The plugin wraps **lua-cli 3.33.0**, the TypeScript SDK/CLI for the Lua agent platform. It has nothing to do with the Lua programming language. Everything in this guide (command shapes, SDK types, API routes) was verified against the lua-cli and lua-api source, not only the public docs.
 
-If you want to understand the whole surface before you touch anything: read straight through.
+If you just want to start: [Installation](#installation) → [Your first agent](#your-first-agent).
 
 ---
 
 ## Table of contents
 
 1. [What this plugin is](#what-this-plugin-is)
-2. [What it does for you](#what-it-does-for-you)
-3. [Prerequisites](#prerequisites)
-4. [Installation](#installation)
-5. [Authentication](#authentication)
-6. [Your first agent](#your-first-agent) — end-to-end walkthrough
+2. [Prerequisites](#prerequisites)
+3. [Installation](#installation)
+4. [Authentication](#authentication)
+5. [Your first agent](#your-first-agent)
+6. [Building a workflow](#building-a-workflow)
 7. [Slash commands reference](#slash-commands-reference)
 8. [Subagents reference](#subagents-reference)
-9. [Hooks — what runs automatically](#hooks--what-runs-automatically)
-10. [MCP tools — what Claude can call directly](#mcp-tools--what-claude-can-call-directly)
-11. [Common workflows](#common-workflows)
-12. [Safety model](#safety-model)
-13. [Troubleshooting](#troubleshooting)
-14. [FAQ](#faq)
-15. [Getting help](#getting-help)
+9. [Knowledge base](#knowledge-base)
+10. [Hooks — what runs automatically](#hooks--what-runs-automatically)
+11. [MCP servers — what Claude can call directly](#mcp-servers--what-claude-can-call-directly)
+12. [Common workflows](#common-workflows)
+13. [Safety model](#safety-model)
+14. [Troubleshooting](#troubleshooting)
+15. [FAQ](#faq)
 
 ---
 
 ## What this plugin is
 
-`lua-agent-builder` is a [Claude Code](https://code.claude.com) plugin that wraps the `lua-cli` developer toolchain so you can build, test, and deploy [Lua AI agents](https://heylua.ai) by talking to Claude — instead of memorising CLI flags.
+`lua-agent-builder` lets you build, test and ship Lua agents by talking to Claude instead of memorising CLI flags:
 
-Two ways to think about it:
-
-- **The CLI guide layer**: every `lua` command becomes accessible via a `/lua-*` slash command that knows the right flags, prompts you for missing inputs, and surfaces errors in a friendlier shape than the raw CLI.
-- **The agent collaborator**: 5 specialised subagents (architect, skill-builder, debug, deploy-pilot, qa) handle the heavyweight tasks — designing an agent's architecture, scaffolding new primitives, diagnosing compile/runtime failures, gating production deploys, running conversational QA — and only ask you for input at the explicit decision points.
-
-Plus 10 hooks that run automatically (auth-state probes, credential-input isolation, deploy-safety gates, smoke tests, context injection) and an MCP server that exposes 5 read-only platform tools so Claude can answer "what's deployed?" without you typing anything.
-
----
-
-## What it does for you
-
-Concretely, with the plugin installed you can say things like:
-
-- *"Build me an agent that handles refund requests via Stripe webhooks"* → architect drafts a plan, you approve, build runs autonomously through to deploy.
-- *"Add a tool that looks up a customer by email"* → skill-builder scaffolds, compiles, and tests it.
-- *"Why is my deploy failing?"* → debug subagent re-runs with `--debug --verbose`, matches against a known catalogue, proposes the smallest fix.
-- *"Deploy the latest version of the weather skill to production"* → deploy-pilot gates: dirty git? compile? drift? push? deploy with the env-prefixed `LUA_DEPLOY_CONFIRMED=1` form? smoke test logs for fresh errors? Each gate is one keystroke.
-- *"Run a QA pass before I ship"* → qa subagent generates a 12-test conversational suite, runs against sandbox or production (auto-decided), writes a triage report.
-
-And without you saying anything:
-
-- Hooks inject *"[lua] agent: shopify_xxx / org: org_acme"* into Claude's context every prompt so the model knows which agent you're working on
-- A pre-`lua deploy` hook blocks bare `lua deploy` calls (forces the explicit confirmation flow)
-- A pre-`--auto-deploy` hook blocks any `lua` command with `--auto-deploy` (the production-deploy backdoor)
-- A post-`lua compile` hook prints "✓ Compiled N primitives" so you don't miss compile success
-- A post-`lua deploy` hook scans logs for fresh errors in the 60s after deploy
+- **Slash commands** wrap every `lua` command you need (`/lua-init`, `/lua-new`, `/lua-test`, `/lua-workflow`, `/lua-push`, `/lua-deploy`, `/lua-status`, …), collect the inputs up-front in one prompt, and surface errors with the CLI's typed exit codes explained.
+- **Subagents** do the heavy lifting in their own context with restricted tools: the architect plans, the skill-builder scaffolds and tests any primitive (including workflows, triggers, devices and voices), the debug agent diagnoses failures, the deploy pilot runs the gated ship sequence, the QA agent runs conversational and offline-workflow suites.
+- **A knowledge base** (`lib/knowledge/`) gives those agents the exact SDK shapes, workflow builder, CLI matrix, integration patterns and decision trees — checked against lua-cli 3.33.0 source.
+- **Hooks** probe your environment, inject the current agent into Claude's context, and gate every production-affecting verb.
+- **Two MCP servers**: a local read-only platform server (what's deployed, versions, logs) and the public docs MCP.
 
 ---
 
 ## Prerequisites
 
-Before installing the plugin you need:
-
-| Requirement | Why | How to install |
+| Requirement | Why | How |
 |---|---|---|
-| **Node.js ≥ 18** | The plugin's hooks and MCP server are Node ESM | macOS: `brew install node@20` · Windows: `winget install OpenJS.NodeJS.LTS` · Linux: NodeSource APT or `nvm install 20` |
-| **lua-cli ≥ 3.12.3** | Every slash wraps a `lua` command | `npm install -g lua-cli` |
-| **Claude Code** | The plugin host | https://claude.com/claude-code |
-| **A Lua account** | To talk to `api.heylua.ai` | Sign up at https://admin.heylua.ai. `/lua-auth` guides new credential setup. |
+| **Node.js ≥ 18** | hooks and the MCP server are Node ESM | macOS `brew install node@20` · Windows `winget install OpenJS.NodeJS.LTS` · Linux NodeSource / `nvm install 20` |
+| **lua-cli ≥ 3.33.0** | the command shapes the plugin emits | `npm install -g lua-cli` (or `/lua-update`) |
+| **Claude Code** | the host | https://claude.com/claude-code |
+| **A Lua account** | to talk to `api.heylua.ai` | https://admin.heylua.ai — `/lua-auth` guides the login |
 
-The plugin's `/lua-doctor` slash will check all of these (Node, npm/pnpm, lua-cli, auth, permission rules) and offer to install or fix anything missing — see [Installation](#installation) for the canonical first-run sequence.
-
-**Platforms supported**: macOS 14+, Ubuntu 22.04+, Windows 11 (with Git Bash or WSL). The plugin's CI runs the test suite across all three on Node 18 and 20.
+`/lua-doctor` checks all of these and offers consent-gated fixes. Platforms: macOS 14+, Ubuntu 22.04+, Windows 11; CI runs the suite on all three with Node 18 and 20.
 
 ---
 
 ## Installation
 
-### From the official Anthropic marketplace (when available)
-
-```
-/plugin install lua-agent-builder@claude-plugins-official
-/reload-plugins
-```
-
-### From the GitHub source (works today)
-
 ```
 /plugin marketplace add lua-ai-global/claude-code-lua-plugin
 /plugin install lua-agent-builder@claude-code-lua-plugin
 /reload-plugins
-```
-
-After install you should see `lua-agent-builder` in `/plugin list` as enabled. If `/lua-doctor` isn't recognised as a command after `/reload-plugins`, exit the session (`Ctrl+D` or `/exit`) and start a fresh `claude` — hooks and slash commands always activate cleanly on a new session.
-
-### Verify the install
-
-```
 /lua-doctor
 ```
 
-This runs a 5-step diagnostic:
-
-1. **Node ≥ 18** — probes `node --version`. Offers to install if missing.
-2. **Package manager** — probes `npm`, falls back to `pnpm`. Offers to install via `corepack enable`.
-3. **lua-cli ≥ 3.12.3** — probes `lua --version`. Offers `npm install -g lua-cli` if missing or `/lua-update` if too old.
-4. **Authentication** — probes `lua agents --json --ci`. If it fails, `/lua-auth` sends new login to a private terminal.
-5. **Permission rules** — reads the plugin's `lib/permissions-template.json` and offers to merge it into your project's `.claude/settings.json`. Accept the merge to avoid a permission prompt for each safe `lua` invocation.
-
-All 5 steps green = you're ready.
+If `/lua-doctor` isn't recognised after `/reload-plugins`, start a fresh `claude` session. The doctor runs five steps — Node, package manager, lua-cli version, authentication (`lua models list --json --ci`, a 1–2 s authenticated call), and the permission-rule merge into your project's `.claude/settings.json` (Claude Code ignores a plugin's own `permissions` block, so the plugin asks once to merge `lib/permissions-template.json`; accept it or every safe `lua` call will prompt).
 
 ---
 
 ## Authentication
 
-The plugin first checks for a working credential. It uses the existing lookup order: `LUA_API_KEY`, `~/.lua-cli/credentials`, then the project's `.env` file.
+lua-cli resolves credentials in this order, and the plugin's MCP server does the same:
 
-### Set up a new login
+1. `LUA_API_KEY` in your environment (a `.env` in the project counts — lua-cli loads it first).
+2. The **renewable session** written by `lua auth configure` with email + one-time code to `~/.lua-cli/sessions/` — the default login since lua-cli 3.29.
+3. `~/.lua-cli/credentials` — a plain API key, written when you pick the API-key option of `lua auth configure`.
 
-```
-/lua-auth
-```
-
-If an existing credential works, `/lua-auth` leaves it unchanged. Existing non-dotted legacy keys remain supported and do not require rotation or a new login.
-
-For a new login, install `lua-cli` 3.28.0 or newer. `/lua-auth` asks you to open a terminal outside Claude Code and run:
+`/lua-auth` keeps whatever already works. For a new login it sends you to your own terminal:
 
 ```bash
 lua auth configure
 ```
 
-Choose the email option for a new login. The CLI handles your email and OTP in the terminal. You then select an organization, one or more exact agents, and a role. Builder is the default role, but you can select another role that the server allows. The CLI stores the typed personal credential in `~/.lua-cli/credentials` with mode `0600`.
-
-Never paste an email, an OTP, or a credential into the Claude conversation.
-
-### Keep an existing credential
-
-Existing `LUA_API_KEY`, `.env`, and `~/.lua-cli/credentials` values keep working. If you already have a credential that is not configured, choose the existing-key option in the private terminal. For CI, set `LUA_API_KEY='<existing-credential>'` in the process environment or a protected secret store.
-
-### What's NEVER done
-
-The plugin never runs `lua auth configure` or `lua auth key --force` in the model session. The first command collects account details. The second prints the stored credential. The auth probe is `lua agents --json --ci`, which returns metadata instead of credentials.
+Choose the email option; the CLI handles the code, then you pick an organization, the exact agents and a role. Nothing about the login passes through the Claude conversation, and the plugin denies `lua auth configure`, `lua auth key` and `lua auth logout` for the model. `lua auth sessions` lists signed-in devices; `lua auth logout --all` signs out everywhere.
 
 ---
 
 ## Your first agent
 
-End-to-end walkthrough. Pick a throwaway directory:
-
 ```bash
-mkdir -p /tmp/my-first-agent && cd /tmp/my-first-agent
-claude
+mkdir -p ~/agents/weather-news && cd ~/agents/weather-news && claude
 ```
 
-In the Claude session:
+**1. Plan** — `/lua-architect I want an assistant that fetches the weather for my city and reads the morning headlines`. The architect reads the knowledge base and returns a plan: persona, model (from the live catalog — the platform default is `alibaba/qwen3.8-flash`), a `weather` skill with two tools, custom HTTP for the APIs, build order, and a next-step menu.
 
-### 1. Plan the agent
+**2. Scaffold** — `/lua-init`. It probes auth (auto-running `/lua-auth` if needed), lists your orgs, fetches the model catalog with `lua models list --json`, and runs `lua init --ci --agent-name … --org-id … [--model …] [--with-examples] --force`. You get `src/index.ts` (the `LuaAgent`), the CLI-managed `lua.skill.yaml`, and with examples the canonical `examples/` folder including workflow samples. A typed personal key cannot create agents (exit 10) — the slash offers the "bind to an existing agent" path instead.
 
-```
-/lua-architect I want a personal assistant that fetches the weather for my city and reads the morning news headlines
-```
+**3. First tool** — `/lua-new tool get_weather`. The skill-builder subagent writes `src/skills/tools/GetWeatherTool.ts` (a class `implements LuaTool` with a Zod `inputSchema`), creates or picks the skill, **registers it in `src/index.ts`** (unregistered primitives are never compiled), runs `lua compile --ci`, then `lua test --ci skill --name get_weather --input '{"city":"London"}'` (for `skill` tests `--name` is the **tool** name and `--input` is the tool's own fields).
 
-The architect reads its 3 knowledge files (primitives, integrations, decision-trees), then produces a structured plan: persona, model recommendation, primitives needed (likely 1 skill with 2 tools), integration approach (custom HTTP for OpenWeatherMap and a news API), build order, trade-offs.
+**4. Secrets** — in your terminal: `lua env sandbox -k WEATHER_API_KEY -v <key>` (writes `.env`) and `lua env production -k WEATHER_API_KEY -v <key>`. The tool reads `env('WEATHER_API_KEY')`.
 
-The plan ends with a "Next steps" menu — slash commands to run, in order.
+**5. Test** — `/lua-test` picks the type (`skill`, `webhook`, `job`, `preprocessor`, `postprocessor`, `workflow`) and name from `dist-v2/manifest.json`. A failure is handed to the debug subagent automatically.
 
-### 2. Scaffold the project
+**6. Chat** — `/lua-chat` → sandbox (which pushes your local skills to the sandbox first), your message, a fresh thread (`lua chat --ci -e sandbox -m … -t`).
 
-```
-/lua-init
-```
+**7. QA** — `/lua-qa` runs 8–15 conversations on an isolated thread each, offline scenarios for every workflow, scans logs for `subType === 'error'`, and writes a triage report with a fix path per finding.
 
-If you're not authenticated yet, the slash auto-invokes `/lua-auth` first (see [Phase 0 in the slash markdown](../plugins/lua-agent-builder/commands/lua-init.md)).
+**8. Ship** — `/lua-deploy`: pick what goes live (`skill`, `webhook`, `trigger`, `job`, `preprocessor`, `postprocessor`, `persona`, `workflow`, `mcp`, `device`, `device-trigger`, `voice`, `agent-version`, `all`), the name and version, confirm once. The deploy pilot then runs: `git status` clean → `lua compile --ci` → `lua status --json` (abort if the server is ahead) → `lua push … --ci --force` → the prefixed production verb (`LUA_DEPLOY_CONFIRMED=1 lua deploy …`, `… lua workflows deploy <n> -v latest`, `… lua mcp activate <n>`, or `lua version create` + `… lua version promote N`) → a log scan and `get_deployment_status`. It reports the rollback command.
 
-Then it asks (in one prompt):
+---
 
-- Agent name (free-text)
-- Organization (existing org from your account, or "Create new")
-- Model (`openai/gpt-4o-mini` is a good default for this kind of agent)
-- Include example skills? (Yes for first-time use)
+## Building a workflow
 
-It runs `lua init --ci` with your inputs. You now have a `lua.skill.yaml` and a `src/` directory.
+Workflows are durable multi-step graphs with approvals, signals, fan-out, retries, budgets, schedules and Job-tier code. The knowledge file `lib/knowledge/workflows.md` is the reference; the loop is:
 
-### 3. Build the first tool
+1. `/lua-new workflow reply-approval` — the builder writes `src/workflows/reply-approval.ts` (`createWorkflow({...}).then(step).agentStep(...).approval(...).commit()`), registers it in `LuaAgent.workflows`, compiles, and runs an offline scenario.
+2. `/lua-workflow run reply-approval --input @in.json --approve reviewDrafts` — the local driver (no platform call) with scripted approvals, denials, signals and `--step-output` values for each predicate branch.
+3. `/lua-push workflow` — a server version (not live). Missing `env.template()` keys are refused at push.
+4. `/lua-deploy` → target `workflow` — `LUA_DEPLOY_CONFIRMED=1 lua workflows deploy reply-approval -v latest`, plus `activate` if it has a schedule.
+5. `/lua-workflow start reply-approval --input @in.json` (one confirmation) → `/lua-workflow status <runId>` → `/lua-workflow approve <runId> <wfa_…>` / `signal` / `resume` / `cancel`.
 
-```
-/lua-new tool get_weather
-```
-
-The slash spawns the `lua-skill-builder` subagent via the Agent tool. The subagent:
-
-1. Reads `lua.skill.yaml` to understand naming conventions
-2. Locates the right `src/skills/` subdirectory
-3. Scaffolds `src/skills/<skill-name>/tools/get_weather.ts` with a Zod input schema and a `LuaTool` class
-4. Asks for any external API key it needs (OpenWeatherMap)
-5. Implements `execute()` with a `fetch()` call to the weather API
-6. Runs `lua compile --ci` in a loop until it passes (max 3 attempts)
-7. Runs `lua test --ci skill --name <parent-skill> --input '<sample-json>'` to verify
-
-If compile fails, it returns to the parent agent with a clear error. You can `/lua-test` (which auto-invokes `/lua-debug` on failure) to dig in.
-
-### 4. Add the API key
-
-The new tool reads `env('OPENWEATHER_API_KEY')`. Set it via lua-cli:
-
-```bash
-lua env --key OPENWEATHER_API_KEY --value <your-key>
-```
-
-(You run this in your terminal — env vars are user-scoped credentials, the plugin doesn't touch them.)
-
-### 5. Test the tool
-
-```
-/lua-test
-```
-
-Pick `skill`, name it `weather` (or whatever the parent skill was named), and provide an input like `{"city": "London"}`. The slash runs `lua test --ci skill --name weather --input '{"city": "London"}'` and surfaces the response.
-
-If the test fails, the slash auto-invokes `/lua-debug` with the failure output. The debug agent re-runs with `--debug --verbose`, matches the error against an inline catalogue, proposes a minimal fix via Edit, and re-tests.
-
-### 6. Add the second tool
-
-```
-/lua-new tool get_news
-```
-
-Same flow as before. Set `NEWS_API_KEY` via `lua env`. Test it.
-
-### 7. Chat with the agent
-
-```
-/lua-chat
-```
-
-Pick environment (sandbox), type a message ("What's the weather in London?"), pick "New thread" (creates a fresh thread — the slash uses `lua chat -t` correctly so this doesn't pollute your default thread).
-
-### 8. QA pass
-
-```
-/lua-qa
-```
-
-The QA subagent:
-
-1. Decides sandbox vs production via `lua sync --check` (zero exit = clean = production; non-zero = drift = sandbox)
-2. Derives a 8-15 test conversational suite from the agent's surface (tools, persona, schemas)
-3. Runs each test as `lua chat --ci -e <env> -m '<msg>' -t qa-<id>-<ts>` (isolated threads — won't pollute your real conversations)
-4. Scans logs for `subType === 'error'` entries during the test window
-5. Writes a triage report routing each finding to the right subagent (skill-builder, debug, deploy-pilot)
-
-You read the report; if you want to apply a fix, you invoke the relevant slash. The QA agent **doesn't auto-spawn fix agents** — every fix is a deliberate decision.
-
-### 9. Deploy
-
-```
-/lua-deploy
-```
-
-Pick type (`skill`, `webhook`, or `all` for everything), name (the specific primitive), version (`latest` or a specific number), confirm.
-
-The slash spawns the `lua-deploy-pilot` subagent via the Agent tool. The pilot runs the **5-gate ship sequence**:
-
-1. **`git status --short`** — abort if dirty
-2. **`lua compile --ci`** — abort cleanly on error
-3. **`lua sync --check`** — abort with drift report
-4. **`lua push <type> --ci --force --name <n> --set-version <v>`** — informational only, you already authorised
-5. **`LUA_DEPLOY_CONFIRMED=1 lua deploy <type> --ci --name <n> --set-version <v> --force`** — the env-prefixed form is the ONLY thing that satisfies both the `permissions.allow` rule and the `confirm-deploy.mjs` PreToolUse hook
-
-After the deploy command exits successfully, the `post-deploy-smoke.mjs` PostToolUse hook fires automatically:
-
-- Sends a `ping` message to production via `lua chat ... -t lua-plugin-smoke-<ts>` (isolated thread — won't pollute user conversations)
-- Scans `lua logs --ci --type all --limit 30 --json` for `subType === 'error'` entries within the last 60 seconds
-- Surfaces any errors as a warning so you can investigate before traffic flips
-
-That's the full loop.
+Chat-composed workflows can't be deployed from the CLI (`WORKFLOW_DYNAMIC`); `/lua-workflow export <name>` brings one into source.
 
 ---
 
 ## Slash commands reference
 
-14 slash commands. All use the §3.7 single-permission contract: each asks at most one prompt (multi-step diagnostic slashes use the documented `x-lua-multi-step: true` opt-out).
+20 slash commands; each asks at most one question (`x-lua-multi-step: true` marks `/lua-doctor`, `/lua-auth`, `/lua-init`).
 
-### Setup & diagnostics
-
-| Slash | What it does |
-|---|---|
-| `/lua-doctor` | 5-step environment diagnostic: Node, npm/pnpm, lua-cli, auth, permission rules. Offers fixes for each. |
-| `/lua-auth` | Keeps a working credential or guides typed login through `lua auth configure` in a private terminal. |
-| `/lua-update` | Updates lua-cli to latest via `npm install -g lua-cli@latest`. |
-| `/lua-docs <topic>` | Fetches lua-cli documentation from `docs.heylua.ai/<topic>` via WebFetch. |
-
-### Project lifecycle
-
-| Slash | What it does |
-|---|---|
-| `/lua-init` | Scaffold a new agent project. Auto-resolves missing auth (Step 0) before asking for project name/org/model. |
-| `/lua-new <type> [name]` | Scaffold a new primitive (`tool`, `skill`, `webhook`, `job`, `preprocessor`, `postprocessor`, `mcp`). Spawns `lua-skill-builder` subagent. |
-| `/lua-test [type]` | Test a skill/webhook/job in the sandbox. On failure, spawns `lua-debug` subagent. |
-| `/lua-sync` | Detect drift between local code and server state. Resolve via pull, push, show-only, or cancel. |
-
-### Server interaction
-
-| Slash | What it does |
-|---|---|
-| `/lua-chat` | One-shot message to your agent (sandbox or production). Pick "New thread" for a fresh UUID, "Continue thread \<id\>" to extend an existing one. |
-| `/lua-logs` | View recent logs with structured filters (type, name, limit). |
-| `/lua-push` | Push local changes to the server. Type-aware (skill/webhook/job/etc.) with explicit branching. |
-| `/lua-deploy` | Production deploy. Spawns `lua-deploy-pilot` for the 5-gate ship sequence. |
-
-### Higher-level
-
-| Slash | What it does |
-|---|---|
-| `/lua-architect <goal>` | Plan a Lua agent end-to-end from a goal description. Spawns `lua-architect` subagent which produces a structured plan. |
-| `/lua-qa [scope]` | Conversational QA pass. Spawns `lua-qa` subagent which writes a triage report. |
-
-### Composition pattern
-
-Every slash that needs lua-cli authentication has a Step 0 preflight that auto-invokes `/lua-auth` if you're not authenticated yet — you don't need to chain commands manually. If you say "let's go" after the architect proposes a plan, `/lua-init` will resolve auth and version dependencies on its own.
+| Slash | Wraps | Notes |
+|---|---|---|
+| `/lua-doctor` | node/npm/lua probes, permission merge | 5 steps, consent per fix |
+| `/lua-auth` | `lua models list --json --ci` probe, then `lua agents --json --ci` listing | login in your terminal |
+| `/lua-update` | `npm install -g lua-cli@latest` | |
+| `/lua-docs <topic>` | `lua-docs` MCP, WebFetch fallback | knowledge files first |
+| `/lua-status` | `lua status --json --ci` | auth, project, per-primitive sync diffs, orphans, hints |
+| `/lua-init` | `lua init --ci …` | new / existing / duplicate agent; model from `lua models list --json` |
+| `/lua-architect <goal>` | subagent | plan + next-step menu |
+| `/lua-new <type> [name]` | subagent → `lua compile`, `lua test` | 13 primitive types (incl. `workflow-script`) |
+| `/lua-test [type]` | `lua test --ci <type> --name … --input …` | failures → debug subagent |
+| `/lua-workflow <verb>` | `lua workflows …`, `lua test workflow` | read-only verbs run at once; start/approve/signal/resume/cancel confirm once; deploy → `/lua-deploy` |
+| `/lua-chat` | `lua chat --ci -e … -m … -t` | always an explicit thread |
+| `/lua-logs` | `lua logs --ci --type … --json` | real `--type` list (`mastra` is not valid) |
+| `/lua-env` | `lua env <sandbox\|production> --list \| -k KEY -v VALUE \| -k KEY --delete` | environment + key + value collected once; the Bash prompt is the confirmation; the value is never echoed, listings show masked values |
+| `/lua-integrations` | `lua integrations available\|list\|info\|webhooks …\|mcp …` | read-only verbs run at once; disconnect/convert/webhooks/mcp mutations confirm once via the Bash prompt; `connect`/`update` (browser OAuth) are printed for your terminal |
+| `/lua-sync` | `lua status --json`, `lua sync --check`, `--pull`, `--push` | `--push` sends agent config only |
+| `/lua-push` | `lua push <type> --ci --force …` | all 14 push types; stage-all with `all` |
+| `/lua-deploy` | subagent → prefixed production verb | every live path incl. rollback |
+| `/lua-version` | `lua version list/show/diff/status/create` | promote → `/lua-deploy` |
+| `/lua-template` | `lua marketplace template …` | publish/apply are prefixed |
+| `/lua-qa` | subagent | triage report |
 
 ---
 
 ## Subagents reference
 
-5 specialized subagents. Each runs in its own context window with a restricted tool allowlist. Slash commands dispatch them via the Agent tool (`subagent_type: "lua-<name>"`).
-
-| Subagent | When it's used | Restricted to |
+| Subagent | Used by | Tools |
 |---|---|---|
-| `lua-architect` | Planning new agents from fuzzy goals — auto-dispatched on intent match ("I want to build...") | `Read, Glob, Grep, Bash, WebFetch` + 3 read-only MCP tools (no Write, no Edit) |
-| `lua-skill-builder` | Scaffolding new primitives (`/lua-new`) | `Read, Write, Edit, Glob, Grep, Bash, WebFetch, mcp__lua-platform__get_agent` |
-| `lua-debug` | Diagnosing `lua compile --ci` or `lua test --ci` failures (auto-dispatched on test failure from `/lua-test`) | `Read, Edit, Grep, Bash, WebFetch` (no Write) |
-| `lua-deploy-pilot` | Production deploy gates (`/lua-deploy`) | `Read, Bash, mcp__lua-platform__get_deployment_status` (no Write, no Edit) |
-| `lua-qa` | Conversational QA pass (`/lua-qa`) | `Read, Grep, Bash` + 2 read-only MCP tools |
+| `lua-architect` | `/lua-architect` | Read, Glob, Grep, Bash (read-only lua verbs), WebFetch, platform MCP (list/get agent, deployment status), docs MCP |
+| `lua-skill-builder` | `/lua-new` | Read, Write, Edit, Glob, Grep, Bash (`lua compile`, `lua test`, `lua sync --check`, `lua voice list`), WebFetch, docs MCP |
+| `lua-debug` | `/lua-test` failures | Read, Edit, Grep, Glob, Bash (compile/test/status/logs, git log/diff), WebFetch, docs MCP |
+| `lua-deploy-pilot` | `/lua-deploy` | Read, Bash (compile, status, push, the prefixed production verbs, logs, git), platform MCP (deployment status, versions) |
+| `lua-qa` | `/lua-qa` | Read, Grep, Glob, Bash (chat, status, logs, offline workflow tests), platform MCP (get agent, tail logs, deployment status) |
 
-The minimal toolsets are intentional — a debug agent doesn't need Write; a deploy pilot doesn't need Edit. If a subagent's prompt asks for capability outside its allowlist (e.g., the deploy-pilot tries to "hand off to lua-debug"), it returns to the parent agent with a clear error rather than silently failing. The parent slash command can then dispatch the right next subagent.
+Subagents never ask questions; the slash that spawned them already collected the user's authorisation.
+
+---
+
+## Knowledge base
+
+`plugins/lua-agent-builder/lib/knowledge/`:
+
+- `primitives.md` — every SDK primitive (`LuaAgent`, `LuaSkill`/`LuaTool`, `LuaWebhook`, `defineTrigger`, `LuaJob`, processors, `LuaMCPServer`, `defineDevice`/`defineDeviceTrigger`, `defineVoice`) and runtime API (`User`, `Data`, `Products/Baskets/Orders`, `Jobs`, `Workflows`, `AI`, `Agents`, `Integrations`, `Voice`, `Channels`, `Team`, `Templates`, `CDN`, `Lua`, `env`) with exact shapes and the gotcha list
+- `workflows.md` — the builder, every step kind, approvals/signals, Job tier and workspaces, script form, the runtime API, all CLI verbs and exit codes, the offline test recipe, the error table
+- `cli-reference.md` — global flags, exit codes, credential resolution, project layout, the full command matrix, the push/deploy matrix, agent versions, marketplace templates, the docs URL map
+- `integrations.md` — Unified.to connectors, auto-provisioned MCPs, `Integrations.passthrough`, event subscriptions vs platform triggers, channels
+- `decision-trees.md` — task → primitive routing, job vs workflow, webhook vs trigger, data placement, build order
 
 ---
 
 ## Hooks — what runs automatically
 
-10 hooks fire on specific Claude Code events. You don't invoke them; they run as subprocesses.
-
-### `SessionStart` — once per Claude session
-
-| Hook | What it does |
-|---|---|
-| `check-lua-version` | Probes `lua --version`; warns if missing or below the pinned minimum (3.12.3). |
-| `detect-project` | Checks for `lua.skill.yaml` in the user's CWD; if found, injects "✓ Lua agent project detected: \<agentId\>" into Claude's context. |
-| `check-lua-auth` | Probes `lua agents --json --ci`; if lua-cli is installed but unauthenticated, recommends `/lua-auth`. |
-
-### `UserPromptSubmit` — every prompt
-
-| Hook | What it does |
-|---|---|
-| `inject-context` | Reads `lua.skill.yaml` and injects "[lua] agent: \<agentId\> / [lua] org: \<orgId\>" into Claude's context. Means the model always knows which agent you're working on. |
-
-### `PreToolUse` (matcher: Bash) — before bash commands
-
-| Hook | What it does |
-|---|---|
-| `confirm-deploy` | Fires on `lua deploy` invocations. Blocks bare `lua deploy` (must use `LUA_DEPLOY_CONFIRMED=1` prefix from the deploy-pilot subagent). |
-| `block-auto-deploy` | Fires on commands containing `--auto-deploy`. Always blocks — `--auto-deploy` is never appropriate from inside Claude Code. |
-| `block-auth-configure` | Blocks model-run `lua auth configure`. Run interactive login in a private terminal. |
-| `warn-version-zero` | Fires on `lua push --set-version 0.x.y`. Soft-warns that 0.x versions don't deploy to existing 1.x stacks. |
-
-### `PostToolUse` (matcher: Bash) — after successful bash commands
-
-| Hook | What it does |
-|---|---|
-| `post-deploy-smoke` | After successful `lua deploy`: sends a `ping` to production via an isolated smoke thread, scans logs for fresh errors, surfaces any warnings. |
-| `post-compile-summary` | After successful `lua compile`: reads `dist-v2/manifest.json` and prints "✓ Compiled N primitives" so you don't miss compile success. |
-
-### What hooks DON'T do
-
-- They never block on user input (only the `confirm-deploy` and `block-auto-deploy` paths can block tool execution, and they do it with structured errors)
-- They never write to the plugin's own state
-- They never make network calls except `check-lua-auth` (one `lua agents --json --ci` per session) and `post-deploy-smoke` (one `lua chat` ping + one `lua logs` query after deploy)
+| Event | Hook | What it does |
+|---|---|---|
+| SessionStart | `check-lua-version` | warns (never blocks) if lua-cli < 3.33.0 |
+| SessionStart | `detect-project` | "✓ Lua agent project detected: <agentId>" from `lua.skill.yaml` |
+| SessionStart | `check-lua-auth` | probes `lua models list --json --ci` (1–2 s); exit 9 → recommends `/lua-auth`, exit 11 → API-unreachable note, timeout → "could not confirm" |
+| UserPromptSubmit | `inject-context` | `[lua] agent: <id> / org: <id>` every prompt |
+| PreToolUse(Bash) | `confirm-deploy` | runs on every Bash call; blocks every production-affecting verb without the `LUA_DEPLOY_CONFIRMED=1` prefix (see Safety model), including lua-cli's alias spellings (`publish`, `on`, `enable`, `submit`, `rollout`, `prod`…) and the `heylua` / `lua-ai` binaries; refuses wrappers and pipes |
+| PreToolUse(Bash) | `block-auto-deploy` | blocks any `--auto-deploy` |
+| PreToolUse(Bash) | `block-auth-configure` | blocks a model-run `lua auth configure` |
+| PreToolUse(Bash) | `warn-version-zero` | warns on `lua push --set-version 0.x.y` that `deploy --set-version latest` picks the most recently *created* version, not the highest semver |
+| PostToolUse(Bash) | `post-deploy-smoke` | after any verb that makes something live (`lua deploy`, `* deploy`, `persona production deploy`, `workflows deploy`, `version promote`, `mcp activate`): pings production on an isolated thread, scans `lua logs --json` for `subType === 'error'` |
+| PostToolUse(Bash) | `post-compile-summary` | "✓ Compiled N primitive(s)" from `dist-v2/manifest.json` |
 
 ---
 
-## MCP tools — what Claude can call directly
+## MCP servers — what Claude can call directly
 
-The plugin ships an MCP server at `${CLAUDE_PLUGIN_ROOT}/mcp/lua-platform/dist/server.js`. It exposes 5 read-only tools that Claude can call to answer "what's the state of my agent?" without you typing a slash.
+**`lua-platform`** (local, read-only; `mcp/lua-platform/dist/server.js`):
 
-| Tool | What it returns | Implementation |
+| Tool | Returns | Backend |
 |---|---|---|
-| `mcp__lua-platform__list_agents` | All agents the authenticated user has access to: `[{id, name, orgId, orgName}]` flattened across all orgs | Shells out to `lua agents --json` |
-| `mcp__lua-platform__get_agent` | One agent by ID: `{id, name, orgId, orgName}` | Same shell-out, then filters by ID |
-| `mcp__lua-platform__list_primitive_versions` | Versions of one primitive: `[{version, deployed, createdAt, sourceHash}]` | Resolves name → ID via the list endpoint, then queries `/developer/<type>s/:agentId/:id/versions` |
-| `mcp__lua-platform__get_deployment_status` | Composite view of every primitive's currently-deployed version | Calls list + versions endpoints across all 5 versioned types |
-| `mcp__lua-platform__tail_logs` | Recent logs filtered by type/name/limit (max 100) | Calls `GET /developer/agents/:agentId/logs?primitiveType=...&primitiveName=...&limit=...` |
+| `list_agents` | `[{ id, name, orgId, orgName, visibility }]` | `lua agents --json --ci` |
+| `get_agent` | one agent | same, filtered |
+| `list_primitive_versions` | `{ versions: [{ version, versionId, active, createdAt }] }` for a skill, webhook, job, trigger, preprocessor, postprocessor, workflow or the persona | `GET /developer/<plural>/:agentId(/:id/versions)`, `GET /developer/agents/:agentId/persona/versions` |
+| `get_deployment_status` | the active version of every primitive of all seven families plus the persona | composed from the above |
+| `tail_logs` | `{ logs, pagination }` filtered by `logSource` + `primitiveName` (≤ 100) | `GET /developer/agents/:agentId/logs` |
 
-All 5 are **read-only** — none mutate server state. State changes happen through `lua-cli` (via slash commands), never through the MCP server.
+It resolves credentials exactly like lua-cli (env → `.env` → renewable session → credentials file) and refreshes a session token itself. `LUA_API_URL` switches environments.
 
-When the model uses these tools, you'll see them in the conversation as `mcp__lua-platform__*` calls. They're auto-allowed and don't trigger permission prompts.
+**Tool names.** Claude Code exposes a plugin's MCP servers under a plugin-scoped name, so inside this plugin the tools are `mcp__plugin_lua-agent-builder_lua-platform__<tool>` and `mcp__plugin_lua-agent-builder_lua-docs__<tool>` (verified with `claude -p --plugin-dir`). The permission template pre-approves the read-only platform server and the two docs search tools under those names; `submit_feedback` still prompts. The plain `mcp__lua-platform__…` / `mcp__lua-docs__…` spellings only exist if you registered a server yourself with `claude mcp add`.
+
+**`lua-docs`** (remote, `https://docs.heylua.ai/mcp`): `search_lua_cli`, `query_docs_filesystem_lua_cli` (`tree /`, `rg`, `head /cli/workflows-command.mdx`), `submit_feedback`.
 
 ---
 
 ## Common workflows
 
-### "Build me an agent"
-
-```
-/lua-architect <goal>
-   → drafts the plan
-"lets go"
-   → Claude auto-invokes /lua-init via Skill tool (which auto-resolves auth via /lua-auth)
-   → /lua-new for each tool/webhook in the plan
-   → /lua-test to verify each one
-   → /lua-qa for a conversational pass
-   → /lua-deploy to ship
-```
-
-This is the canonical happy path. The architect's plan ends with concrete slash commands; you say "let's go" and Claude drives the build with minimal interaction (you only confirm at the AskUserQuestion prompts).
-
-### "Add a tool to an existing agent"
-
-```bash
-cd ~/projects/my-existing-agent
-claude
-```
-
-```
-/lua-new tool fetch_inventory
-```
-
-The skill-builder subagent reads your existing `lua.skill.yaml`, scaffolds in the right place, builds, tests. No /lua-init needed (project already exists).
-
-### "Test against production safely"
-
-```
-/lua-chat
-```
-
-Pick `production`, "New thread" (the slash creates a fresh UUID via `-t` so your test doesn't pollute the production conversation history), type your message.
-
-### "Diagnose a failure"
-
-```
-/lua-test
-```
-
-When the test fails, the slash auto-invokes `lua-debug`. You don't have to manually escalate. The debug agent re-runs with `--debug --verbose` and proposes a fix.
-
-### "Roll back a deploy"
-
-```
-/lua-deploy
-```
-
-Pick the same primitive type/name, but enter the previous version number when asked "Version?". The deploy-pilot ships that older version. (No special "rollback" mode — same flow, different version input.)
-
-### "Run a QA suite before shipping"
-
-```
-/lua-qa
-```
-
-The QA agent decides sandbox vs production based on drift, runs 8-15 tests, writes a triage report. **Doesn't ship anything**. Read the report; if findings are minor, ship via `/lua-deploy`. If major, fix via `/lua-new` or `/lua-debug` first.
-
-### "Check what's deployed without running commands"
-
-Just ask Claude:
-
-> What's deployed for the customer-support agent?
-
-Claude calls `mcp__lua-platform__get_deployment_status` and answers from real data. No slash needed.
-
-### "Update lua-cli when there's a new version"
-
-```
-/lua-update
-```
-
-Wraps `npm install -g lua-cli@latest`. Asks for one confirmation (`npm install -g` is destructive). Re-probes the version after install.
+- **"Build me an agent"** — `/lua-architect <goal>` → say "go" → `/lua-init` → `/lua-new …` per primitive → `/lua-test` → `/lua-qa` → `/lua-deploy`.
+- **"Add a tool to an existing agent"** — `cd` into the project, `/lua-new tool <name>`.
+- **"Connect Linear / HubSpot / GitHub"** — `/lua-integrations info <type>` for the auth methods and scopes, then in your terminal `lua integrations connect --integration <type> --auth-method oauth --scopes all [--triggers ev1,ev2]` (a browser round-trip the plugin never runs); afterwards `/lua-integrations mcp list` / `webhooks list` confirm the MCP and subscriptions, and the agent has the integration's MCP, raw calls via `Integrations.passthrough`, and event subscriptions via `/lua-integrations webhooks create …`. Custom tools only for derived logic.
+- **"Set an API key / secret"** — `/lua-env production set BILLING_API_KEY` (or `sandbox` to write `.env` for `lua test`); read it with `env('BILLING_API_KEY')` in your code. The value goes into the command only — never into the conversation.
+- **"What's deployed?"** — `/lua-status` in the project, or ask Claude (it calls `get_deployment_status`).
+- **"Roll back"** — `/lua-deploy` with the previous version, or target `agent-version` to promote an earlier snapshot.
+- **"Package it for other orgs"** — `/lua-template create`, `/lua-template draft`, edit the `template:` section in `lua.skill.yaml`, `/lua-template publish <id>`.
+- **"Run a workflow on a schedule"** — set `schedule` + `scheduleInput` on `createWorkflow`, deploy, then `/lua-deploy` target `workflow` with the note "activate".
 
 ---
 
 ## Safety model
 
-The plugin enforces several gates that show up at install time via `/lua-doctor` Step 5 (which merges the plugin's `lib/permissions-template.json` into your project's `.claude/settings.json`).
+The rules `/lua-doctor` merges (`lib/permissions-template.json`):
 
-### `permissions.deny` — always blocked
+- **deny** — anything with `--auto-deploy`, `lua auth configure|key|logout*`, and the alternative binaries `heylua *` / `lua-ai *` wholesale (same program; the plugin only ever emits `lua`). The bare production verbs (`lua deploy`, `lua version promote`, …) are **deliberately not in `deny` or `ask`**: Claude Code evaluates those two tiers past a leading env assignment, so a `Bash(lua deploy*)` deny would also block the confirmed `LUA_DEPLOY_CONFIRMED=1 lua deploy …` form and no deploy could ever run (this is documented at code.claude.com/docs/en/permissions and was confirmed live). The bare forms are blocked by the `confirm-deploy` hook instead — see below.
+- **allow** — the prefixed production verbs (`LUA_DEPLOY_CONFIRMED=1 lua deploy*`, `… lua skills|webhooks|jobs|preprocessors|postprocessors deploy*`, `… lua workflows deploy|activate*`, `… lua version promote*`, `… lua persona production deploy*`, `… lua mcp activate*`, `… lua marketplace template publish|apply*`), every read-only `lua` verb the slashes and subagents use, `lua push * --ci --force*`, `lua sync --check|--pull|--push`, `lua version create*` (a snapshot; nothing goes live until `promote`), and read-only git.
+- **ask** — deletes, `lua env *`, `lua pull`, `lua chat clear`, `lua source rollback`, `lua version delete`, workflow run control (`start`, `cancel`, `approve`, `signal`, `resume`, `retry-step`, `resolve-step`, `raise-budget`, `deactivate`, `schedules`, `goals`, `export`, `archive-runs`), `lua devices enable|disable`, `lua marketplace skill publish|unpublish|unlist|transfer`, integration connects/changes, `npm install -g lua-cli`, system installs. For the workflow run-control verbs this prompt **is** the single confirmation: `/lua-workflow` shows you the exact command in the permission prompt and does not ask a second time. `/lua-env` (`lua env *` — kept in `ask` even for `--list`, because the CLI prints masked values) and `/lua-integrations` (connect/update/disconnect/convert, webhook create/pause/resume/delete, MCP activate/deactivate) rely on the same prompt.
 
-| Pattern | Why |
-|---|---|
-| `Bash(lua deploy*)` | Bare `lua deploy` is denied — must use the env-prefixed `LUA_DEPLOY_CONFIRMED=1 lua deploy` form from the deploy-pilot |
-| `Bash(lua * --auto-deploy*)` | The `--auto-deploy` flag is never appropriate from inside Claude Code (defeats the explicit-confirmation principle) |
-| `Bash(lua push * --auto-deploy*)` | Same |
-| `Bash(lua auth key*)` | This command prints the API key to stdout — leaking it into the conversation transcript |
-
-### `permissions.ask` — prompts on every invocation
-
-| Pattern | Why |
-|---|---|
-| `Bash(npm install -g lua-cli*)` | Global installs touch shared system state |
-| `Bash(lua * delete*)` | Any delete of a primitive — irreversible |
-| `Bash(lua sync --pull --force*)` | Force-pull overwrites local without conflict checks |
-| `Bash(brew install*)`, `Bash(winget install*)`, `Bash(corepack*)` | System package installs |
-
-### `permissions.allow` — runs without prompting
-
-Explicit `lua-cli` patterns cover safe read operations, the canonical `--ci` and `--force` push form, the env-prefixed deploy form, common version probes, and read-only git commands the deploy-pilot uses.
-
-**Per Claude Code's documented precedence (deny → ask → allow), the ask rules win when they overlap with allow rules.** So `lua sync --pull --force` (matches both ask and allow) prompts the user; `lua sync --pull` (only matches allow) runs silently.
-
-### The §3.7 single-permission contract
-
-Every slash asks at most one permission interaction. Account details and credentials stay outside the conversation.
-
-Slashes that legitimately need multi-step interaction (`/lua-doctor`, `/lua-auth`) declare `x-lua-multi-step: true` in their frontmatter — a private extension marker that the plugin's `lint-single-permission.mjs` script uses to skip those files. Claude Code itself ignores the marker (it's not a documented frontmatter field).
-
-### What the plugin never does
-
-- Auto-deploy to production without an explicit prompt
-- Collect your email, OTP, or Lua credential in the conversation
-- Print your API key to stdout
-- Run `--auto-deploy` even if the model asks
-- Mutate server state via the MCP server (all 5 MCP tools are read-only)
-- Make network calls to anything other than `api.heylua.ai`
-- Persist any state outside `~/.lua-cli/credentials` (managed by lua-cli) and `~/.cache/lua-plugin/` (currently unused, reserved)
-
-See [SECURITY.md](../plugins/lua-agent-builder/SECURITY.md) for the full disclosure path and scope statement.
+Precedence is deny → ask → allow. **The production gate is the `confirm-deploy` hook**: it runs on every Bash call, classifies the command with `lib/tokenizer.mjs` (every canonical spelling, every lua-cli alias — `publish`, `on`, `enable`, `submit`, `rollout`, `prod` … — and all three binaries), and blocks a bare production verb with exit 2. A hook block takes precedence over any allow rule, including a broad `Bash(lua *)` you may have in your own settings, so the gate holds even without the template. It refuses shell wrappers and pipes even with the prefix. Only the deploy pilot and `/lua-template` emit the prefix, and only after your one confirmation; the template's allow rules let that confirmed command run without a second prompt. A test (`test/lib/permissions-mirror.test.mjs`) and a lint fail if a deny/ask rule would ever shadow a confirmed form or an allow rule admit a bare one.
 
 ---
 
 ## Troubleshooting
 
-### "Marketplace file not found"
-
-```
-/plugin marketplace add lua-ai-global/claude-code-lua-plugin
-  ⎿  Error: Marketplace file not found at ...
-```
-
-Most likely a stale clone. Try:
-
-```
-/plugin marketplace remove claude-code-lua-plugin
-/plugin marketplace add lua-ai-global/claude-code-lua-plugin
-```
-
-If still failing, manually delete `~/.claude/plugins/marketplaces/lua-ai-global-claude-code-lua-plugin/` and retry.
-
-### "This plugin uses a source type your Claude Code version does not support"
-
-This error is misleading — it usually means **the marketplace was added but the install needs a `/reload-plugins`** or fresh session. Try:
-
-```
-/reload-plugins
-/plugin install lua-agent-builder@claude-code-lua-plugin
-```
-
-If that doesn't work, exit and restart `claude`.
-
-### MCP tools fail with "command not found"
-
-The MCP server bundle (`mcp/lua-platform/dist/server.js`) didn't get included. Verify with:
-
-```bash
-ls ~/.claude/plugins/cache/lua-agent-builder/mcp/lua-platform/dist/server.js
-```
-
-If missing, the plugin's `mcp/lua-platform/dist/` wasn't committed to the public repo. Re-install or report the bug.
-
-### Permission prompts on every `lua` command
-
-`/lua-doctor` Step 5 didn't run, or you skipped the merge. Re-run `/lua-doctor` and accept the merge. Verify:
-
-```bash
-cat .claude/settings.json | jq '.permissions.allow | length'
-```
-
-Should return at least 25.
-
-### Hooks aren't firing
-
-Hooks activate on the next fresh `claude` invocation after install — `/reload-plugins` doesn't always reload hooks. Try `/exit` then `claude` in the same dir.
-
-For deeper diagnosis, run `claude --debug` — every hook invocation shows stdin/stdout/exit-code per call.
-
-### "Authentication failed" after running `/lua-auth`
-
-Run `lua agents --json --ci` in a private terminal. If the command fails, run `lua auth configure` there. Do not print or paste the contents of `~/.lua-cli/credentials`.
-
-### "Lua plugin loaded but you're not authenticated" appears every session
-
-The `check-lua-auth` SessionStart hook is doing its job. Run `/lua-auth` to clear it. If you've authenticated and the message persists, the credentials file might be at a non-default path — check `LUA_CREDENTIALS_PATH` in your environment.
-
-### `/lua-init` says "no orgs found"
-
-Your account has no organizations yet. Pick "Create new" when the slash asks, and provide a name. The slash uses `lua init --org-name <name>` instead of `--org-id <id>` for this case.
-
-### `/lua-deploy` aborts with "git status dirty"
-
-The deploy-pilot's first gate. Commit or stash your uncommitted changes, then re-run `/lua-deploy`. This is intentional — production deploys should be reproducible from a known git state.
-
-### Compile fails with "Bundling fails"
-
-Probably an unsupported import path. The most common case: `import { LuaTool } from 'lua-cli/skill'` — `lua-cli` exports only from the root, not sub-paths. Use `import { LuaTool } from 'lua-cli'`.
-
-The `lua-debug` subagent has the canonical error catalogue inline — `/lua-test` will auto-invoke it on failure.
-
-### `/lua-deploy` says "drift detected"
-
-Your local code differs from what's deployed. Run `/lua-sync`:
-
-- **Pull** = bring local up to match server state (overwrites local — guarded by a "no recent push backup?" check)
-- **Push** = update server state to match local (re-runs the deploy gates if the changes touch deployable primitives)
-- **Show only** = print the drift report and stop, you decide
-
-### Tests pass locally but fail in production
-
-The `post-deploy-smoke` hook will surface fresh errors during the 60-second window after deploy. Run `/lua-logs --type all --limit 100` to see what's happening server-side.
-
-If the failure is in user-facing flow, run `/lua-qa` to generate a structured triage report.
+- **"Marketplace file not found"** — `/plugin marketplace remove claude-code-lua-plugin` then add again; or delete `~/.claude/plugins/marketplaces/lua-ai-global-claude-code-lua-plugin/`.
+- **MCP tools fail with "command not found"** — `mcp/lua-platform/dist/server.js` is missing from the install; it is committed in the repo — reinstall or report.
+- **`MCP_AUTH_STALE`** — no credential resolved, or your session was signed out (signing out of the dashboard/app ends CLI sessions too). Run `lua auth configure` in a terminal. `LUA_API_URL` must match the environment your session was created for.
+- **Permission prompts on every `lua` command** — re-run `/lua-doctor` and accept Step 5.
+- **Hooks aren't firing** — start a fresh `claude` session; `claude --debug` shows every hook's stdin/stdout/exit code.
+- **`lua … --ci` exits 1 with "Interactive prompt required"** — a required flag is missing; the slashes pass complete flags, so report the command.
+- **Exit 9 / 10 / 11 / 12** — not authenticated / the credential's agent-or-role scope excludes this action / the Lua API is unreachable / the model provider refused (key, model, quota).
+- **`/lua-deploy` aborts on "server is ahead"** — someone pushed a newer version; `/lua-sync` pull, review, retry.
+- **Compile: "No skills found" or a primitive is missing from the manifest** — it isn't referenced from the `LuaAgent` arrays in `src/index.ts`.
+- **Workflow push refused** — `unplaced_step`, `tool_unbundled`, `env-template-missing`, `WORKFLOW_NAME_TAKEN`; the debug subagent maps each to a fix (`lib/knowledge/workflows.md` §9).
 
 ---
 
 ## FAQ
 
-### Can I use the plugin without a Lua account?
+**Can I use the plugin without a Lua account?** No — every platform call needs a credential. Sign up at https://admin.heylua.ai.
 
-No — every slash that talks to the platform needs an API key. Sign up at https://admin.heylua.ai (free tier available) and run `/lua-auth`.
+**Do I need to install the plugin per project?** No; hooks only inject context when a `lua.skill.yaml` is present.
 
-### Do I need to install the plugin in every project directory?
+**Can Claude build an agent without me typing slashes?** Mostly: after a plan, "go" drives `/lua-init`, `/lua-new`, `/lua-test` via the Skill tool. Production changes always stop at `/lua-deploy`'s confirmation.
 
-No. Once installed via `/plugin install`, the plugin is enabled for every Claude Code session globally. The hooks check whether you're in a Lua project (presence of `lua.skill.yaml`) before injecting context — if you're not, they stay silent.
+**Does `/lua-chat` touch my real conversations?** No — every chat the plugin sends uses an explicit `-t` thread (a lint enforces it), and so does the post-deploy smoke ping.
 
-### Can Claude Code build an agent without me typing slash commands?
+**Can the plugin deploy without my permission?** No. The `confirm-deploy` hook blocks every bare production verb (in every spelling lua-cli accepts), wrappers and pipes on every Bash call — a hook block wins over any allow rule, so this holds whether or not you merged the permission template. The only form that runs is the `LUA_DEPLOY_CONFIRMED=1`-prefixed command, and the deploy flow emits it only after your confirmation.
 
-Mostly yes. After the architect proposes a plan and you say "let's go", Claude can auto-invoke `/lua-init`, `/lua-new`, `/lua-test`, etc. via the Skill tool. The exception is `/lua-deploy` — that one always asks for an explicit `Yes, deploy now` confirmation per the §3.3 deploy-safety contract. Production state should never change without your explicit ack.
+**Where does my code go?** From lua-cli to `api.heylua.ai` (and `webhook.heylua.ai`, `cdn.heylua.ai`). The MCP server talks to `api.heylua.ai` and, for a session login, to Google's token endpoint to refresh the session. Claude Code sends the conversation to Anthropic per its own policy.
 
-### What happens to my conversation history when I run `/lua-chat`?
+**How do I update the plugin?** `/plugin marketplace update claude-code-lua-plugin` then reinstall; 1.2.0 targets lua-cli 3.33.0.
 
-If you pick "New thread", a fresh UUID is generated and your message goes there. If you pick "Continue thread \<id\>", it extends the named thread. **The plugin never sends test messages to your default thread** — both `/lua-chat` and the post-deploy smoke hook always specify `-t` explicitly. That's enforced by the `lint-chat-thread-flag.mjs` lint script.
-
-### Can the plugin deploy without my permission?
-
-No. The §5.2 deny rule blocks bare `lua deploy`. Only the env-prefixed `LUA_DEPLOY_CONFIRMED=1 lua deploy` form is allowed, and that prefix is only emitted by the deploy-pilot subagent after you've answered `Yes, deploy now` to the `/lua-deploy` AskUserQuestion. Defense in depth: even if Claude tried to bypass the slash, the `confirm-deploy.mjs` PreToolUse hook would block any deploy without the prefix.
-
-### Does the plugin send my code to Anthropic?
-
-The plugin's hooks and MCP server make HTTPS calls to `api.heylua.ai` only — never to `anthropic.com` or anywhere else. Your code goes from `lua-cli` directly to `api.heylua.ai`, then to your agent's runtime in `lua-core`. Claude Code itself sends your conversation (which may include code excerpts the model is reasoning about) to Anthropic per its own data policy — that's separate from the plugin.
-
-### How do I update the plugin?
-
-```
-/plugin marketplace update claude-code-lua-plugin
-/plugin install lua-agent-builder@claude-code-lua-plugin
-/reload-plugins
-```
-
-Auto-updates happen at session start if you enable them in Claude Code. The plugin's `version` field in `marketplace.json` controls when users receive updates. Release 1.1.0 adds the private typed login flow for lua-cli 3.28.0 and later.
-
-### Can I customize the slash commands?
-
-The slashes are markdown files at `~/.claude/plugins/cache/lua-agent-builder/commands/`. You can edit them locally, but updates will overwrite your changes. For lasting customization, fork the plugin repo and use a local marketplace pointing at your fork.
-
-### How do I uninstall?
-
-```
-/plugin uninstall lua-agent-builder@claude-code-lua-plugin
-/plugin marketplace remove claude-code-lua-plugin
-```
-
-Then optionally remove the merged permission rules from `.claude/settings.json` and the credentials file at `~/.lua-cli/credentials`.
-
-### What happens if I have multiple Lua projects open?
-
-Each Claude Code session is scoped to one CWD. The hooks read `lua.skill.yaml` from the user's actual command CWD (per the Claude Code hook payload's `cwd` field — bug 65 fix), so if you have two projects in two terminals, each session sees its own agent. The MCP server uses your stored API key, which is account-scoped — so `mcp__lua-platform__list_agents` returns all your accessible agents regardless of which project's CWD you're in.
-
-### Where do I report bugs?
-
-- Plugin bugs: [GitHub issues](https://github.com/lua-ai-global/claude-code-lua-plugin/issues)
-- Security issues: email security@heylua.ai (see [SECURITY.md](../plugins/lua-agent-builder/SECURITY.md))
-- `lua-cli` bugs: [lua-cli issues](https://github.com/lua-ai-global/lua-cli/issues)
-- General Lua platform questions: [docs.heylua.ai](https://docs.heylua.ai)
-
----
-
-## Getting help
-
-- **Documentation hub**: [docs.heylua.ai](https://docs.heylua.ai)
-- **CLI reference**: [docs.heylua.ai/cli](https://docs.heylua.ai/cli)
-- **Plugin source code**: [github.com/lua-ai-global/claude-code-lua-plugin](https://github.com/lua-ai-global/claude-code-lua-plugin)
-- **Anthropic Claude Code docs**: [code.claude.com/docs](https://code.claude.com/docs)
-- **Support**: [support@heylua.ai](mailto:support@heylua.ai)
-
-The plugin's structural lints (`scripts/lint-*.mjs`) double as documentation — each one's header comment explains the bug class it prevents. If you're contributing or curious about a specific design decision, those headers are a good starting point.
+**Where do I report bugs?** Plugin: https://github.com/lua-ai-global/claude-code-lua-plugin/issues · Security: security@heylua.ai · lua-cli: https://github.com/lua-ai-global/lua-cli/issues · Docs: https://docs.heylua.ai (and `mcp__plugin_lua-agent-builder_lua-docs__submit_feedback` for a wrong page).

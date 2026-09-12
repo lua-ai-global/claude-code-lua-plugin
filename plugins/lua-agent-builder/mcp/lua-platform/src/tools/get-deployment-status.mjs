@@ -1,28 +1,40 @@
 import { apiRequest } from '../api-client.mjs';
-import { extractList, extractVersions } from '../response-shapes.mjs';
+import {
+  extractList,
+  extractVersions,
+  extractActiveVersionId,
+  isActiveVersion,
+  versionCreatedAt,
+  versionId,
+  LIST_PATHS,
+} from '../response-shapes.mjs';
 
-// Composes deployment status from existing per-type lua-api endpoints.
-// We deliberately do NOT depend on a `/agents/:id/production` route — that
-// endpoint doesn't exist in lua-api today and the read pattern is rare
-// enough that adding it would add surface area for marginal value (per the
-// v1.25 architectural decision). If aggregate latency becomes a real
-// bottleneck, revisit at v1.1 with measured evidence.
+// Composes "what is live" from the per-type lua-api list + versions routes.
+// There is no single `/agents/:id/production` route; `lua status --json`
+// gives the same picture for the CURRENT project (local vs deployed) and is
+// the better tool when a lua.skill.yaml is at hand. This tool works for any
+// agent the credential can reach, project or not.
 //
-// Per-type response shape extraction lives in response-shapes.mjs because
-// lua-api's DTOs are inconsistent across primitive types.
+// Per-type envelope handling lives in response-shapes.mjs.
+//
+// Request fan-out (1 + 7 + N version lookups) is parallelised in two phases:
+//   1. the persona call and the seven list calls run together;
+//   2. per type, item version lookups run in chunks of VERSIONS_CHUNK_SIZE.
+// Output order is deterministic regardless of completion order: types in
+// PRIMITIVE_TYPES order, items in the order the list route returned them.
+// A wall-clock budget (BUDGET_MS, injectable as deps.budgetMs) stops NEW
+// requests once exceeded; already-issued requests still complete. Items that
+// could not be looked up are still listed, with `error: "skipped: …"`, and
+// the result carries `partial: true` + `partialReason`.
 
-const PRIMITIVE_TYPES = [
-  { type: 'skill',         path: 'skills' },
-  { type: 'webhook',       path: 'webhooks' },
-  { type: 'job',           path: 'jobs' },
-  { type: 'preprocessor',  path: 'preprocessors' },
-  { type: 'postprocessor', path: 'postprocessors' },
-];
+const PRIMITIVE_TYPES = ['skill', 'webhook', 'job', 'trigger', 'preprocessor', 'postprocessor', 'workflow'];
+const VERSIONS_CHUNK_SIZE = 5;
+const DEFAULT_BUDGET_MS = 45_000;
 
 export const getDeploymentStatus = {
   spec: {
     name: 'get_deployment_status',
-    description: 'Get the current production deployment status for an agent — what version of each primitive (skill/webhook/job/preprocessor/postprocessor) is live right now. Composed from per-type version endpoints.',
+    description: 'What is live right now for an agent: for every skill, webhook, job, trigger, preprocessor, postprocessor and workflow the active (deployed) version, plus the active persona version. Composed from the per-type lua-api version routes (list calls in parallel, then per-item version lookups in chunks of 5). Bounded by a 45 s wall-clock budget: if exceeded, remaining items are listed with `error: "skipped: …"` and the result carries `partial: true` + `partialReason`. Inside a project, `lua status --json` additionally compares local vs deployed.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -34,51 +46,108 @@ export const getDeploymentStatus = {
   async handler({ agentId }, deps = {}) {
     if (!agentId) throw new Error('agentId is required');
     const id = encodeURIComponent(agentId);
+    const budgetMs = Number.isFinite(deps.budgetMs) ? deps.budgetMs : DEFAULT_BUDGET_MS;
+    const startedAt = Date.now();
+    const overBudget = () => Date.now() - startedAt > budgetMs;
+    const get = (path) => apiRequest(path, { fetchFn: deps.fetchFn });
 
-    const result = { agentId, primitives: {} };
+    const result = { agentId, persona: null, primitives: {} };
+    // Seed keys up front so the output key order never depends on timing.
+    for (const type of PRIMITIVE_TYPES) result.primitives[type] = [];
 
-    for (const { type, path } of PRIMITIVE_TYPES) {
-      result.primitives[type] = [];
-      let listResponse;
-      try {
-        listResponse = await apiRequest(`/developer/${path}/${id}`, { fetchFn: deps.fetchFn });
-      } catch (err) {
-        result.primitives[type] = { error: err.message };
+    // Phase 1: persona + every list route, all in flight at once.
+    // Persona: one per agent, versions under /developer/agents/:agentId/persona/versions.
+    const [personaOutcome, ...listOutcomes] = await Promise.allSettled([
+      get(`/developer/agents/${id}/persona/versions`),
+      ...PRIMITIVE_TYPES.map((type) => get(`/developer/${LIST_PATHS[type]}/${id}`)),
+    ]);
+
+    if (personaOutcome.status === 'fulfilled') {
+      const personaResponse = personaOutcome.value;
+      const versions = extractVersions('persona', personaResponse);
+      const active = versions.find((v) => isActiveVersion('persona', v, personaResponse)) ?? null;
+      result.persona = {
+        activeVersion: active?.version ?? null,
+        activeVersionCreatedAt: versionCreatedAt(active),
+        versionCount: versions.length,
+      };
+    } else {
+      result.persona = { error: personaOutcome.reason?.message ?? String(personaOutcome.reason) };
+    }
+
+    // Phase 2: per type, resolve each item's versions in chunks. Types are
+    // visited sequentially (canonical order); within a type up to
+    // VERSIONS_CHUNK_SIZE lookups are in flight together.
+    let budgetExhausted = false;
+    let skipped = 0;
+    let total = 0;
+
+    for (let t = 0; t < PRIMITIVE_TYPES.length; t++) {
+      const type = PRIMITIVE_TYPES[t];
+      const path = LIST_PATHS[type];
+      const outcome = listOutcomes[t];
+      if (outcome.status !== 'fulfilled') {
+        result.primitives[type] = { error: outcome.reason?.message ?? String(outcome.reason) };
         continue;
       }
 
-      const items = extractList(type, listResponse);
-      for (const p of items) {
-        // Iteration-13 audit: the URL slot is :skillId / :webhookId / :jobId
-        // etc. (verified against lua-api skills/base.controller.ts:335). The
-        // earlier code preferred `p.name` and produced 404s for every item.
-        // Use the primitive's id; fall back to name only as a last resort for
-        // forward-compat with hypothetical future dual-lookup endpoints.
-        const primId = p.id ?? p._id ?? p.name;
-        const name = p.name ?? primId;
-        if (!primId) continue;
-        let versionsResponse;
-        try {
-          versionsResponse = await apiRequest(
-            `/developer/${path}/${id}/${encodeURIComponent(primId)}/versions`,
-            { fetchFn: deps.fetchFn }
-          );
-        } catch (err) {
-          result.primitives[type].push({ name, error: err.message });
+      // The URL slot is the server id (:skillId / :webhookId / ...), never
+      // the name. Items without an id are dropped, as before.
+      const targets = extractList(type, outcome.value)
+        .map((p) => ({ p, primId: p.id ?? p._id, name: p.name ?? p.id ?? p._id }))
+        .filter((tgt) => tgt.primId);
+      total += targets.length;
+
+      for (let i = 0; i < targets.length; i += VERSIONS_CHUNK_SIZE) {
+        const chunk = targets.slice(i, i + VERSIONS_CHUNK_SIZE);
+
+        if (budgetExhausted || overBudget()) {
+          budgetExhausted = true;
+          skipped += chunk.length;
+          for (const { name, primId } of chunk) {
+            result.primitives[type].push({
+              name, id: primId,
+              error: `skipped: wall-clock budget of ${budgetMs}ms exhausted before this version lookup was issued`,
+            });
+          }
           continue;
         }
 
-        const versions = extractVersions(type, versionsResponse);
-        const deployed = versions
-          .filter((v) => v.deployedAt)
-          .sort((a, b) => new Date(b.deployedAt) - new Date(a.deployedAt))[0];
+        const outcomes = await Promise.allSettled(
+          chunk.map(({ primId }) => get(`/developer/${path}/${id}/${encodeURIComponent(primId)}/versions`))
+        );
 
-        result.primitives[type].push({
-          name,
-          deployedVersion: deployed?.version ?? null,
-          deployedAt: deployed?.deployedAt ?? null,
+        outcomes.forEach((vo, j) => {
+          const { p, primId, name } = chunk[j];
+          if (vo.status !== 'fulfilled') {
+            result.primitives[type].push({ name, id: primId, error: vo.reason?.message ?? String(vo.reason) });
+            return;
+          }
+          const versionsResponse = vo.value;
+          const versions = extractVersions(type, versionsResponse);
+          const active = versions.find((v) => isActiveVersion(type, v, versionsResponse)) ?? null;
+
+          const entry = {
+            name,
+            id: primId,
+            activeVersion: active?.version ?? null,
+            activeVersionId: versionId(active) ?? extractActiveVersionId(versionsResponse),
+            activeVersionCreatedAt: versionCreatedAt(active),
+            versionCount: versions.length,
+          };
+          // Records that carry their own enabled/disabled switch.
+          if (typeof p.active === 'boolean') entry.enabled = p.active;
+          if (type === 'workflow' && typeof p.dynamic === 'boolean') entry.dynamic = p.dynamic;
+          result.primitives[type].push(entry);
         });
       }
+    }
+
+    if (skipped > 0) {
+      result.partial = true;
+      result.partialReason =
+        `Wall-clock budget of ${budgetMs}ms exceeded after ${Date.now() - startedAt}ms; ` +
+        `${skipped} of ${total} version lookups were not issued (entries carry error: "skipped: …").`;
     }
 
     return {

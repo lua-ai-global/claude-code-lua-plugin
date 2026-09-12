@@ -1,12 +1,24 @@
-// PreToolUse hook for `lua deploy` and `LUA_DEPLOY_CONFIRMED=1 lua deploy`.
+// PreToolUse hook for every production-affecting lua-cli verb.
 // Per feature doc §3.3 / tech spec §6.3 row 4.
 //
-// The §5.2 `permissions.deny` rule blocks bare `lua deploy` at the
-// Claude Code permission layer — this hook is defence-in-depth for
-// terminal pass-through (Tier C) where `permissions` doesn't apply.
+// Registered for EVERY Bash call (no `if` glob in hooks.json): the
+// classification lives in lib/tokenizer.mjs, which also knows the CLI's
+// action aliases (`publish`, `on`, `enable`, `submit`, `rollout`, …) and the
+// three installed binaries (`lua`, `heylua`, `lua-ai`). A glob list would
+// have to be kept in sync with all of that; a single classifier cannot
+// drift. Non-production commands return null immediately (allow).
+//
+// THIS HOOK IS THE GATE, not a second line. Claude Code's permission layer
+// cannot express "deny the bare verb but allow the prefixed one": deny/ask
+// rules match past any leading env assignment (code.claude.com/docs/en/
+// permissions, verified live 2026-09-12), so a `Bash(lua deploy*)` deny would
+// also block `LUA_DEPLOY_CONFIRMED=1 lua deploy …`. lib/permissions-template.json
+// therefore lists only the prefixed forms (allow) and nothing for the bare
+// forms; an exit-2 block from this hook takes precedence over any allow rule,
+// including a broad `Bash(lua *)` in the user's own settings.
 
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
-import { isPrefixedDeploy, hasAutoDeploy } from '../lib/tokenizer.mjs';
+import { classifyProductionCommand, hasAutoDeploy } from '../lib/tokenizer.mjs';
 
 /**
  * Pure function — exported so tests can import and call directly without
@@ -21,22 +33,24 @@ export function decide(input) {
     return {
       block: true,
       reason:
-        'DEPLOY_DENIED_AUTO: --auto-deploy is never appropriate from inside Claude Code. ' +
+        'DEPLOY_DENIED_AUTO: --auto-deploy is never appropriate from inside Claude Code ' +
+        '(a granular push would publish as a side effect; lua-cli ignores it for `push all` anyway). ' +
         'Use /lua-deploy instead — it spawns the deploy-pilot subagent which gates each step.',
     };
   }
 
-  if (!isPrefixedDeploy(command)) {
-    return {
-      block: true,
-      reason:
-        'DEPLOY_DENIED_BARE: Bare `lua deploy` is blocked. Use /lua-deploy ' +
-        '(which sets the required LUA_DEPLOY_CONFIRMED=1 prefix after collecting ' +
-        'your single permission interaction per the §3.7 contract).',
-    };
-  }
+  const classified = classifyProductionCommand(command);
 
-  return null;  // Allow
+  if (!classified) return null;          // Not a production verb — allow
+  if (classified.prefixed) return null;  // User-authorised via the slash flow — allow
+
+  return {
+    block: true,
+    reason:
+      `DEPLOY_DENIED_BARE: \`${classified.label}\` changes what runs in production and is blocked without the ` +
+      `LUA_DEPLOY_CONFIRMED=1 prefix. Use ${classified.slash} (it collects your single confirmation per the §3.7 ` +
+      'contract, then emits the prefixed form). Shell wrappers and pipes are refused even with the prefix.',
+  };
 }
 
 // Script entry point — only fires when Claude Code invokes this file directly.

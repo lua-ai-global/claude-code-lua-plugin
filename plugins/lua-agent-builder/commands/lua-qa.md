@@ -1,36 +1,28 @@
 ---
-description: Run a conversational QA pass against the agent. Picks sandbox (if local code differs from production) or production (if in sync). Spawns the lua-qa subagent, which writes a triage report identifying issues for other subagents to fix.
+description: Run a conversational QA pass against the agent (sandbox when local code is ahead of production, production when in sync), plus offline workflow scenarios and a log scan. Spawns the lua-qa subagent, which writes a triage report.
 ---
 
-You are `/lua-qa`. The user wants a conversational QA pass.
+You are `/lua-qa`. The user wants a QA pass.
 
-## Step 1 — collect optional scope (single permission per §3.7)
+## Step 1 — collect the scope (single permission per §3.7)
 
-If `$ARGUMENTS` is empty, AskUserQuestion **once**:
+If `$ARGUMENTS` names a tool or workflow (e.g. `/lua-qa weather`), skip the question and pass it through. Otherwise AskUserQuestion **once**:
 
-- "QA scope?" (options: `Full suite (~12-15 tests)`, `Smoke only (3-5 tests)`, `Specific tool: <name>`)
-- "How long can the run take?" (options: `≤2 min (small)`, `≤5 min (default)`, `≤10 min (thorough)`)
-
-If `$ARGUMENTS` already specifies a tool name (e.g. `/lua-qa weather-tool`), skip the AskUserQuestion entirely and pass the tool to the subagent.
+- "QA scope?" (options: `Full suite (8-15 conversations + every workflow)`, `Smoke only (3-5 conversations)`, `Specific tool or workflow: <name>`)
+- "Time budget?" (options: `≤2 min`, `≤5 min (default)`, `≤10 min (thorough)`)
 
 ## Step 2 — invoke lua-qa via the Agent tool
 
-Use the **Agent tool** with `subagent_type: "lua-qa"` and a prompt containing `{ scope, timeBudget }` verbatim. (Iteration-13 audit: explicit Task-tool invocation is the only way to actually dispatch a subagent from a slash.) The subagent:
+Use the **Agent tool** with `subagent_type: "lua-qa"` and a prompt containing `{ scope, timeBudget, target? }` verbatim. The subagent (`${CLAUDE_PLUGIN_ROOT}/agents/lua-qa.md`):
 
-1. Decides sandbox vs production via `Bash(lua sync --check)` (zero exit = clean = production; non-zero = drift = sandbox).
-2. Derives a test plan from the agent's surface (tools, persona, fixtures).
-3. Runs the conversational suite via `lua chat --ci -e <env> -m '<msg>' -t qa-<test-id>-<timestamp>` — the `-t` flag is REQUIRED so smoke tests don't pollute the agent's default thread.
-4. Scans logs for errors timestamped during the test window.
-5. Writes a triage report routing each finding to the right subagent.
+1. Picks sandbox vs production from `lua status --json --ci` (`diffs[].status` `ahead`/`not deployed` ⇒ sandbox).
+2. Derives conversations from the code (tools, schemas, persona, conditions) and runs each as `lua chat --ci -e <env> -m '<msg>' -t qa-<id>-<ts>` — the `-t` id keeps tests out of the default thread.
+3. Runs each workflow offline: `lua test --ci workflow --name <n> --input '…' --agents fake …` per predicate branch.
+4. Scans logs (`mcp__plugin_lua-agent-builder_lua-platform__tail_logs`, falling back to `lua logs --ci --type all --limit 100 --json`; `subType === 'error' | 'warn'` in the test window).
+5. Writes a triage report with a fix path per finding.
 
-Per §3.7, the subagent never calls AskUserQuestion. The report is the output.
+It never calls AskUserQuestion and never mutates server state.
 
-## Step 3 — present the report and offer follow-up
+## Step 3 — present the report
 
-After the subagent finishes, surface the report inline. For each finding:
-
-- If routed to `lua-skill-builder` or `lua-debug`, **offer** to spawn that subagent to apply the fix. The user clicks once to confirm; that's their second permission interaction (a separate slash invocation, so §3.7 holds).
-- If routed to `lua-deploy-pilot` (rollback), explain the situation and tell the user to run `/lua-deploy`, then pick the previously-deployed version `<prev>` when the slash asks "Version?" (free-text). Do NOT advise `/lua-deploy --set-version <prev>` — that slash collects all inputs via `AskUserQuestion` and doesn't parse `$ARGUMENTS` for flags (iteration-13 audit caught the misleading advice).
-- If a finding is operational (latency, persona), describe what needs to change and stop.
-
-Do not auto-spawn fix agents — every fix is a deliberate user decision.
+Surface the report inline. For each finding, follow its fix path: `/lua-new` (revise a tool or its description), `/lua-test` (it routes a failing primitive to the debug subagent), `/lua-workflow run <name>` (workflow schema/step issues), a persona edit in `src/index.ts` (then `/lua-push agent`), or `/lua-deploy` with the previous version for a production regression. **Do not auto-run fixes** — each is a separate, deliberate slash invocation by the user.

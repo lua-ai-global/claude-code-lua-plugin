@@ -10,14 +10,19 @@
 // silently with "command not found" when end-users installed the plugin.
 //
 // Lint contract per discovered server entry:
-//   1. The args path must reference ${CLAUDE_PLUGIN_ROOT}/mcp/<name>/...
-//      (other layouts are not handled — extend this script if needed).
-//   2. mcp/<name>/ must exist as a directory.
-//   3. mcp/<name>/package.json must exist (the source tree must be a real
-//      package — not just an empty stub).
-//   4. If the args path ends in dist/server.js, mcp/<name>/package.json
-//      must declare a `build` script (CI relies on this to produce the
-//      bundle for the release tarball).
+//   A. Remote (`"type": "http"` / `"sse"`): `url` must be an https:// URL on a
+//      heylua.ai host. Nothing to vendor or build — the transport is the
+//      public endpoint. Today this is the public docs MCP at
+//      https://docs.heylua.ai/mcp (documented on docs.heylua.ai/mcp-for-builders).
+//   B. Local stdio (`command` + `args`):
+//      1. The args path must reference ${CLAUDE_PLUGIN_ROOT}/mcp/<name>/...
+//         (other layouts are not handled — extend this script if needed).
+//      2. mcp/<name>/ must exist as a directory.
+//      3. mcp/<name>/package.json must exist (the source tree must be a real
+//         package — not just an empty stub).
+//      4. If the args path ends in dist/server.js, mcp/<name>/package.json
+//         must declare a `build` script (CI relies on this to produce the
+//         bundle for the release tarball).
 
 import { readFile, stat } from 'node:fs/promises';
 
@@ -39,7 +44,20 @@ if (serverNames.length === 0) {
   process.exit(1);
 }
 
+const REMOTE_TYPES = new Set(['http', 'sse']);
+const REMOTE_HOST_RE = /^https:\/\/([a-z0-9-]+\.)*heylua\.ai(\/|$)/;
+
 for (const [name, entry] of Object.entries(servers)) {
+  if (REMOTE_TYPES.has(entry?.type)) {
+    if (typeof entry.url !== 'string' || !REMOTE_HOST_RE.test(entry.url)) {
+      fail(`.mcp.json server "${name}": remote "${entry?.type}" server must have an https:// url on a heylua.ai host (got ${JSON.stringify(entry?.url)}).`);
+    }
+    if (entry.command || entry.args) {
+      fail(`.mcp.json server "${name}": a remote server must not also declare command/args.`);
+    }
+    continue;
+  }
+
   const args = entry?.args ?? [];
   const targetArg = args[0];
   if (typeof targetArg !== 'string') {
@@ -87,4 +105,4 @@ if (failed) {
   console.error('\nFix the issues above and re-run `npm run lint`.');
   process.exit(1);
 }
-console.log(`✓ .mcp.json: all ${serverNames.length} server(s) resolve to real, buildable source trees.`);
+console.log(`✓ .mcp.json: all ${serverNames.length} server(s) resolve to a buildable source tree or a heylua.ai remote endpoint.`);

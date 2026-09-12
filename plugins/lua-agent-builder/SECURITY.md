@@ -11,15 +11,15 @@ We aim to acknowledge within 2 business days and ship a fix within 30 days for h
 This plugin's surface includes:
 
 - **Hooks** (`hooks/*.mjs`) — run as subprocesses of Claude Code on `SessionStart`, `UserPromptSubmit`, and `Pre/PostToolUse(Bash)` events.
-- **MCP server** (`mcp/lua-platform/dist/server.js`) — a stdio MCP server exposing 5 read-only tools. Talks to `https://api.heylua.ai` over HTTPS using the user's API key.
-- **Slash commands** (`commands/*.md`) — Markdown prompts that Claude reads and executes.
-- **Permission rules** (`lib/permissions-template.json`) — auto-merged into the user's `.claude/settings.json` by `/lua-doctor` Step 5.
+- **MCP servers** — `mcp/lua-platform/dist/server.js`, a local stdio server exposing 5 read-only tools; it talks to `https://api.heylua.ai` over HTTPS with the user's lua-cli credential (and, for a session login, refreshes the stored refresh token at Google's securetoken endpoint exactly like lua-cli does). `lua-docs` is the public remote MCP at `https://docs.heylua.ai/mcp` (read-only docs search).
+- **Slash commands and subagents** (`commands/*.md`, `agents/*.md`) — Markdown prompts that Claude reads and executes.
+- **Permission rules** (`lib/permissions-template.json`) — merged into the user's `.claude/settings.json` by `/lua-doctor` Step 5 with consent.
 
 In scope for security reports:
 
-- Credential exposure (API keys leaking into transcripts, logs, or external systems)
-- Permission gate bypasses (deploys or destructive operations succeeding without the documented confirmation)
-- Hook payload injection (malicious bash commands triggering unintended hook behavior)
+- Credential exposure (API keys, session tokens or one-time codes leaking into transcripts, logs, or external systems)
+- Production-gate bypasses (any of the gated verbs below succeeding without the documented confirmation)
+- Hook payload injection (malicious bash commands triggering unintended hook behaviour)
 - MCP server auth bypass
 
 Out of scope:
@@ -30,17 +30,13 @@ Out of scope:
 
 ## Safety-critical contracts
 
-The plugin enforces several safety contracts. Bypasses count as security issues:
-
 | Contract | Where enforced |
 |---|---|
-| §3.3 deploy gate: bare `lua deploy` is denied | `lib/permissions-template.json` `deny` list + `hooks/confirm-deploy.mjs` |
-| §3.3 auto-deploy block: `--auto-deploy` is denied | same |
-| §3.7 single-permission contract: each slash asks at most one prompt | `scripts/lint-single-permission.mjs` |
-| Credential isolation: account details, OTPs, and credentials never enter the Claude conversation | `commands/lua-auth.md` sends new login to a private terminal; `hooks/block-auth-configure.mjs` and `lib/permissions-template.json` deny model-run login; `lua auth key*` remains denied |
+| Production gate: `lua deploy`, `lua skills\|webhooks\|jobs\|preprocessors\|postprocessors deploy`, `lua persona production deploy`, `lua workflows deploy\|activate`, `lua version promote`, `lua mcp activate`, `lua marketplace template publish\|apply` are blocked in bare form; only the `LUA_DEPLOY_CONFIRMED=1`-prefixed form emitted after the user's confirmation runs. The gate covers every spelling lua-cli accepts: the action aliases from its `aliases.ts` (`publish`→deploy, `on`/`enable`→activate, `submit`/`publish_version`→template publish, `deploy`/`fleet-apply`/`rollout`→template apply, `prod`/`prd`/`live`→production) and all three installed binaries (`lua`, `heylua`, `lua-ai`) | **The hook is the gate.** `hooks/confirm-deploy.mjs` runs on **every** Bash call (no `if` glob to drift), classifies with `lib/tokenizer.mjs` (the single source of truth) and exits 2 on a bare verb — a hook block takes precedence over any allow rule, including a broad `Bash(lua *)` in the user's own settings. Wrappers and pipes are refused even with the prefix. `lib/permissions-template.json` allows the literal prefixed forms (so the confirmed command runs without a second prompt) and deliberately has **no** deny/ask rule for the bare verbs: Claude Code evaluates deny/ask rules past a leading env assignment (code.claude.com/docs/en/permissions: "A deny or ask rule matches past any leading assignment"), so a `Bash(lua deploy*)` deny would also block the confirmed form and make every deploy impossible — verified live on 2026-09-12. A bare verb that reaches the permission layer falls to Claude Code's default prompt (a denial in `-p` mode). `heylua`/`lua-ai` are denied wholesale. `test/lib/permissions-mirror.test.mjs` and `scripts/lint-permissions.mjs` fail if a deny/ask rule would shadow a confirmed form or an allow rule admits a bare one |
+| `--auto-deploy` is never allowed | deny list (`Bash(lua * --auto-deploy*)` matches prefixed or not) + `hooks/block-auto-deploy.mjs` + `hooks/confirm-deploy.mjs` |
+| Single-permission contract: each slash asks at most one prompt. For workflow run-control verbs (`lua workflows start\|approve\|signal\|resume\|retry-step\|resolve-step\|raise-budget\|cancel\|deactivate\|export\|schedules\|goals`) that single prompt is the **Bash permission prompt** from the `ask` tier, which shows the exact command; `/lua-workflow` does not add an AskUserQuestion on top. `/lua-env` (`lua env *`; listings are masked by the CLI, set values are never echoed by the slash) and `/lua-integrations` (connect/update/disconnect/convert, webhook and MCP toggles) rely on the same `ask`-tier prompt | `scripts/lint-single-permission.mjs`; `ask` tier of `lib/permissions-template.json` |
+| Post-deploy smoke check fires after every verb that makes something live (`SMOKE_LABELS` in `lib/tokenizer.mjs`: deploy spellings, `persona production deploy`, `workflows deploy`, `version promote`, `mcp activate`) | `hooks/post-deploy-smoke.mjs` (PostToolUse on every Bash call) |
+| Credential isolation: account details, one-time codes and credentials never enter the conversation | `commands/lua-auth.md` sends login to a private terminal; `hooks/block-auth-configure.mjs`; `lua auth configure\|key\|logout` denied in `lib/permissions-template.json` |
+| Read-only MCP: no tool mutates platform state | `mcp/lua-platform/src/tools/*` (GET routes and `lua agents --json` only) |
 
-If you find a way to bypass any of these without an explicit user prompt, please report.
-
-## Audit history
-
-This plugin underwent 13 iterations of structured audit (commits prefixed with `iteration-`) before public release, fixing 78 documented bugs across the plugin / hook / MCP / knowledge-file surfaces. See the iteration-history comments in each lint script (`scripts/lint-*.mjs`) for the rationale behind each structural guard.
+If you find a way to bypass any of these without an explicit user prompt, please report it.

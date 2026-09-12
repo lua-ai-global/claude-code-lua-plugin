@@ -64,8 +64,15 @@ for (const tier of ['allow', 'ask', 'deny']) {
       fail(`permissions.${tier} entry is not a string: ${JSON.stringify(pattern)}`);
       continue;
     }
-    if (!pattern.startsWith('Bash(') || !pattern.endsWith(')')) {
-      fail(`permissions.${tier} entry doesn't match Bash(...) shape: ${pattern}`);
+    const isBash = pattern.startsWith('Bash(') && pattern.endsWith(')');
+    // MCP rules: `mcp__<server>` (every tool of a server) or `mcp__<server>__<tool>`;
+    // plugin servers are named `plugin_<plugin>_<server>` by Claude Code.
+    const isMcp = /^mcp__[A-Za-z0-9][A-Za-z0-9_-]*(?:__[a-z][a-z0-9_]*)?$/.test(pattern);
+    if (!isBash && !isMcp) {
+      fail(`permissions.${tier} entry is neither Bash(...) nor mcp__<server>[__<tool>]: ${pattern}`);
+    }
+    if (isMcp && tier !== 'allow') {
+      fail(`permissions.${tier} entry ${pattern}: MCP rules belong in allow only (the plugin's MCP tools are read-only; nothing to deny or ask).`);
     }
   }
 }
@@ -82,10 +89,63 @@ for (const a of askSet) {
   if (denySet.has(a)) fail(`Pattern in both ask and deny: ${a}`);
 }
 
-// Critical safety check: bare `lua deploy` MUST be denied. The whole §3.7
-// single-permission contract for deploys depends on this.
-if (!denySet.has('Bash(lua deploy*)')) {
-  fail('settings.json must deny `Bash(lua deploy*)` — required for §3.7 single-permission deploy gate.');
+// Critical safety check (inverted on 2026-09-12 after the live E2E run):
+// bare production verbs MUST NOT appear in `deny` or `ask`. Claude Code's
+// documented semantics (code.claude.com/docs/en/permissions): "A deny or ask
+// rule matches past any leading assignment", so `Bash(lua deploy*)` in deny
+// also matches the user-confirmed `LUA_DEPLOY_CONFIRMED=1 lua deploy …` form
+// and makes every deploy impossible — exactly what happened on all five E2E
+// agents. The gate for bare forms is hooks/confirm-deploy.mjs (a hook exit-2
+// block wins over any allow rule). The allow tier must carry the literal
+// prefixed forms so the confirmed command runs without a second prompt.
+const { PRODUCTION_COMMANDS } = await import('../lib/tokenizer.mjs');
+const globToRegex = (rule) => {
+  const m = rule.match(/^Bash\((.*)\)$/s);
+  return m ? new RegExp('^' + m[1].split('*').map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$', 's') : null;
+};
+const BARE_SAMPLES = [
+  'lua deploy skill --ci --name x --set-version latest --force',
+  'lua skills deploy --skill-name x --skill-version latest',
+  'lua webhooks deploy --webhook-name x',
+  'lua jobs deploy -i x -v latest',
+  'lua preprocessors deploy --preprocessor-name x',
+  'lua postprocessors deploy --postprocessor-name x',
+  'lua persona production deploy --persona-version latest --force',
+  'lua workflows deploy outreach -v latest',
+  'lua workflows activate outreach',
+  'lua version promote 3',
+  'lua mcp activate fs',
+  'lua marketplace template publish --template-id t',
+  'lua marketplace template apply --template-id t --all-installed --force',
+];
+for (const sample of BARE_SAMPLES) {
+  if (!PRODUCTION_COMMANDS.some((e) => e.re.test(sample))) {
+    fail(`lint self-check: tokenizer no longer classifies "${sample}" — update BARE_SAMPLES or the tokenizer.`);
+  }
+  for (const [tier, rules] of [['deny', denySet], ['ask', askSet]]) {
+    for (const rule of rules) {
+      const re = globToRegex(rule);
+      if (re && re.test(sample)) {
+        fail(`permissions.${tier} rule "${rule}" matches the bare production verb "${sample}". Claude Code evaluates deny/ask rules past a leading env assignment, so this rule would ALSO block the confirmed form \`LUA_DEPLOY_CONFIRMED=1 ${sample}\` and no deploy could ever run. Remove it — hooks/confirm-deploy.mjs is the gate for bare forms.`);
+      }
+    }
+  }
+  const prefixed = `LUA_DEPLOY_CONFIRMED=1 ${sample}`;
+  if (![...allowSet].some((rule) => globToRegex(rule)?.test(prefixed))) {
+    fail(`No allow rule matches the confirmed form "${prefixed}" — the deploy flow would prompt a second time (breaks §3.7) or be denied in -p mode.`);
+  }
+  if ([...allowSet].some((rule) => globToRegex(rule)?.test(sample))) {
+    fail(`An allow rule admits the BARE production verb "${sample}" — only the LUA_DEPLOY_CONFIRMED=1 form may be allowed.`);
+  }
+}
+
+// The plugin's read-only MCP tools must be pre-approved under the name Claude
+// Code gives a plugin server, or every subagent call to them prompts (§3.7).
+for (const required of ['mcp__plugin_lua-agent-builder_lua-platform', 'mcp__plugin_lua-agent-builder_lua-docs__search_lua_cli', 'mcp__plugin_lua-agent-builder_lua-docs__query_docs_filesystem_lua_cli']) {
+  if (!allowSet.has(required)) fail(`permissions.allow must contain "${required}" — Claude Code names plugin MCP tools mcp__plugin_<plugin>_<server>__<tool>, and without this every subagent MCP call prompts.`);
+}
+if (allowSet.has('mcp__plugin_lua-agent-builder_lua-docs') || allowSet.has('mcp__lua-docs')) {
+  fail('Do not allow the whole lua-docs server: submit_feedback posts to the docs team and must keep prompting.');
 }
 
 // Critical safety check: --auto-deploy must be denied somewhere.
@@ -130,8 +190,6 @@ const REQUIRED_ALLOW_PREFIXES = [
   // prints the API key to stdout and so leaked it into the conversation
   // transcript every time /lua-doctor ran).
   'Bash(lua agents',
-  // Deploy gate: only the env-prefixed form is allowed
-  'Bash(LUA_DEPLOY_CONFIRMED=1 lua deploy',
   // Read-only git probes used by deploy-pilot pre-flight (`git status --short`)
   // and lua-debug history-walk (`git log --oneline`, `git diff`). Without
   // these the §3.7 single-permission contract breaks: every `git` call

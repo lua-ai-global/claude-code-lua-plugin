@@ -32,6 +32,47 @@ describe('post-deploy-smoke decide()', () => {
     expect(result).toBeNull();
   });
 
+  // Architect review I2: the old DEPLOY_PATTERN only matched `lua deploy`, so
+  // hooks.json's `*lua version promote*` registration never produced a smoke
+  // check. Now every SMOKE_LABELS verb (and its alias/binary spellings) does.
+  test.each([
+    'LUA_DEPLOY_CONFIRMED=1 lua version promote 3',
+    'LUA_DEPLOY_CONFIRMED=1 lua workflows deploy outreach -v latest',
+    'LUA_DEPLOY_CONFIRMED=1 lua workflows publish outreach -v latest',
+    'LUA_DEPLOY_CONFIRMED=1 lua persona production deploy --persona-version latest --force',
+    'LUA_DEPLOY_CONFIRMED=1 lua persona prod publish --persona-version 5',
+    'LUA_DEPLOY_CONFIRMED=1 lua skills publish --skill-name x --skill-version latest',
+    'LUA_DEPLOY_CONFIRMED=1 lua jobs deploy -i x -v latest',
+    'LUA_DEPLOY_CONFIRMED=1 lua mcp activate fs',
+    'LUA_DEPLOY_CONFIRMED=1 heylua deploy all --force',
+  ])('runs the smoke check after %s', async (command) => {
+    const spawnLuaFn = fakeSpawn([
+      { exitCode: 1, stdout: '', stderr: 'connection refused', timedOut: false },
+    ]);
+    const result = await decide({ tool_input: { command } }, { spawnLuaFn });
+    expect(result?.warn).toContain('agent did not respond');
+    expect(spawnLuaFn.calls).toHaveLength(1);
+  });
+
+  test.each([
+    'LUA_DEPLOY_CONFIRMED=1 lua workflows activate outreach',
+    'LUA_DEPLOY_CONFIRMED=1 lua marketplace template publish --template-id t',
+    'LUA_DEPLOY_CONFIRMED=1 lua marketplace template apply --template-id t --all-installed --force',
+    'lua push all --ci --force',
+    'lua version create --name v2',
+    'lua chat --ci -m hi',
+  ])('does not ping the agent after %s (gated, but nothing newly live — or not gated at all)', async (command) => {
+    const spawnLuaFn = fakeSpawn([]);
+    expect(await decide({ tool_input: { command } }, { spawnLuaFn })).toBeNull();
+    expect(spawnLuaFn.calls).toHaveLength(0);
+  });
+
+  test('names the verb in the warning', async () => {
+    const spawnLuaFn = fakeSpawn([{ exitCode: 1, stdout: '', stderr: '', timedOut: false }]);
+    const result = await decide({ tool_input: { command: 'LUA_DEPLOY_CONFIRMED=1 lua version promote 3' } }, { spawnLuaFn });
+    expect(result?.warn).toContain('(lua version promote)');
+  });
+
   test('returns null when tool_response.success is false', async () => {
     const spawnLuaFn = fakeSpawn([]);
     const result = await decide(

@@ -20,7 +20,10 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-const CLI_DEF = '../../packages/lua-cli/src/cli/command-definitions.ts';
+// Set LUA_CLI_SRC=/path/to/lua-core-services/packages/lua-cli to run this
+// check from the standalone plugin repo against a local checkout.
+const CLI_ROOT = process.env.LUA_CLI_SRC ?? '../../packages/lua-cli';
+const CLI_DEF = `${CLI_ROOT}/src/cli/command-definitions.ts`;
 
 let cliSource;
 try {
@@ -49,21 +52,47 @@ function setSub(parent, set) {
   for (const s of set) SUBCOMMANDS[parent].add(s);
 }
 
-// Hand-curated from the help-text blocks; the lint won't try to parse free
-// text exhaustively (too brittle). The list mirrors the `Actions:` sections
-// in command-definitions.ts. Update when commands gain/lose actions.
-setSub('auth',         ['configure', 'logout', 'key']);
+// Hand-curated from command-definitions.ts / aliases.ts (lua-cli 3.33.0); the
+// lint won't try to parse free text exhaustively (too brittle). Update when
+// commands gain/lose actions.
+setSub('auth',         ['configure', 'logout', 'key', 'sessions']);
 setSub('chat',         ['clear']);
-setSub('integrations', ['connect', 'update', 'list', 'available', 'info', 'disconnect', 'webhooks', 'mcp']);
-// Iteration-13 audit: lib/knowledge/integrations.md referenced
-// `lua channels add` — `add` is not a recognised action of `lua channels`
-// (channels has only `list` for non-interactive use; creation is
-// interactive and has no subcommand name).
+setSub('integrations', ['connect', 'update', 'list', 'available', 'info', 'disconnect', 'convert', 'webhooks', 'triggers', 'mcp']);
+// `lua channels` has only `list` for non-interactive use; creation is
+// interactive and has no subcommand name.
 setSub('channels',     ['list']);
-// `lua integrations webhooks <action>` (one level deeper) is NOT modelled
-// here — the lint only catches single-token misnames. Cross-checking
-// nested action lists would over-fit; the architect's mistakes here are
-// usually at the top level (`add` vs `connect`).
+setSub('voice',        ['test', 'list']);
+setSub('version',      ['create', 'list', 'show', 'diff', 'promote', 'status', 'delete']);
+setSub('git',          ['connect', 'disconnect', 'status', 'auth']);
+setSub('source',       ['list', 'rollback']);
+setSub('marketplace',  ['skill', 'template']);
+setSub('models',       ['list', 'set', 'unset']);
+setSub('telemetry',    ['on', 'off', 'status']);
+setSub('governance',   ['add', 'remove']);
+setSub('triggers',     ['list', 'create', 'logs', 'activate', 'deactivate', 'rotate-token', 'delete']);
+setSub('features',     ['list', 'enable', 'disable', 'view', 'configure']);
+setSub('resources',    ['list', 'view', 'delete']);
+setSub('production',   ['overview', 'persona', 'skills', 'env']);
+setSub('mcp',          ['list', 'activate', 'deactivate', 'delete']);
+setSub('devices',      ['list', 'status', 'enable', 'disable', 'remove', 'test', 'test-trigger']);
+setSub('jobs',         ['view', 'versions', 'deploy', 'activate', 'deactivate', 'trigger', 'history', 'delete']);
+setSub('webhooks',     ['view', 'versions', 'deploy', 'activate', 'deactivate', 'delete', 'list-events', 'subscribe', 'unsubscribe']);
+setSub('preprocessors',  ['view', 'versions', 'deploy', 'activate', 'deactivate', 'delete']);
+setSub('postprocessors', ['view', 'versions', 'deploy', 'activate', 'deactivate', 'delete']);
+setSub('skills',       ['sandbox', 'staging', 'production', 'view', 'versions', 'deploy', 'delete']);
+setSub('workflows',    ['list', 'view', 'versions', 'deploy', 'activate', 'deactivate', 'start', 'run', 'runs', 'status',
+                        'watch', 'cancel', 'resume', 'retry-step', 'resolve-step', 'raise-budget', 'approve', 'approval-payload',
+                        'signal', 'replay', 'logs', 'delete', 'delete-run', 'env-overlay', 'export', 'archive-runs',
+                        'workspace', 'jobs', 'job-logs', 'goals', 'schedules']);
+setSub('test',         ['skill', 'webhook', 'job', 'preprocessor', 'postprocessor', 'workflow']);
+setSub('push',         ['skill', 'agent', 'persona', 'webhook', 'trigger', 'job', 'preprocessor', 'postprocessor', 'mcp',
+                        'device', 'device-trigger', 'voice', 'workflow', 'backup', 'all']);
+setSub('deploy',       ['skill', 'webhook', 'trigger', 'job', 'preprocessor', 'postprocessor', 'persona', 'all']);
+setSub('env',          ['sandbox', 'staging', 'production']);
+setSub('persona',      ['sandbox', 'staging', 'production']);
+// `lua integrations webhooks <action>` / `lua workflows goals <verb>` (one
+// level deeper) are NOT modelled — the lint only catches single-token
+// misnames at the first level.
 
 // Extract `lua <token1> <token2>` mentions from each .md file. Skip code
 // blocks marked as bash output (rendered text) but include inline code

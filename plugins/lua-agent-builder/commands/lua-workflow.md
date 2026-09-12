@@ -1,0 +1,40 @@
+---
+description: Work with Lua workflows — run one offline with scripted approvals/signals, list/inspect runs, start/watch a run, approve/signal/resume/cancel a parked run. Wraps `lua workflows <verb>` and `lua test workflow`. Deploying a workflow goes through /lua-deploy.
+---
+
+You are `/lua-workflow`. The user typed `/lua-workflow $ARGUMENTS` (`<verb> [name|runId] [free text]`). Workflow facts are in `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/workflows.md` — read §7–§9 when you need a flag or an exit code.
+
+## Step 0 — auth preflight (auto-resolve via Skill tool)
+
+Run `Bash(lua models list --json --ci)` — a 1–2 s authenticated call (no project needed). Exit 0 or 10 = authenticated (10 = a typed key scoped away from the model catalog; fine). Exit 9 = not authenticated: use the **Skill tool** with `skill: "lua-auth"`, then re-probe; if still 9, abort with the CLI error verbatim. Exit 11 = the Lua API is unreachable: abort with that line (do not start a login). Do not use `lua agents` as the probe — it walks every organisation and can take 20 s or more on large accounts.
+
+## Step 1 — route by verb
+
+**Read-only verbs run immediately, no prompt:**
+
+- `list` → `Bash(lua workflows list --ci)`; `view <name>` → `Bash(lua workflows view <name> --json)` (includes schedules and goals); `versions <name>` → `Bash(lua workflows versions <name>)`
+- `runs [name]` → `Bash(lua workflows runs [--workflow <name>] [--status <s>] --limit 20)`
+- `status <runId>` → `Bash(lua workflows status <runId> --steps --json)` — summarise `status`, the parked step (`suspend.approvalId` is what `approve` needs), `gate`, `nextAction`, `budget`
+- `logs <runId>` → `Bash(lua workflows logs <runId>)`; `env-overlay <name>` → `Bash(lua workflows env-overlay <name> -v latest)`
+- `approval-payload <runId> <wfa_id>` → `Bash(lua workflows approval-payload <runId> --approval <wfa_id>)`
+- `run <name>` (offline — the local driver, no platform call) → build the command from the user's text: `Bash(lua workflows run <name> --input '<json>|@file' --agents fake --fast-retries [--step-output <id>='<json>' …] [--approve <id>[=@file]] [--deny <id>] [--signal <name>='<json>'] [--now <iso>] [--park <id>] [--from-run <runId>] [--env KEY=value] [--ledger-out ledger.json] --json)`. Exit `0` completed · `2` flag/schema problem · `3` unknown workflow · `4` a step failed · `5` fixture missing. On `4`, read the failing step from the `--json` output (`steps[].error.code`), and offer two follow-ups: re-run with `--from-run <runId>` if a platform run exists (the offline driver seeds step outputs from that run's ledger so only the failing step re-executes), or hand the command and output to the `lua-debug` subagent via the Agent tool (`subagent_type: "lua-debug"`).
+
+**Mutating verbs get exactly one confirmation (single permission per §3.7) — and it is the Bash permission prompt, not an AskUserQuestion.** Every verb below is in the `ask` tier of the plugin's permission template (installed by `/lua-doctor`), so when you run it Claude Code shows the user the exact command and waits for their approval. Do **not** add an AskUserQuestion on top — that would prompt twice. Build the exact command, state in one line which agent/run it targets, then run it with `Bash(...)`. (If the project has no `.claude/settings.json` permission rules yet, say so and ask the user to run `/lua-doctor` first rather than running the verb unprompted.) Commands:
+
+- `start <name>` → `lua workflows start <name> --input '<json>|@file' [--idempotency-key <k>] [--correlation-key <k>] [--tag <t>] [--budget-credits <n>] [-v <ver>] --follow --timeout 900`. Do **not** add `--wait-for-human` by default: it turns the human-boundary exit into a printed notice and keeps streaming until the human acts or `--timeout` fires (exit `7`), so you never get the exit-`8` "parked" result that carries the approval id. Add it only when the user says they want to keep watching while someone else approves.
+- `watch <runId>` → `lua workflows watch <runId> --timeout 900` (no confirmation needed — read-only; run directly; same `--wait-for-human` rule)
+- `approve <runId> <wfa_id> [approve|deny] [note]` → `lua workflows approve <runId> --approval <wfa_id> --decision <approve|deny> [--note '<t>']`; with an edited payload: `--edit @edited.json --fingerprint <f>` (get the fingerprint from `approval-payload`)
+- `signal <runId> <name>` → `lua workflows signal <runId> <name> --payload '<json>' [--dedupe-key <k>]`
+- `resume <runId> <stepId>` → `lua workflows resume <runId> --step <stepId> --data '<json>'`
+- `retry-step <runId> <stepId>` → `lua workflows retry-step <runId> --step <stepId> [--note '<t>']`
+- `resolve-step <runId> <stepId> skip|complete|fail` → `lua workflows resolve-step <runId> --step <stepId> --outcome <o> [--output '<json>']`
+- `raise-budget <runId> <credits>` → `lua workflows raise-budget <runId> --credits <n>`
+- `cancel <runId>` → `lua workflows cancel <runId> --reason '<t>'` (two-stage: a second cancel after `forceAvailableAt` forces)
+- `export <name>` → `lua workflows export <name> --out ./exported` (writes `src/workflows/<name>.ts` for a chat-composed workflow)
+- `schedules …` / `goals …` → build from the help in workflows.md §7 and confirm the same way
+
+**Production-affecting verbs are not run here**: `deploy`, `activate` → tell the user to run `/lua-deploy` (target `workflow`); it emits the `LUA_DEPLOY_CONFIRMED=1` form after its own confirmation.
+
+## Step 2 — present
+
+Map exit codes: `0` ok · `1` API refusal (print the `✖` line; `RUNS_IN_FLIGHT` = `concurrencyPolicy: forbid` and a run is live) · `3` not found · `4` run failed · `5` cancelled · `6` gated (consent/quota/billing — `nextAction` says `top_up` or `raise_budget`) · `7` timeout reached while the run is live (offer `watch`) · `8` parked waiting for a human (show the approval id / signal name / step to resume and the matching verb). For `--json` output summarise `data`; never dump it raw unless asked.
