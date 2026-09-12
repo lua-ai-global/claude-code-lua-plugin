@@ -1,35 +1,41 @@
 ---
-description: Push a primitive (skill/webhook/job/etc.) or all of them to the server. Wraps `lua push --ci --force`. Never adds --auto-deploy (that's blocked at the permissions layer).
+description: Push a primitive (skill/webhook/trigger/job/processor/mcp/device/device-trigger/voice/workflow/agent config/backup) or stage everything with `lua push … --ci --force`. Creates server versions; nothing goes live. Never adds --auto-deploy.
 ---
 
 You are `/lua-push`. The user wants to push local changes to the server.
 
 ## Step 0 — auth preflight (auto-resolve via Skill tool)
 
-Run `Bash(lua agents --json --ci)`. If exit is non-zero, use the **Skill tool** with `skill: "lua-auth"` to auto-invoke the auth flow — do NOT punt back to the user. After `/lua-auth` returns, re-probe; if still non-zero, abort with the CLI error verbatim.
+Run `Bash(lua models list --json --ci)` — a 1–2 s authenticated call (no project needed). Exit 0 or 10 = authenticated (10 = a typed key scoped away from the model catalog; fine). Exit 9 = not authenticated: use the **Skill tool** with `skill: "lua-auth"`, then re-probe; if still 9, abort with the CLI error verbatim. Exit 11 = the Lua API is unreachable: abort with that line (do not start a login). Do not use `lua agents` as the probe — it walks every organisation and can take 20 s or more on large accounts.
 
 ## Step 1 — collect inputs (single permission per §3.7)
 
 If `$ARGUMENTS` includes a type, use it. Otherwise AskUserQuestion **once**:
 
-- "What to push?" (options: `skill`, `agent`, `persona`, `webhook`, `job`, `preprocessor`, `postprocessor`, `mcp`, `backup`, `all`)
-- "Specific name? (leave blank for all)" (free-text, optional)
-- "Set version? (leave blank to bump patch)" (free-text, optional)
+- "What to push?" (options: `all` (stage everything), `skill`, `webhook`, `trigger`, `job`, `preprocessor`, `postprocessor`, `workflow`, `mcp`, `device`, `device-trigger`, `voice`, `agent` (persona/model/settings), `backup`)
+- "Specific name? (leave blank for every one of that type)" (free-text, optional)
+- "Set version? (x.y.z; leave blank to bump the patch)" (free-text, optional — only with a name)
 
 ## Step 2 — run
 
-Build the command. Always include `--ci --force`. NEVER include `--auto-deploy` — it's denied by the §5.2 `permissions.deny` rule and blocked by the `block-auto-deploy.mjs` hook. Iteration-13 audit: explicit branching per Step 1 input combination — Claude was previously inferring on its own and could pick wrong shapes.
+Always `--ci --force`. **NEVER** `--auto-deploy` (denied at the permission layer and by the `block-auto-deploy` hook; lua-cli ignores it for `all` anyway). Shapes verified against lua-cli 3.33.0:
 
-| Type        | Name       | Version     | Command                                                                              |
-|-------------|-----------|-------------|--------------------------------------------------------------------------------------|
-| `all` or `backup` | (ignored) | (ignored)   | `Bash(lua push <type> --ci --force)`                                                |
-| versioned (`skill` / `webhook` / `job` / `preprocessor` / `postprocessor`) | set | set         | `Bash(lua push <type> --ci --force --name <name> --set-version <version>)`           |
-| versioned   | set       | blank (bump) | `Bash(lua push <type> --ci --force --name <name>)`                                  |
-| versioned   | blank     | (any)       | `Bash(lua push <type> --ci --force)` — pushes ALL of that type, auto-bumping versions; ignore any version the user typed (`--set-version` only applies with `--name`) |
-| `agent` / `persona` / `mcp` (non-versioned) | (ignored) | (ignored) | `Bash(lua push <type> --ci --force)`                                                |
+| Type | Name | Version | Command |
+|---|---|---|---|
+| `all` | — | — | `Bash(lua push all --ci --force)` — stage-all: bumps every versioned primitive (not workflows), upserts MCP servers, pushes agent config and the source backup |
+| `backup` | — | — | `Bash(lua push backup --ci --force)` (add `--fresh` to build the manifest from disk) |
+| `agent` (alias `persona`) | — | — | `Bash(lua push agent --ci --force)` — persona becomes a new persona version (not live); model/modelSettings/batching/browser apply at once |
+| `mcp` | set / blank | — | `Bash(lua push mcp --ci --force [--name <n>])` — non-versioned upsert |
+| versioned (`skill webhook trigger job preprocessor postprocessor workflow device device-trigger voice`) | set | set | `Bash(lua push <type> --ci --force --name <name> --set-version <x.y.z>)` |
+| versioned | set | blank | `Bash(lua push <type> --ci --force --name <name>)` (patch bump) |
+| versioned | blank | any | `Bash(lua push <type> --ci --force)` — pushes every primitive of that type with auto-bumps; ignore any version typed |
 
-## Step 3 — verify
+`--set-version` must be `x.y.z`; a `0.x.y` value draws the `warn-version-zero` hook. A push also attaches per-skill source so the admin Builder sees CLI edits (`--no-include-source` disables that) and refreshes the source backup.
 
-On success, print "✓ Pushed `<type>:<name>` v`<version>`. Use `/lua-deploy` to promote to production."
+## Step 3 — report
 
-On failure, surface the CLI error verbatim. Do not retry without user input.
+On success: "✓ Pushed `<type>:<name>` v`<version>` (server version created; not live). Next: `/lua-deploy`." — for workflows note the live path is `lua workflows deploy <name> -v latest` (the deploy slash handles it); for `all` note `lua deploy all` or an agent version promote.
+
+If the output contains `Model configuration cleared`, `Model settings cleared`, `Batching config cleared` or `Voices cleared` (types `all` / `agent`), say so plainly: the agent push overwrites those server fields with whatever `src/index.ts` declares, so a model chosen in the dashboard is now gone. Point at the fix: set `model` (or `modelSettings` / `batching`) on the `LuaAgent` — `lua models set --model <code>` writes it for you — and push `agent` again.
+
+On failure surface the CLI line verbatim. Common refusals: `unplaced_step` / `tool_unbundled` / `env-template-missing` (workflows — set the env key first), `WORKFLOW_NAME_TAKEN`, exit 9 (auth), exit 10 (scope). Do not retry without user input.

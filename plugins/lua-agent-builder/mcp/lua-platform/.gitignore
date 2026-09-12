@@ -1,4 +1,9 @@
 node_modules/
-dist/
 coverage/
 *.log
+
+# dist/ is intentionally NOT ignored. Marketplace installs copy the repo
+# verbatim with no build step, and .mcp.json launches dist/server.js — so the
+# bundle must be committed. Run `npm run build` after any change to src/ and
+# commit the updated dist/server.js alongside (scripts/check-bundle-size.mjs
+# guards the size).

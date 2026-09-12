@@ -36,4 +36,19 @@ describe('warn-version-zero decide()', () => {
   test('handles leading whitespace', () => {
     expect(decide({ tool_input: { command: '   lua push --set-version 0.5.0' } })?.warn).toBeTruthy();
   });
+
+  // Architect review F2: the old message claimed "deploy picks the highest
+  // semver". lua-cli's deploy.ts sortVersionsByDate picks the most recently
+  // CREATED version for `--set-version latest`, so the warning must say that.
+  test('states the real lua-cli semantics: latest = most recently created, not highest semver', () => {
+    const warn = decide({ tool_input: { command: 'lua push skill --set-version 0.1.0 --force' } })?.warn ?? '';
+    expect(warn).toMatch(/most recently CREATED/);
+    expect(warn).toMatch(/not the highest semver/);
+    expect(warn).not.toMatch(/pre-release/i);
+  });
+
+  test('also fires for the alternative binaries', () => {
+    expect(decide({ tool_input: { command: 'heylua push all --set-version 0.2.0 --force' } })?.warn).toBeTruthy();
+    expect(decide({ tool_input: { command: 'lua-ai push skill --set-version 0.2.0' } })?.warn).toBeTruthy();
+  });
 });

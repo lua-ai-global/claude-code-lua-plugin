@@ -19,21 +19,24 @@ function mockSpawnReturning(stdout, { exitCode = 0, stderr = '' } = {}) {
   };
 }
 
+// CredentialOrganization[] — the lua-cli ≥ 3.28 `lua agents --json` shape.
 const FIXTURE_ORGS = [
   {
-    id: 'org_acme',
-    registeredName: 'Acme Corp',
-    type: 'standard',
+    orgId: 'org_acme',
+    name: 'Acme Corp',
+    archived: false,
+    discoveredVia: 'org-grant',
     agents: [
-      { agentId: 'a1', name: 'agent-one' },
-      { agentId: 'a2', name: 'agent-two' },
+      { agentId: 'a1', name: 'agent-one', visibility: 'private', displayRoles: [] },
+      { agentId: 'a2', name: 'agent-two', visibility: 'public', displayRoles: [] },
     ],
   },
   {
-    id: 'org_solo',
-    registeredName: 'Solo',
-    type: 'personal',
-    agents: [{ agentId: 'a3', name: 'agent-three' }],
+    orgId: 'org_solo',
+    name: 'Solo',
+    archived: false,
+    discoveredVia: 'agent-grant',
+    agents: [{ agentId: 'a3', name: 'agent-three', visibility: 'private', displayRoles: [] }],
   },
 ];
 
@@ -52,6 +55,7 @@ describe('getAgent tool', () => {
       name: 'agent-two',
       orgId: 'org_acme',
       orgName: 'Acme Corp',
+      visibility: 'public',
     });
   });
 
@@ -74,7 +78,7 @@ describe('getAgent tool', () => {
     ]));
     const result = await getAgent.handler({ agentId: 'a1' }, { spawnFn });
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed).toEqual({ id: 'a1', name: 'agent-one', orgId: 'org_x', orgName: 'X' });
+    expect(parsed).toEqual({ id: 'a1', name: 'agent-one', orgId: 'org_x', orgName: 'X', visibility: null });
   });
 
   test('rejects when agentId is missing', async () => {

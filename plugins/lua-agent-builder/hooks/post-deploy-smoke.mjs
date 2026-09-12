@@ -1,13 +1,17 @@
-// PostToolUse hook for `lua deploy`.
+// PostToolUse hook for every verb that makes something live.
 // Per feature doc §3.3 / tech spec §6.3 row 7.
 //
-// After a successful deploy: ping the agent and scan recent logs for
-// fresh errors. Surfaces problems as a warn message (non-blocking — the
-// deploy already happened).
+// After a successful deploy-class command (`lua deploy`, the per-primitive
+// `* deploy|publish` spellings, `lua persona production deploy`,
+// `lua workflows deploy`, `lua version promote`, `lua mcp activate` — the
+// SMOKE_LABELS set in lib/tokenizer.mjs, so the list cannot drift from the
+// gate): ping the agent and scan recent logs for fresh errors. Surfaces
+// problems as a warn message (non-blocking — the change already happened).
+// Registered for every Bash call with no `if` glob; non-matching commands
+// return null at once.
 
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
-
-const DEPLOY_PATTERN = /^(env\s+)?(LUA_DEPLOY_CONFIRMED=1\s+)?lua\s+deploy\b/;
+import { classifyProductionCommand, SMOKE_LABELS } from '../lib/tokenizer.mjs';
 
 /**
  * @param {{tool_input?: {command?: string}, tool_response?: {success?: boolean}}|null} input
@@ -18,7 +22,8 @@ export async function decide(
   { spawnLuaFn } = {}
 ) {
   const command = input?.tool_input?.command ?? '';
-  if (!DEPLOY_PATTERN.test(command.trimStart())) return null;
+  const classified = classifyProductionCommand(command);
+  if (!classified || !SMOKE_LABELS.has(classified.label)) return null;
 
   // Defensive: PostToolUse only fires for SUCCESSFUL tool calls per
   // https://code.claude.com/docs/en/hooks (failures go to PostToolUseFailure
@@ -35,28 +40,21 @@ export async function decide(
     spawnLuaFn = (await import('../lib/lua-cli.mjs')).spawnLua;
   }
 
-  // Step 1: agent responsiveness check.
-  // Iteration-13 audit: use a dedicated per-deploy thread so the smoke
-  // ping doesn't pollute the agent's default production thread. Without
-  // `-t`, every deploy adds a "ping" message to the same thread alongside
-  // real user conversation; over many deploys the noise accumulates.
+  // Step 1: agent responsiveness check on a dedicated per-deploy thread so
+  // the smoke ping doesn't pollute the agent's default production thread.
   const pingThread = `lua-plugin-smoke-${Date.now()}`;
-  const ping = await spawnLuaFn(['chat', '--ci', '-e', 'production', '-m', 'ping', '-t', pingThread], { timeoutMs: 10_000 });
+  const ping = await spawnLuaFn(['chat', '--ci', '-e', 'production', '-m', 'ping', '-t', pingThread], { timeoutMs: 20_000 });
   if (ping.exitCode !== 0) {
     return {
-      warn: `⚠ Post-deploy smoke test: agent did not respond (exit=${ping.exitCode}). Check production logs.`,
+      warn: `⚠ Post-deploy smoke test (${classified.label}): agent did not respond (exit=${ping.exitCode}). Check production logs.`,
     };
   }
 
-  // Step 2: log scan for fresh errors.
-  // Iteration-13 audit: `lua logs --json` emits a single JSON document
-  // `{ logs: LogEntry[], pagination: {...} }`, NOT NDJSON (verified against
-  // packages/lua-cli/src/commands/logs.ts:283-287). Each entry uses
-  // `entry.subType` (values include 'error' | 'warn' | 'info' | …) — there
-  // is no `entry.level` field (verified against
-  // packages/lua-cli/src/interfaces/logs.ts). The previous parser failed
-  // both checks, so deploy smoke never flagged anything.
-  const logs = await spawnLuaFn(['logs', '--ci', '--type', 'all', '--limit', '20', '--json'], { timeoutMs: 5_000 });
+  // Step 2: log scan for fresh errors. `lua logs --json` emits a single JSON
+  // document `{ logs: LogEntry[], pagination: {...} }`; each entry uses
+  // `entry.subType` ('error' | 'warn' | 'info' | 'debug' | 'start' | 'complete')
+  // — there is no `entry.level` field (src/interfaces/logs.ts).
+  const logs = await spawnLuaFn(['logs', '--ci', '--type', 'all', '--limit', '20', '--json'], { timeoutMs: 10_000 });
   if (logs.exitCode !== 0) return null;
 
   let entries = [];
@@ -76,7 +74,7 @@ export async function decide(
 
   if (errorEntries.length > 0) {
     return {
-      warn: `⚠ Post-deploy smoke test: ${errorEntries.length} error log entry(s) within the last minute. Investigate before traffic flips.`,
+      warn: `⚠ Post-deploy smoke test (${classified.label}): ${errorEntries.length} error log entry(s) within the last minute. Investigate before traffic flips.`,
     };
   }
 

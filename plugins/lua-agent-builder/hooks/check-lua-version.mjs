@@ -6,18 +6,17 @@
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
 import { spawnLua } from '../lib/lua-cli.mjs';
 
-// Pinned minimum lua-cli version. Bumped only in MAJOR plugin releases per
-// feature doc §20.2 / tech spec §20.2 (never bump to require a feature
-// less than 30 days old in lua-cli).
-//
-// Iteration-13 audit: was previously pinned to 3.13.0 — an UNRELEASED
-// version (current published latest is 3.12.3, see
-// packages/lua-cli/package.json). Every fresh install fired the upgrade
-// warning at SessionStart, and `/lua-update` couldn't satisfy it because
-// 3.13.0 doesn't exist on npm. The lint at scripts/lint-pinned-version.mjs
-// enforces that this constant never references a version that isn't yet on
-// disk in the monorepo.
-export const PINNED_MIN_LUA_CLI = '3.12.3';
+// Pinned minimum lua-cli version. The plugin's commands, agents and knowledge
+// files describe the lua-cli 3.33.0 surface (workflows, triggers, devices,
+// voice, agent versions, `lua auth sessions`, the typed exit-code classes,
+// `lua test preprocessor|postprocessor|workflow`, `lua push --no-include-source`).
+// Older CLIs still work for the core loop — this hook only WARNS, never
+// blocks — but a user on an older release sees the upgrade hint once per
+// session so the command shapes the plugin emits match what their CLI
+// accepts. The pin must be a version that is published on npm (3.33.0 was
+// published 2026-09-10), so `/lua-update` can always satisfy it; the lint at
+// scripts/lint-pinned-version.mjs enforces that inside the monorepo.
+export const PINNED_MIN_LUA_CLI = '3.33.0';
 
 /**
  * Parse "X.Y.Z" into [X, Y, Z]. Returns null on garbage input.

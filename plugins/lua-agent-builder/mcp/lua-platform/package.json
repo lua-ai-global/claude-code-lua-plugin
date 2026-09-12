@@ -1,6 +1,6 @@
 {
   "name": "@lua/claude-plugin-mcp",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Read-only MCP server for the lua-agent-builder Claude Code plugin",
   "type": "module",
   "main": "dist/server.js",
@@ -11,8 +11,8 @@
     "build": "node scripts/bundle.mjs",
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
     "test:coverage": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --coverage",
-    "lint": "eslint src/",
-    "typecheck": "tsc --noEmit"
+    "lint": "node ../../node_modules/eslint/bin/eslint.js --no-eslintrc -c ../../.eslintrc.json --ext .mjs src/ tests/",
+    "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "~0.6.0"

@@ -1,39 +1,69 @@
 // SessionStart hook. Per feature doc §3.3.
 //
-// After the lua-cli version check, probe authentication by running
-// `lua agents --json --ci`. If the probe fails (non-zero exit) AND lua-cli
-// is actually installed (so we don't double-warn the user), inject a
-// context message recommending `/lua-auth`.
+// After the lua-cli version check, probe authentication and, if the
+// credential is missing or dead, inject a context message recommending
+// `/lua-auth`.
 //
 // Why a separate hook instead of folding into check-lua-version: separation
 // of concerns. check-lua-version probes the binary; check-lua-auth probes
 // authentication. Either can fail independently.
 //
-// Iteration-13 audit: the auth probe uses `lua agents --json --ci`, NOT
-// `lua auth key --force`. The latter prints the API key to stdout, which
-// would land in the Claude Code conversation transcript every session.
-// Bug 41 documents the same hazard for /lua-doctor Step 4.
+// The probe is `lua models list --json --ci`: one authenticated GET
+// (`/agents/self-serve/models`) that needs no project and completes in
+// ~1.5 s. It is NOT `lua auth key --force` (prints the API key into the
+// transcript) and NOT `lua agents --json` — that walks every organisation the
+// credential can reach and took 18–25 s on a 144-org account in the live E2E
+// run on 2026-09-12, which made the old hook tell an authenticated user they
+// were signed out. lua-cli's exit-code classes (3.33.0) tell the outcomes
+// apart: 0 ok · 9 auth · 10 forbidden (a typed key scoped too narrowly for
+// the catalog route — still a valid login) · 11 Lua API unavailable.
 
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
 import { spawnLua } from '../lib/lua-cli.mjs';
 
+export const AUTH_PROBE_ARGS = ['models', 'list', '--json', '--ci'];
+const AUTH_PROBE_TIMEOUT_MS = 15_000;
+
 /**
  * @param {{exitCode: number|null, stdout: string, stderr: string}} versionResult
  *   Result of `lua --version` (must succeed before auth probe makes sense).
- * @param {{exitCode: number|null}} authResult
- *   Result of `lua agents --json --ci`.
+ * @param {{exitCode: number|null, stdout?: string, stderr?: string, timedOut?: boolean}} authResult
+ *   Result of `lua models list --json --ci`.
  */
 export function decide(versionResult, authResult) {
   // If lua-cli isn't installed, check-lua-version already warned the user.
   // Don't double-warn here.
   if (versionResult.exitCode !== 0) return null;
 
-  // Authenticated → silent (no need to inject context).
-  if (authResult.exitCode === 0) return null;
+  // Authenticated → silent. Exit 10 means the credential is valid but scoped
+  // away from the catalog route — still authenticated for its own agents.
+  if (authResult.exitCode === 0 || authResult.exitCode === 10) return null;
 
+  // A slow probe is not a missing credential.
+  if (authResult.timedOut || authResult.exitCode === null) {
+    return {
+      warn:
+        `⏱ Could not confirm Lua authentication within ${AUTH_PROBE_TIMEOUT_MS / 1000}s. ` +
+        'Run `/lua-status` to check; `/lua-auth` only if it reports you are signed out.',
+    };
+  }
+
+  // lua-cli exit 11: the API could not be reached — also not an auth problem.
+  if (authResult.exitCode === 11) {
+    return {
+      warn:
+        '⚠ The Lua API could not be reached while checking authentication (lua-cli exit 11). ' +
+        'Check your network or `LUA_API_URL`; `/lua-status` retries the check.',
+    };
+  }
+
+  // Exit 9 (auth) and any other failure: the credential is missing, expired,
+  // or the session was signed out elsewhere.
   return {
     warn:
-      '🔐 Lua plugin loaded but you\'re not authenticated. Run `/lua-auth` to set up a typed credential. ' +
+      '🔐 Lua plugin loaded but you\'re not authenticated' +
+      (authResult.exitCode === 9 ? '' : ` (lua models list exited ${authResult.exitCode})`) +
+      '. Run `/lua-auth` to set up a typed credential. ' +
       'The setup keeps your email, OTP, and credential in a private terminal. ' +
       'Until then, every `/lua-*` slash that needs the platform will fail.',
   };
@@ -43,7 +73,7 @@ export function decide(versionResult, authResult) {
 /* istanbul ignore next */
 async function decideWithSpawn() {
   const versionResult = await spawnLua(['--version'], { timeoutMs: 5_000 });
-  const authResult = await spawnLua(['agents', '--json', '--ci'], { timeoutMs: 8_000 });
+  const authResult = await spawnLua(AUTH_PROBE_ARGS, { timeoutMs: AUTH_PROBE_TIMEOUT_MS });
   return decide(versionResult, authResult);
 }
 

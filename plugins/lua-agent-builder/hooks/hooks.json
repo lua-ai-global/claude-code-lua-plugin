@@ -16,7 +16,7 @@
           {
             "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/check-lua-auth.mjs",
-            "timeout": 15
+            "timeout": 20
           }
         ]
       }
@@ -39,8 +39,7 @@
           {
             "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/confirm-deploy.mjs",
-            "if": "Bash(*lua deploy*)",
-            "timeout": 30
+            "timeout": 10
           },
           {
             "type": "command",
@@ -51,13 +50,13 @@
           {
             "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/block-auth-configure.mjs",
-            "if": "Bash(*lua auth configure*)",
+            "if": "Bash(*auth configure*)",
             "timeout": 5
           },
           {
             "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/warn-version-zero.mjs",
-            "if": "Bash(*lua push*--set-version 0.*)",
+            "if": "Bash(*push*--set-version 0.*)",
             "timeout": 5
           }
         ]
@@ -70,13 +69,12 @@
           {
             "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/post-deploy-smoke.mjs",
-            "if": "Bash(*lua deploy*)",
             "timeout": 60
           },
           {
             "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/post-compile-summary.mjs",
-            "if": "Bash(lua compile*)",
+            "if": "Bash(*compile*)",
             "timeout": 10
           }
         ]
