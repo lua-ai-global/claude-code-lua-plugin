@@ -12,7 +12,7 @@ Run `Bash(lua models list --json --ci)` — a 1–2 s authenticated call (no pro
 
 If `$ARGUMENTS` carries the message, use it (default env sandbox, new thread). Otherwise AskUserQuestion **once**:
 
-- "Environment?" (options: `sandbox` (default — compiles and pushes your local skills/processors to the sandbox first, so it tests current source), `production` (the live agent))
+- "Environment?" (options: `sandbox` (default — compiles locally and pushes your skills/processors to the sandbox first, so it tests current source; the pushed skill versions carry your `.env` merged over your shell environment as their env), `production` (the live agent))
 - "Message?" (free-text, required)
 - "New thread or continue existing?" (options: `New thread`, `Continue thread <id>` if a recent thread id is in context)
 

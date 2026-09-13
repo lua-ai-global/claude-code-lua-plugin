@@ -18,13 +18,13 @@ If `$ARGUMENTS` includes a type, use it. Otherwise AskUserQuestion **once**:
 
 ## Step 2 — run
 
-Always `--ci --force`. **NEVER** `--auto-deploy` (denied at the permission layer and by the `block-auto-deploy` hook; lua-cli ignores it for `all` anyway). Shapes verified against lua-cli 3.33.0:
+Always `--ci --force`. **NEVER** `--auto-deploy` (denied at the permission layer and by the `block-auto-deploy` hook). lua-cli 3.33.0 ignores the flag for `lua push` / `lua push all` (it warns and clears it before stage-all, so not even MCP servers activate), but on a **single-primitive** push it is a silent production go-live: `mcp` activates the server, `agent` deploys the persona version, and every versioned type (`skill webhook trigger job preprocessor postprocessor device device-trigger voice workflow`) publishes the pushed version at once — that is why the plugin denies it in every form. Shapes verified against lua-cli 3.33.0:
 
 | Type | Name | Version | Command |
 |---|---|---|---|
-| `all` | — | — | `Bash(lua push all --ci --force)` — stage-all: bumps every versioned primitive (not workflows), upserts MCP servers, pushes agent config and the source backup |
+| `all` | — | — | `Bash(lua push all --ci --force)` — stage-all: bumps every versioned primitive (not workflows), upserts MCP servers, pushes the agent config (⚠ persona and model settings go live at once — see `agent`) and the source backup |
 | `backup` | — | — | `Bash(lua push backup --ci --force)` (add `--fresh` to build the manifest from disk) |
-| `agent` (alias `persona`) | — | — | `Bash(lua push agent --ci --force)` — persona becomes a new persona version (not live); model/modelSettings/batching/browser apply at once |
+| `agent` (alias `persona`) | — | — | `Bash(lua push agent --ci --force)` — ⚠ **everything in it is live at once**: the persona is persisted as a `published` persona version and served on the next turn (lua-agents `createPersonaVersion` → `updateAgentPersona`; there is no staged persona), and model/modelSettings/batching/browser apply immediately. Say so before running it — this push *is* the persona deploy (`lua deploy persona --set-version <n>` only rolls back to an earlier version) |
 | `mcp` | set / blank | — | `Bash(lua push mcp --ci --force [--name <n>])` — non-versioned upsert |
 | versioned (`skill webhook trigger job preprocessor postprocessor workflow device device-trigger voice`) | set | set | `Bash(lua push <type> --ci --force --name <name> --set-version <x.y.z>)` |
 | versioned | set | blank | `Bash(lua push <type> --ci --force --name <name>)` (patch bump) |
@@ -34,7 +34,7 @@ Always `--ci --force`. **NEVER** `--auto-deploy` (denied at the permission layer
 
 ## Step 3 — report
 
-On success: "✓ Pushed `<type>:<name>` v`<version>` (server version created; not live). Next: `/lua-deploy`." — for workflows note the live path is `lua workflows deploy <name> -v latest` (the deploy slash handles it); for `all` note `lua deploy all` or an agent version promote.
+On success: "✓ Pushed `<type>:<name>` v`<version>` (server version created; not live). Next: `/lua-deploy`." — for workflows note the live path is `lua workflows deploy <name> -v latest` (the deploy slash handles it); for `agent` say plainly "persona v`<n>` and the model settings are **already live**" (rollback: `/lua-deploy` persona with the previous version); for `all` say the same about the agent config and that the primitives still need `lua deploy` / an agent version promote.
 
 If the output contains `Model configuration cleared`, `Model settings cleared`, `Batching config cleared` or `Voices cleared` (types `all` / `agent`), say so plainly: the agent push overwrites those server fields with whatever `src/index.ts` declares, so a model chosen in the dashboard is now gone. Point at the fix: set `model` (or `modelSettings` / `batching`) on the `LuaAgent` — `lua models set --model <code>` writes it for you — and push `agent` again.
 

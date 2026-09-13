@@ -18,7 +18,7 @@ If `$ARGUMENTS` names a type (and optionally a name), use them. Otherwise AskUse
 - job → `Bash(lua test --ci job --name <name> --json)`
 - workflow → `Bash(lua test --ci workflow --name <name> --input '<json>' --agents fake --fast-retries --json)`; if the user mentioned approvals/signals/branches, add `--approve <id>` / `--deny <id>` / `--signal <name>='<json>'` / `--step-output <stepId>='<json>'` (for richer scenarios point them at `/lua-workflow run <name>`).
 
-`--input` is a JSON **string**; only `workflow` accepts `@file`. `lua test` compiles first and needs a credential + the project's agentId (platform API calls inside your code are real).
+`--input` is a JSON **string**; only `workflow` accepts `@file`. `lua test` compiles first and needs a credential + the project's agentId (platform API calls inside your code are real). **Never omit `--name`** (nor `--input` for a tool): `lua test skill --ci` without `--name` compiles, then renders a tool picker that ignores `--ci` and exits **0 having tested nothing** — a false pass (lua-cli 3.33.0 `src/commands/test.ts`). A `--name` with no type is exit 2.
 
 ## Step 3 — handle the outcome
 

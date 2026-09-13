@@ -26,12 +26,13 @@ Use the **Agent tool** with `subagent_type: "lua-deploy-pilot"` and a prompt con
 
 1. `git status --short` — abort if dirty
 2. `lua compile --ci` — abort on error (the user runs `/lua-test`, which routes the failure to the debug subagent)
-3. `lua status --json --ci` — abort if any primitive is `behind` the server or a critical orphan exists (→ `/lua-sync`)
+3. `lua version list --json --ci` — is the agent versioned? — then `lua status --json --ci` — abort if any primitive is `behind` the server or a critical orphan exists (→ `/lua-sync`)
 4. Push the version: `lua push <type> --ci --force --name <n> [--set-version <v>]` / `lua push agent` / `lua push all` / `lua push workflow …`
 5. Go live with the prefixed verb the permission rules and the `confirm-deploy` hook accept:
-   - `skill webhook trigger job preprocessor postprocessor` → `LUA_DEPLOY_CONFIRMED=1 lua deploy <type> --ci --name <n> --set-version <v|latest> --force`
-   - `persona` → `LUA_DEPLOY_CONFIRMED=1 lua deploy persona --ci --set-version <n|latest> --force`
-   - `all` → `LUA_DEPLOY_CONFIRMED=1 lua deploy all --ci --force` (no name/version — `all` deploys the latest of everything)
+   - `webhook trigger job preprocessor postprocessor` → `LUA_DEPLOY_CONFIRMED=1 lua deploy <type> --ci --name <n> --set-version <v|latest> --force` (the server does a scoped promote — immediate and consistent with the agent-version history)
+   - `skill` / `all` on an agent **without** agent versions → `LUA_DEPLOY_CONFIRMED=1 lua deploy skill --ci --name <n> --set-version <v|latest> --force` / `… lua deploy all --ci --force`
+   - `skill` / `all` on an agent **with** agent versions → `lua version create --ci -m "<notes>"` then `LUA_DEPLOY_CONFIRMED=1 lua version promote <N>` — `lua deploy skill` has no scoped promote there: it goes live at once but leaves the active version's snapshot stale, and the next promote (or rollback) silently reverts it
+   - `persona` → the `lua push agent` in step 4 **is** the deploy (the pushed persona version is persisted `published` and served at once; `lua version promote` never changes the served persona). A verb runs only to roll back to an earlier version: `LUA_DEPLOY_CONFIRMED=1 lua deploy persona --ci --set-version <n> --force`
    - `workflow` → `LUA_DEPLOY_CONFIRMED=1 lua workflows deploy <n> -v <v|latest>` (+ `… lua workflows activate <n>` when asked to enable its schedule/triggers)
    - `mcp` → `LUA_DEPLOY_CONFIRMED=1 lua mcp activate <n>`
    - `device device-trigger voice agent-version` → `lua version create --ci -m "<notes>"` then `LUA_DEPLOY_CONFIRMED=1 lua version promote <N>`

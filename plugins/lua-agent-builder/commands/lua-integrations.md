@@ -25,7 +25,7 @@ Each matches an `allow` rule — keep the flag order exactly as written (`--ci` 
 
 - `disconnect <connectionId>` → `Bash(lua integrations disconnect --ci --connection-id <id> [--scope user])` (no CLI prompt)
 - `convert <connectionId>` → `Bash(lua integrations convert --ci --connection-id <id> --force)` — re-homes an agent connection to the user; `--force` replaces the CLI's own y/N, which would throw under `--ci`
-- `webhooks create <connectionId> <object> <created|updated|deleted>` → `Bash(lua integrations webhooks create --ci --connection <id> --object <object> --event <event> [--hook-url <url>] [--interval <min>])` — fully non-interactive once `--connection`, `--object` and `--event` are given (the CLI then skips its summary/confirm); `--interval 60|120|240|480|720|1440|2880` is required when `webhooks events` marks the event `virtual`; `--hook-url` defaults to the agent trigger. An unsupported pair is exit 2 `Event '<o>.<e>' is not supported`
+- `webhooks create <connectionId> <object> <created|updated|deleted> [url]` → `Bash(lua integrations webhooks create --ci --connection <id> --object <object> --event <event> --hook-url <url> [--interval <min>])` — **always pass `--hook-url`**: there is no default, and without it the CLI prompts "Where should events be sent?" (exit 1 under `--ci`). To wake the agent use `https://api.heylua.ai/webhook/unifiedto/data` (the CLI's own "Wake up my Lua agent" value, `<LUA_API_URL>/webhook/unifiedto/data`), unless the user names a custom endpoint. `--interval 60|120|240|480|720|1440|2880` is required when `webhooks events` marks the event `virtual`. An unsupported pair is exit 2 `Event '<o>.<e>' is not supported`
 - `webhooks pause|resume <webhookId>` → `Bash(lua integrations webhooks pause|resume --ci --webhook-id <id> [--reason '<t>'])`; `webhooks pause|resume connection <connectionId>` → `… --connection-id <id>` (every trigger of that connection)
 - `webhooks delete <webhookId>` → `Bash(lua integrations webhooks delete --ci --webhook-id <id>)` (no CLI prompt)
 - `mcp activate|deactivate <connectionId>` → `Bash(lua integrations mcp activate|deactivate --ci --connection <id>)` — toggles the connection's MCP for the agent (an integration MCP, not a `LuaMCPServer`; the production-gated `lua mcp activate` is a different command)
@@ -39,7 +39,7 @@ lua integrations connect --integration <type> --auth-method oauth|token --scopes
 lua integrations update --connection-id <id> [--scopes all] [--scope user]
 ```
 
-`--scope user` makes a personal connection usable by every private agent the user owns (publishing the agent removes its access); triggers, account labels and `--hide-sensitive` are agent-scoped and rejected with `--scope user`. When the user reports back, run `mcp list` and `webhooks list` to confirm the MCP is Active and the subscriptions exist, then activate/subscribe with Step 2 if not.
+`--scope user` makes a personal connection usable by every private agent the user owns (publishing the agent removes its access); triggers, account labels and `--hide-sensitive` are agent-scoped and rejected with `--scope user`. When the user reports back, run `mcp list` and `webhooks list` to confirm the MCP is Active and the subscriptions exist, then activate/subscribe with Step 2 if not. Tell the user to ignore the CLI's post-connect hint `lua triggers create --connection <id>` — that command is a tombstone that prints a redirect notice and creates nothing; subscribe with `webhooks create` instead.
 
 ## Step 4 — present
 

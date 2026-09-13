@@ -48,7 +48,7 @@ Exit `0` completed · `2` flag/schema problem (report as a finding: the input sc
 
 ## Step 3 — log scan
 
-`mcp__plugin_lua-agent-builder_lua-platform__tail_logs` with `{ agentId, type: 'all', limit: 100 }` → `{ logs, pagination }`. Select entries whose `timestamp` falls in the test window with `subType === 'error'` or `subType === 'warn'` (the field is `subType`; there is no `level`). `metadata.logSource` (`skill | job | webhook | trigger | preprocessor | postprocessor | agent_error | runtime | mcp | workflow-step …`) and `metadata.primitiveName` tell you which primitive produced it. Fallback without MCP: `lua logs --ci --type all --limit 100 --json`.
+`mcp__plugin_lua-agent-builder_lua-platform__tail_logs` with `{ agentId, type: 'all', limit: 100 }` → `{ logs, pagination }`. Select entries whose `timestamp` falls in the test window with `subType === 'error'` or `subType === 'warn'` (the field is `subType`; there is no `level`). `metadata.logSource` (`skill | job | webhook | trigger | preprocessor | postprocessor | agent_error | runtime | mcp | workflow-step …`) and `metadata.primitiveName` tell you which primitive produced it; a tool that threw is `logSource: 'skill'`, and `agent_error` comes only from the chat pipeline. `metadata.channel === 'dev'` marks the turns this suite sent through `lua chat` (in either environment — there is no environment field on a log entry, so scope by timestamp and thread, never by channel); `'pop'` is website-widget traffic. Fallback without MCP: `lua logs --ci --type all --limit 100 --json`.
 
 ## Step 4 — write the triage report
 

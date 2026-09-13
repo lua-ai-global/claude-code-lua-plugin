@@ -13,7 +13,7 @@ You receive `{ type, name, description }` from `/lua-new`. lua-cli is a TypeScri
 - `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/workflows.md` — when `type = workflow`
 - `lua.skill.yaml` (project root; CLI-managed — never edit its primitive arrays) and `src/index.ts` (the `LuaAgent` config you must register the new primitive in)
 
-If the project has `examples/` (from `lua init --with-examples`), mirror the matching example's style.
+If the project has `examples/` (from `lua init --with-examples`), mirror the matching example's file layout and naming only — **never copy its platform API calls**: the 3.33.0 examples do not type-check against the shipped typings (`tsc --strict`: 23 errors in 10 files — `Channels.email.send({ body })` → the field is `text`; `Integrations.passthrough({ body })` / `res.body` → both are `data`; a non-existent `Payments`; `Orders.list` does not exist and `Orders` is not imported; `job.jobId` → `job.id`; unchecked `null` from `User.get()`; relative imports into lua-cli's own `dist/` — workflows.md §1). Take every shape from primitives.md / workflows.md or `node_modules/lua-cli/dist/api-exports.d.ts`.
 
 ## Steps
 
@@ -31,7 +31,7 @@ If the project has `examples/` (from `lua init --with-examples`), mirror the mat
 3. **Register it in `src/index.ts`**: add the import and put the instance in the right `LuaAgent` array (`skills`, `webhooks`, `triggers`, `jobs`, `workflows`, `preProcessors`, `postProcessors`, `mcpServers`, `devices`, `deviceTriggers`, `voices`). A tool goes into its skill's `tools: [...]`, not into the agent. Unregistered primitives are silently not compiled. Exception: a `workflow-script` is never registered — the compiler scans `src/workflows/*.workflow.script.js` itself (`detectWorkflowScriptFiles`), so leave `src/index.ts` alone for that type.
 4. **Compile**: `lua compile --ci` in a loop (max 3 attempts), fixing what it reports. Workflow build errors are listed in workflows.md §9. If it still fails, **stop and report to the parent** with the failing primitive and the compiler output — you have no Agent tool, so you cannot call another subagent; the parent slash routes the failure.
 5. **Test** the type-appropriate way (all run locally against the compiled artifact; `--input` is a JSON string):
-   - tool → `lua test --ci skill --name <tool_name> --input '{…the tool's own fields…}'` — `--name` is the **TOOL** name (lua-cli resolves it across every skill in the manifest; passing the skill name fails with exit 3 `not_found: Tool "<skill>" not found`), and `--input` is exactly the object the tool's Zod `inputSchema` expects — there is **no** `{"tool": …}` envelope
+   - tool → `lua test --ci skill --name <tool_name> --input '{…the tool's own fields…}'` — `--name` is the **TOOL** name (lua-cli resolves it across every skill in the manifest; passing the skill name fails with exit 3 `not_found: Tool "<skill>" not found`), and `--input` is exactly the object the tool's Zod `inputSchema` expects — there is **no** `{"tool": …}` envelope. Never omit `--name`: without it `lua test skill --ci` renders a tool picker that ignores `--ci` and exits 0 having tested nothing — treat that as a failed step, not a pass
    - skill → run each of its tools the same way, one `lua test --ci skill --name <tool_name> --input '{…}'` per tool
    - webhook → `lua test --ci webhook --name <name> --input '{"body":{…},"headers":{},"query":{}}'`
    - job → `lua test --ci job --name <name>`

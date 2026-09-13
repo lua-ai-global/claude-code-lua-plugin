@@ -38,7 +38,7 @@ All match the `Bash(lua init --ci*)` allow rule. `lua init` copies the template,
 ## Step 3 — report
 
 On success:
-- "✓ Project initialized in `$(pwd)`: `src/index.ts` (the `LuaAgent`), `lua.skill.yaml` (CLI-managed), `env.example`." Mention `examples/` if included (`examples/workflows/` holds the canonical workflow files).
+- "✓ Project initialized in `$(pwd)`: `src/index.ts` (the `LuaAgent`), `lua.skill.yaml` (CLI-managed), `env.example`." Mention `examples/` if included, with the caveat that it shows layout and builder chains but does not type-check against lua-cli 3.33.0 (`tsc --strict`: 23 errors in 10 files — `Channels.email.send` `body`→`text`, passthrough `body`→`data`, a non-existent `Payments`, `Orders.list`, `job.jobId`, unchecked `User.get()` nulls, broken relative imports) and that, being inside the template's `strict` compile graph, a plain `tsc` in the project fails until it is removed or fixed — `/lua-new` writes shapes from the plugin's knowledge base, not from those files.
 - Repeat the CLI's `Promo code "<code>" applied` line if present; surface its warning if a code was given but not applied.
 - "Next: `/lua-architect <goal>` to plan, `/lua-new tool <name>` for the first tool, `/lua-test` to run it, `/lua-chat` to talk to the sandbox."
 
