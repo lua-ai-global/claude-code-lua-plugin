@@ -60,7 +60,7 @@ Rules the compiler enforces:
 | `description` | string? | |
 | `inputSchema` | ZodType | **required**; `lua workflows start --input` and `scheduleInput` are validated against it |
 | `outputSchema`, `stateSchema` | ZodType? | `stateSchema` types `ctx.state` (≤ 64 KB) |
-| `concurrencyPolicy` | `'allow' \| 'forbid'` | `forbid` ⇒ a second start throws `RUNS_IN_FLIGHT` (409); scheduled fires are skipped |
+| `concurrencyPolicy` | `'allow' \| 'forbid'` | ⚠ enforced today only where the code checks it: the **schedule dispatcher** (an overlapping scheduled fire is skipped — `workflow-schedule-dispatch.service.ts`), the agent compose-tool start and batch starts. `lua workflows start`, the REST start route, `Workflows.start()` and a trigger's `{ startWorkflow }` all go through `WorkflowRunService.createRun`, which has **no overlap check** (lua-core `workflow-run.service.ts` header: forbid-overlap "lands with later slices") — two starts 2 s apart both ran (2026-09-13). `RUNS_IN_FLIGHT` (409) is typed for every path but not produced by these; do not design a non-reentrant workflow around it — pass an `idempotencyKey`, check `lua workflows runs --workflow <n> --status running` before a manual start, and guard side effects inside steps (`ctx.once`) |
 | `budget` | `{ maxCredits?, maxSteps?, maxDurationSeconds? }` | `maxDurationSeconds` 60..2 592 000; default 604 800, or 2 592 000 when the graph has approvals/signals/suspend-capable steps (warning `hitl-duration-defaulted`). ⚠ `maxJobSeconds` is NOT a config member (only on `raise-budget`) |
 | `schedule` | `JobSchedule & { runAs?: 'installer' \| 'system' }` | `{ type:'cron', expression, timezone? }` etc.; becomes a platform Job on publish; `runAs` matters only when frozen into a marketplace template |
 | `scheduleInput` | object | literal run input on every scheduled fire; must validate (warnings `schedule-input-required` / `-invalid`, push blocker) |
@@ -177,7 +177,7 @@ await Workflows.resume(runId, 'ask', { answer: 42 });
 await Workflows.cancel(runId, { mode: 'request' | 'force', reason });
 await Workflows.list({ workflow: 'outreach', status: 'failed', limit: 20, sort: '-createdAt' });
 ```
-`start` is always fire-and-return (`waitSeconds` ≤ 55 only changes the response); `status: 'gated'` = no org slot (quota/billing/consent). From a code step `start` is a DETACHED run — use `.workflow()` for a child the parent waits on. Run statuses: `queued running cancellation_requested gated suspended waiting completed failed cancelled abandoned timed_out`. A trigger's `transform` may return `{ startWorkflow: {...} }` (primitives.md §5) and a `LuaWebhook` may call `Workflows.start`/`signal`.
+`start` is always fire-and-return (`waitSeconds` ≤ 55 only changes the response); `status: 'gated'` = no org slot (quota/billing/consent). From a code step `start` is a DETACHED run — use `.workflow()` for a child the parent waits on. `resume` / `signal` / `signalByKey` / `startBatch` / `setGoal` / `goals.*` **work deployed** (validated live 2026-09-13); only `raiseBudget` is 501 in both runtimes (primitives.md §12). ⚠ Deployed `list` applies only `status` and an untyped `workflowId` (lua-core `workflow-sandbox-bridge.ts`): `workflow`, `correlationKey`, `tags` and `sort` are ignored in production (the example above returns every run of the agent, newest first), whereas `lua test` resolves `workflow` locally — pass `workflowId` (cast; it is not in the typed options) or filter the result yourself. ⚠ `start` does **not** enforce `concurrencyPolicy: 'forbid'` (§1) — send an `idempotencyKey`. Run statuses: `queued running cancellation_requested gated suspended waiting completed failed cancelled abandoned timed_out`. A trigger's `transform` may return `{ startWorkflow: {...} }` (primitives.md §5) and a `LuaWebhook` may call `Workflows.start`/`signal`.
 
 ---
 
@@ -257,5 +257,5 @@ Chat-composed ("dynamic") workflows cannot be deployed from the CLI (`WORKFLOW_D
 | `env-template-missing` (push exit 1) | set the key in env / `.env` before `lua push workflow` |
 | `WORKFLOW_NAME_TAKEN` (409) / `WORKFLOW_FORM_MISMATCH` (400) | rename, or `lua workflows delete` then push |
 | `WORKFLOW_DYNAMIC` (409 on deploy) | chat-composed workflow — recompose in chat or export to source |
-| `RUNS_IN_FLIGHT` (409 on start) | `concurrencyPolicy:'forbid'` and a run is live |
+| `RUNS_IN_FLIGHT` (409 on start) | `concurrencyPolicy:'forbid'` and a run is live — produced today only by scheduled, compose-tool and batch starts; `lua workflows start` / `Workflows.start` do not check the policy (§1) |
 | `SCRIPT_META_INVALID{…}`, `SCRIPT_NONDETERMINISM{…}`, `SCRIPT_IMPORT_FORBIDDEN` | script-form lint (§5) |

@@ -12,7 +12,7 @@ Run `Bash(lua models list --json --ci)` — a 1–2 s authenticated call (no pro
 
 If `$ARGUMENTS` carries the message, use it (default env sandbox, new thread). Otherwise AskUserQuestion **once**:
 
-- "Environment?" (options: `sandbox` (default — compiles locally and pushes your skills/processors to the sandbox first, so it tests current source; the pushed skill versions carry your `.env` merged over your shell environment as their env), `production` (the live agent))
+- "Environment?" (options: `sandbox` (default — compiles locally and pushes your skills/processors to the sandbox first, so it tests current source. ⚠ Each push uploads the **entire environment of the shell Claude Code runs in**, merged with `.env`, as the versions' `env` — and the runtime never reads it (a sandbox turn's `env()` is the agent's server-side env). If that shell holds cloud keys or tokens you would not hand to the platform, start Claude Code from a clean shell first — e.g. `env -i HOME="$HOME" PATH="$PATH" TERM="$TERM" zsh -f` — or use `production` / `/lua-test`, which upload nothing; a platform fix is tracked), `production` (the live agent))
 - "Message?" (free-text, required)
 - "New thread or continue existing?" (options: `New thread`, `Continue thread <id>` if a recent thread id is in context)
 
@@ -21,7 +21,7 @@ If `$ARGUMENTS` carries the message, use it (default env sandbox, new thread). O
 - New thread → `Bash(lua chat --ci -e <env> -m '<message>' -t)` — bare `-t` makes lua-cli generate a fresh thread id and print it (`ℹ️ Thread: …`). **Never omit `-t`**: without it the message lands in the agent's *default* thread for your user.
 - Continue → `Bash(lua chat --ci -e <env> -m '<message>' -t <id>)`.
 
-`lua chat` has **no `--json`**; the reply is streamed text after a `🌙 Response:` line. `-e production` talks to the live agent and counts as a real conversation. `--agent-version <n>` previews an unpromoted agent version in an isolated thread (production only).
+Before the first sandbox run in a session say once, in one line, that sandbox chat uploads the shell's environment variables to the platform (lua-cli 3.33.0; see SECURITY.md) — then run the plain command; never wrap it in `env -i` yourself (the permission rule and the `-t` lint expect the plain form). `lua chat` has **no `--json`**; the reply is streamed text after a `🌙 Response:` line. `-e production` talks to the live agent and counts as a real conversation. `--agent-version <n>` previews an unpromoted agent version in an isolated thread (production only).
 
 ## Step 3 — present
 

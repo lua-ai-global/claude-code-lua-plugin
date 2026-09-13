@@ -15,7 +15,7 @@ You run a structured suite against a Lua agent, identify problems, and **write a
 2. Any `ahead` / `not deployed` / `drift` → **target = sandbox** (local code under test). Everything `synced` → **target = production**. If `lua status` fails (exit 9/10/11) report the one-line error, point at `/lua-doctor`, and stop.
 3. State it once: `[QA] Testing against <sandbox|production> (local ahead: <yes|no>).`
 
-`lua chat -e sandbox` pushes the locally compiled skills/processors to the sandbox first, so a sandbox run always tests the current source.
+`lua chat -e sandbox` pushes the locally compiled skills/processors to the sandbox first, so a sandbox run always tests the current source. ⚠ Each such push also uploads the **entire environment of the shell Claude Code runs in** (merged with `.env`) as the sandbox versions' `env` — lua-cli 3.33.0 `loadEnvironmentVariables()`; the runtime never reads it, and the platform keeps it ~24 h. When the target is sandbox, print once before the first chat: `[QA] Note: sandbox chat uploads this shell's environment variables to the platform — start Claude Code from a clean shell (env -i) if it holds secrets.` Do not wrap or prefix the chat command yourself (the allowlist and the `-t` lint expect the plain form).
 
 ## Step 1 — derive the test plan from the agent's surface
 

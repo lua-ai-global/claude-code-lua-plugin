@@ -69,7 +69,7 @@ export async function apiRequest(path, {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        'X-Lua-Client': 'claude-plugin/1.2.1',
+        'X-Lua-Client': 'claude-plugin/1.2.2',
       },
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal,

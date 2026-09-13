@@ -156,7 +156,7 @@ A `defineTrigger` with `transform: (ctx) => ({ startWorkflow: { name: 'meeting-p
 ## Secrets and auth for custom HTTP
 
 - `lua env production -k BILLING_API_KEY -v '<value>'` (and `lua env sandbox …` for local runs — it rewrites `.env`). Read with `env('BILLING_API_KEY')` inside `execute`. Never hardcode; never store in `Data`.
-- Sign and verify inbound webhooks: `LuaWebhook.secret` (platform-enforced `x-lua-signature`) or verify the vendor's HMAC yourself in `execute`/`verify` using `rawBody`.
+- Sign and verify inbound webhooks. `LuaWebhook.secret` is Lua's **own** `x-lua-signature` HMAC, for callers you control that can sign with it; it must be a compile-time literal (`secret: env('X')` fails `lua compile`) and it rejects every delivery from a vendor that signs with its own header (Stripe, GitHub, …) — leave it unset on their webhook. Verify a vendor's HMAC yourself: in `defineTrigger` `verify` over `ctx.rawBody` (exact bytes), or in a `LuaWebhook` `execute` when the vendor's scheme can be recomputed from the parsed body (the webhook event has no `rawBody`). And `safeParse` the payload — webhook Zod schemas are not enforced (primitives.md §4).
 
 ---
 
