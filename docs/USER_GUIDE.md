@@ -100,7 +100,7 @@ mkdir -p ~/agents/weather-news && cd ~/agents/weather-news && claude
 
 **5. Test** — `/lua-test` picks the type (`skill`, `webhook`, `job`, `preprocessor`, `postprocessor`, `workflow`) and name from `dist-v2/manifest.json`. A failure is handed to the debug subagent automatically.
 
-**6. Chat** — `/lua-chat` → sandbox (which pushes your local skills to the sandbox first), your message, a fresh thread (`lua chat --ci -e sandbox -m … -t`).
+**6. Chat** — `/lua-chat` → sandbox (which pushes your local skills to the sandbox first), your message, a fresh thread (`lua chat --ci -e sandbox -m … -t`). ⚠ lua-cli 3.33.0 uploads the **whole environment of the shell Claude Code runs in** with those sandbox skill versions, and the runtime never reads it — start Claude Code from a clean shell (`env -i …`) when your shell holds secrets; see the plugin's SECURITY.md.
 
 **7. QA** — `/lua-qa` runs 8–15 conversations on an isolated thread each, offline scenarios for every workflow, scans logs for `subType === 'error'`, and writes a triage report with a fix path per finding.
 
@@ -268,6 +268,6 @@ Precedence is deny → ask → allow. **The production gate is the `confirm-depl
 
 **Where does my code go?** From lua-cli to `api.heylua.ai` (and `webhook.heylua.ai`, `cdn.heylua.ai`). The MCP server talks to `api.heylua.ai` and, for a session login, to Google's token endpoint to refresh the session. Claude Code sends the conversation to Anthropic per its own policy.
 
-**How do I update the plugin?** `/plugin marketplace update claude-code-lua-plugin` then reinstall; 1.2.1 targets lua-cli 3.33.0.
+**How do I update the plugin?** `/plugin marketplace update claude-code-lua-plugin` then reinstall; 1.2.2 targets lua-cli 3.33.0.
 
 **Where do I report bugs?** Plugin: https://github.com/lua-ai-global/claude-code-lua-plugin/issues · Security: security@heylua.ai · lua-cli: https://github.com/lua-ai-global/lua-cli/issues · Docs: https://docs.heylua.ai (and `mcp__plugin_lua-agent-builder_lua-docs__submit_feedback` for a wrong page).

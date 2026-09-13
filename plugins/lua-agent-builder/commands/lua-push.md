@@ -34,6 +34,8 @@ Always `--ci --force`. **NEVER** `--auto-deploy` (denied at the permission layer
 
 ## Step 3 — report
 
+⚠ Exit 0 is not success for `all` (or for a type push of several primitives): lua-cli 3.33.0 prints `❌ Failed to push <name>: …` per item and `⚠️  N component(s) failed to push`, then `✅ Push All Complete!`, and still exits 0 (`push.ts` ~1300-1353; validated live 2026-09-13). Scan the output for `❌ Failed to push`; if present, report the failed items as a failure (the others were pushed) — never say "✓ Pushed".
+
 On success: "✓ Pushed `<type>:<name>` v`<version>` (server version created; not live). Next: `/lua-deploy`." — for workflows note the live path is `lua workflows deploy <name> -v latest` (the deploy slash handles it); for `agent` say plainly "persona v`<n>` and the model settings are **already live**" (rollback: `/lua-deploy` persona with the previous version); for `all` say the same about the agent config and that the primitives still need `lua deploy` / an agent version promote.
 
 If the output contains `Model configuration cleared`, `Model settings cleared`, `Batching config cleared` or `Voices cleared` (types `all` / `agent`), say so plainly: the agent push overwrites those server fields with whatever `src/index.ts` declares, so a model chosen in the dashboard is now gone. Point at the fix: set `model` (or `modelSettings` / `batching`) on the `LuaAgent` — `lua models set --model <code>` writes it for you — and push `agent` again.

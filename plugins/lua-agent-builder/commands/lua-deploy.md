@@ -45,3 +45,4 @@ The pilot reports what was pushed, what went live, the smoke result and the exac
 - This file MUST contain exactly one `AskUserQuestion` call per the §3.7 lint rule.
 - Never run a bare deploy verb (`lua deploy`, `lua workflows deploy|activate`, `lua version promote`, `lua mcp activate`, `lua * deploy`, `lua persona production deploy`) — all are denied without the `LUA_DEPLOY_CONFIRMED=1` prefix, and the pilot is the only place that emits the prefix.
 - Never include `--auto-deploy` anywhere.
+- `lua push all` and `lua deploy all --force` exit 0 even when items fail or are skipped (`No versions for … skipping`) — the pilot scans their output and aborts/reports on those lines instead of trusting the exit code (cli-reference.md §4).

@@ -1,6 +1,6 @@
 {
   "name": "@lua/claude-plugin-mcp",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Read-only MCP server for the lua-agent-builder Claude Code plugin",
   "type": "module",
   "main": "dist/server.js",

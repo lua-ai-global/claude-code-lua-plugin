@@ -33,7 +33,7 @@ Package the finished agent for other orgs? → a marketplace **agent template** 
 6. Uniform transform of every message / reply?                    → PreProcessor / PostProcessor
 7. Composing with another agent?                                  → Agents.invoke (full turn) — or a workflow agentStep when it is one step of many
 8. One-shot LLM call inside code?                                 → AI.generate
-9. Proactive outbound (WhatsApp template, email, SMS, Teams)?     → Channels.* (or User.get(id).send for "their channel")
+9. Proactive outbound (WhatsApp template, email, SMS, Teams)?     → Channels.* (or User.get(id).send for "their last chat channel" — it never reaches email)
 10. Phone call out?                                               → Voice.call
 ```
 
@@ -48,7 +48,7 @@ Is it one unit of work under ~10 minutes with no human in the loop?
 ├── Yes → LuaJob (cron / interval / once) or Jobs.create for user-scheduled one-offs
 └── No → createWorkflow when ANY of: several dependent steps · needs approval / a signal / an input request ·
          fan-out over a list (foreach) · retries with backoff and a credit budget · long Job-tier code (git workspace, `ctx.$`) ·
-         a schedule whose fires must not overlap (`concurrencyPolicy: 'forbid'`) · an iterative goal with a judge
+         a schedule whose fires must not overlap (`concurrencyPolicy: 'forbid'` — guards scheduled fires only; manual/API/SDK starts are not checked today, workflows.md §1) · an iterative goal with a judge
 ```
 A workflow can itself be on a `schedule` (it becomes a platform Job) — prefer that over a LuaJob that calls `Workflows.start`.
 
@@ -58,7 +58,7 @@ A workflow can itself be on a `schedule` (it becomes a platform Job) — prefer 
 
 ```
 Do you need to shape the HTTP response, run arbitrary code, or update state without involving the agent?
-├── Yes → LuaWebhook (execute({ query, headers, body }); verify HMAC yourself or set `secret`)
+├── Yes → LuaWebhook (execute({ query, headers, body }) — safeParse the body yourself, the Zod schemas are never applied; `secret` is Lua's own signature for callers you control, not for vendor-signed calls; keep it short and idempotent — deployed webhooks have no wall timeout)
 └── No — the event should become an agent turn / a direct tool call / a workflow run
         → defineTrigger({ verify?, filter?, transform?, tool? }); `lua triggers create` gives you the paste-anywhere URL
 ```
@@ -69,7 +69,7 @@ Do you need to shape the HTTP response, run arbitrary code, or update state with
 
 ```
 Tied to a specific user?                      → User.get(id) → .update({...}) / .patch({ set, unset })  (cross-channel profile)
-Agent-wide config, lookups, cache, vector search? → Data.create/get/search — declare `index` on the fields you filter
+Agent-wide config, lookups, cache, vector search? → Data.create/get/search — declare `index` on the fields you filter (from a `lua test` run: the deployed runtime drops `index`, primitives.md §12)
 Cart / order / catalog and no external shop?  → Products / Baskets / Orders
 Binary (image, PDF, audio)?                   → CDN.upload → store the fileId in Data/User
 Run-scoped state inside a workflow?           → ctx.state.get/set (≤ 64 KB) and step outputs; large outputs → ctx.artefacts
@@ -135,7 +135,7 @@ Omit `model` for the platform default (`alibaba/qwen3.8-flash`). Pick from `lua 
 The `User` profile is cross-channel; the architect does not design auth. Patterns:
 
 - **Anonymous → identified mid-conversation**: a tool verifies against your backend, then `const user = await User.get(); if (user) await user.update({ authenticated: true, customerId })`.
-- **Multi-tenant**: store `orgId` on the user; partition `Data` filters by it (and declare an index on that field).
+- **Multi-tenant**: store `orgId` on the user; partition `Data` filters by it (and declare an index on that field from a `lua test` run — deployed code cannot).
 - **Handoff to a human**: `await user.update({ humanHandoff: true })` + a `PreProcessor` that returns `{ action: 'block', response: '…' }` while the flag is set; notify the human via `Channels.send` / a Slack or Teams integration.
 - **Approvals inside automation**: a workflow `approval()` step, not a chat back-and-forth.
 

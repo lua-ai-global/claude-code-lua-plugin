@@ -2,6 +2,43 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.2.2 — 2026-09-13
+
+Knowledge-only release: corrections validated against production by the system audit of 2026-09-13 (live probes on the E2E agents, re-verified in lua-core-services and lua-iac source), applied to the knowledge base, subagent prompts, slash commands, SECURITY notes and user guide. No hook, permission or MCP behaviour changed. Every line names its source.
+
+### Jobs (`primitives.md` §6, §14; `agents/lua-skill-builder.md`)
+
+- Dropped the "two retry algorithms" hedge. Production and staging pin `LUA_JOBS_INTAKE_MODE = "enqueue"` (lua-iac `services/lua-core/{prod,staging}/k8s/config-map.tf`), so code jobs retry on the queued path only: a fixed `backoffSeconds` wait (default 60, no jitter), `min(maxAttempts, 10)` attempts, zero retries without a finite `maxAttempts`, and `job.execution` on every deployed run (lua-core `job.service.ts` `run` → `enqueueJob`, `getHeavyRetryEligibility`, `scheduleHeavyRetry`; `lua-sandbox-runner` `executor-entry.ts`). The exponential path is reached only by the platform's own `agent`-kind jobs (`enqueueJob` routes them to `processJob`; `DEFAULT_AGENT_JOB_RETRY`).
+
+### `user.send()` reach (`primitives.md` §12, §16; `decision-trees.md`)
+
+- Email removed from the last-interaction reach list: the only channel-window writer is lua-whatsapp `upsertChannelWindow` (`utils/channel-window.util.ts`, called from its WhatsApp, Facebook, Instagram, MessageBird, SMS and Teams services); lua-email never writes one, so the `type === 'email'` branch of `channel.service.ts` `sendToLastInteraction` is unreachable. Use `Channels.email.send`.
+
+### Workflows runtime (`primitives.md` §5, §12, §14; `workflows.md` §1, §6, §9; `commands/lua-workflow.md`; `decision-trees.md`)
+
+- `Workflows.resume` / `signal` / `signalByKey` / `startBatch` / `setGoal` / `goals.*` **work in production** (live probe 2026-09-13 reached `RUN_NOT_FOUND` / `CORRELATION_KEY_NOT_FOUND` / `WORKFLOW_NOT_FOUND` / `[]`); the `resume_unavailable` / `signal_unavailable` / `not_implemented` codes in lua-core `workflow-sandbox-bridge.ts` guard an unbound optional provider. Only `raiseBudget` is 501 in both runtimes (`raiseBudget: notImplemented(...)`; lua-cli `workflow.api.service.ts` `unavailable('raiseBudget', 'R45')`).
+- Deployed `Workflows.list` applies only `status` and an untyped `workflowId`; the typed `workflow` filter is ignored in production (`workflow-sandbox-bridge.ts` `list`).
+- `concurrencyPolicy: 'forbid'` is not enforced on `lua workflows start`, the REST start route, `Workflows.start()` or a trigger's `{ startWorkflow }`: `WorkflowRunService.createRun` has no overlap check (lua-core `workflow-run.service.ts` header; two starts 2 s apart both ran). Only the schedule dispatcher (`workflow-schedule-dispatch.service.ts`), the compose-tool start and batch starts check it. Guidance no longer relies on `RUNS_IN_FLIGHT`; the trigger `skipped_overlap` row is described as never produced today.
+
+### Deployed runtime vs typings (`primitives.md` §4, §12, §14; `decision-trees.md`; `integrations.md`; `agents/lua-architect.md`, `agents/lua-skill-builder.md`)
+
+- `Data.create` / `Data.update` deployed never forward `index` in any form (`sandbox-runtime` `custom.data.api.service.ts` bodies are `{ data, searchText }`); an index can only be declared from a `lua test` run (lua-cli `custom.data.api.service.ts`). Added the seed-tool recipe.
+- `Voice.createSession` re-validated as absent in every runtime, `lua test` included (`sandbox-runtime` `context.ts`; lua-cli `utils/sandbox.ts`).
+- `LuaWebhook` Zod schemas are never applied: the bundler rewrites the constructor to an object literal (`compiler/bundler.ts`) and both `lua test` (`utils/sandbox.ts`) and lua-core (`execute.webhook.service.ts`) call `primitive.execute(event)` directly — a schema-violating body reached `execute` with HTTP 200 live. Guidance: `safeParse` in `execute`.
+- `LuaWebhook.secret` must be a string literal / compile-time constant (`compiler/plugins/webhook.plugin.ts`: `env('X')` fails `lua compile`) and verifies Lua's own `x-lua-signature` (lua-core `webhook.service.ts`), so it blocks vendors that sign with their own scheme — leave it unset for them and verify their HMAC in a `defineTrigger` `verify` over `rawBody`.
+- Deployed webhooks have no wall timeout: the direct path runs in-process with only the VM's synchronous-prefix `timeout` (`webhook.service.ts` → `execute.webhook.service.ts`; `sandbox-runtime` `runner.ts`); a 200 s handler completed after the ~90 s ingress 504, while tools on the remote runner are cut at 180 s (`execute-function.service.ts` `TOOL_TIMEOUT_MS`; lua-iac `LUA_SANDBOX_ROUTING_DEFAULT = "remote"`). Guidance: short, idempotent handlers; never rely on a server-side cut.
+- Commerce: SDK `OrderStatus.FULFILLED` sends `fulfilled` (lua-cli `interfaces/orders.ts`; `order.api.service.ts` puts it in the path unmapped) while the platform stores, filters and charts `fullfilled` (`shared-schemas` `ecommerce-order.schema.ts`, lua-api `orders/base.controller.ts`, `chart.service.ts`) and never validates the status param; order routes answer 200 `success:false`, which the SDK rethrows as a generic error. Guidance added.
+
+### Sandbox chat uploads the shell environment (`primitives.md` §12 `env(key)`, §14; `cli-reference.md` §4; `commands/lua-chat.md`, `commands/lua-test.md`, `commands/lua-env.md`; `agents/lua-qa.md`; `SECURITY.md`; `docs/USER_GUIDE.md`)
+
+- 1.2.1 already said `lua chat -e sandbox` uploads `process.env` merged with `.env`; 1.2.2 adds what the live probe showed — the runtime never reads it (a sandbox turn's `env()` resolves from `subAgent.env`, lua-core `skill-eligibility.resolver.ts`), lua-api/lua-agents accept it unfiltered (`ValidationPipe whitelist:false`) and lua-agents caches it ~24 h with the sandbox version. Corrected the 1.2.1 claim that sandbox turns read the uploaded map. New guidance wherever sandbox chat is offered: never run it from a shell holding secrets you would not hand to the platform; prefer `env -i` / a clean shell; `lua test` uploads nothing. A platform ticket is open.
+
+### `--ci` exit codes (`cli-reference.md` §4; `commands/lua-test.md`, `commands/lua-push.md`, `commands/lua-deploy.md`; `agents/lua-skill-builder.md`, `agents/lua-debug.md`, `agents/lua-deploy-pilot.md`; `primitives.md` §14)
+
+- Raw prompts exiting 0 under `--ci` were already covered in 1.2.1 (`prompt-handler.ts` `safePrompt`; `test.ts` `promptToolSelection`) — unchanged.
+- Added: `lua test skill|webhook|job|…` prints `✅ … execution successful!` and exits 0 when `execute` throws — `utils/sandbox.ts` returns `{ status: 'error', error }` and `test.ts` never checks it. The test slash, skill-builder and debug agents now treat `status: 'error'` as a failure (the debug agent previously said "exit 1 with a stack").
+- Added: `lua push all` and `lua deploy all` exit 0 after per-item failures (`push.ts` `failedItems` → summary only; `deploy.ts` `No versions … skipping`, no exit code). The push slash and the deploy pilot now parse the output.
+
 ## 1.2.1 — 2026-09-12
 
 Knowledge-only release: reconciles the plugin's knowledge base, subagent prompts and slash commands with facts the docs rewrite verified against lua-cli 3.33.0 source and the platform packages (lua-api, lua-agents, lua-core, sandbox-runtime, lua-sandbox-runner, shared-types, lua-whatsapp, lua-web). No hook, permission or MCP behaviour changed; one lint guard was added. Every line below names the source that supports it.

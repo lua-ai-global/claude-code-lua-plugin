@@ -12,7 +12,7 @@ Run `Bash(lua models list --json --ci)` — a 1–2 s authenticated call (no pro
 
 Parse `$ARGUMENTS`. Whatever is still missing, AskUserQuestion **once**, with every question in the same call:
 
-- "Environment?" (options: `sandbox` — writes the project's local `.env` only (no API call); that file is what `lua test` reads and what `lua chat -e sandbox` uploads, merged over your shell environment, with each sandbox skill version; `production` — the live agent's variables, via the server API. `staging` is the CLI's alias for `sandbox`)
+- "Environment?" (options: `sandbox` — writes the project's local `.env` only (no API call); that file is what `lua test` reads; `lua chat -e sandbox` also uploads it — merged over the whole shell environment — with each sandbox skill version, but the runtime never reads that upload (a sandbox turn's `env()` is the agent's server-side env); `production` — the live agent's variables, via the server API. `staging` is the CLI's alias for `sandbox`)
 - "Action?" (options: `list`, `set`, `delete`)
 - "Key?" (free-text; letters, digits and underscores, not starting with a digit — the CLI validates `/^[A-Z_][A-Z0-9_]*$/i`)
 - "Value?" (free-text; `set` only. It goes straight into the command and is never repeated back)
@@ -33,6 +33,6 @@ Always pass the environment positionally: flags without it exit 2 (`Environment 
 
 - In your summary write the command as `lua env <env> -k <KEY> -v '<redacted>'` — never the value, even though the user pasted it a moment ago.
 - `--list` prints `KEY = abcd****` (the CLI masks everything after the first 4 characters — `maskValue` in env.ts). Report the **key names** and the count only; do not copy the masked fragments.
-- After a `sandbox` set, `lua test` / `lua test workflow` pick the new value up on their next run (they merge `.env` over `process.env`), and so does the next `lua chat -e sandbox`, which ships that merged map as the env of the sandbox skill versions it pushes. After a `production` set, new invocations see it at once; the CLI hints a production chat to verify — offer `/lua-chat` (production) instead of running it here.
+- After a `sandbox` set, `lua test` / `lua test workflow` pick the new value up on their next run (they merge `.env` over `process.env`), the next `lua chat -e sandbox` uploads the merged map too, but a sandbox turn's `env()` does **not** read it — it reads the agent's server-side env (`subAgent.env`, lua-core `skill-eligibility.resolver.ts`), so a key that a sandbox *chat* must see is set with `production` (primitives.md §12 `env(key)`). After a `production` set, new invocations see it at once; the CLI hints a production chat to verify — offer `/lua-chat` (production) instead of running it here.
 - A key that a workflow references with `env.template()` must not end in `SECRET|TOKEN|KEY|PASSWORD` (`env-template-secret-key` at compile) — those are read with `env('KEY')` inside `execute`; `lua workflows env-overlay <name> -v latest` shows which template keys resolve after the set.
 - Exit codes: `2` usage (missing environment, `-k` without `-v`/`--delete`, bad key format), `9` auth (→ `/lua-auth`), `11` API unreachable.
