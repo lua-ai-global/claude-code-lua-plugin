@@ -185,6 +185,10 @@ describe('permission layer (lib/permissions-template.json) under Claude Code sem
       'lua logs --ci --type all --limit 20 --json',
       'lua workflows run outreach --input @in.json --agents fake --fast-retries --json',
       'lua workflows watch run_1 --wait-for-human --timeout 900',
+      // lua-cli main after 3.35.0: the org policy READ verbs (`policy models|autonomy get`) are read-only.
+      'lua workflows policy models get --ci',
+      'lua workflows policy autonomy get --json --ci',
+      'lua models list --workflows --json --ci',
       'lua version create --ci -m "deploy via plugin"',
       'lua version list --json',
       'git status --short',
@@ -204,6 +208,13 @@ describe('permission layer (lib/permissions-template.json) under Claude Code sem
       'lua workflows resume run_1 --step s1 --data {}',
       'lua workflows deactivate outreach',
       'lua workflows off outreach',
+      // lua-cli main after 3.35.0: an org-wide policy write, the model_policy gate clear (and its
+      // `ungate` alias) and a recompose (publishes a new version) all confirm once via the prompt.
+      'lua workflows policy autonomy set --enabled on --max-credits 40',
+      'lua workflows policy models set --compose on --max-class strong',
+      'lua workflows clear-gate run_1 --kind model_policy',
+      'lua workflows ungate run_1 --kind model_policy',
+      'lua workflows recompose outreach',
       'lua mcp deactivate fs',
       'lua mcp off fs',
       'lua chat clear',

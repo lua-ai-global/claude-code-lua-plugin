@@ -44,7 +44,7 @@ For each workflow, run one offline scenario per predicate branch, no platform ca
 lua test --ci workflow --name <name> --input '<json matching inputSchema>' --agents fake --fast-retries [--step-output <agentStepId>='<json>'] [--approve <approvalId>] [--deny <approvalId>] [--signal <name>='<json>']
 ```
 
-Exit `0` completed · `2` flag/schema problem (report as a finding: the input schema or a step's output schema) · `4` a step failed · `5` fixture missing. List workflows with `lua workflows list --ci`.
+Exit `0` completed · `2` flag/schema problem (report as a finding: the input schema or a step's output schema) · `4` a step failed · `5` fixture missing. List workflows with `lua workflows list --ci`. The offline driver never reads an agent step's `model` / `taskClass` / `requires` / `effort` (⏳ lua-cli > 3.35.0 members) — class resolution, the consent ladder and the org's autonomy envelope are platform behaviour and are **not** exercised here; note in the report when a workflow relies on them (a `taskClass` without a `model` is only refused at push, so flag it as a finding when you see one in `src/workflows/`).
 
 ## Step 3 — log scan
 

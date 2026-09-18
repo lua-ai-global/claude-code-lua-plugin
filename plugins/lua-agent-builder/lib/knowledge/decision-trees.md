@@ -128,6 +128,42 @@ Single is usually right. Split when personas must differ (customer-facing vs int
 
 Omit `model` for the platform default (`alibaba/qwen3.8-flash`). Pick from `lua models list --json` — never invent a code. Per-channel or per-request choice → a model resolver function `(req) => …`. Tune with `modelSettings` (`temperature`, `reasoning.effort`, `maxOutputTokens`).
 
+**Per agent step inside a workflow** (⏳ lua-cli > 3.35.0 — unreleased as of 2026-09-18; workflows.md §2):
+
+```
+What does the step do?                                  → taskClass                  → model
+├── label / route / yes-no · pull fields · reshape data → classify · extract · transform → 'class/fast'
+├── write prose · gather and summarise · grade output   → draft · research · judge      → 'class/balanced'
+└── multi-step reasoning · write or review code         → reason · code                  → 'class/strong'
+Needs a trait the class must satisfy?                   → requires: ['structured'] (any outputSchema) · ['vision'] · ['largeContext'] · ['codeExecution']
+Must it be one exact model?                             → pin an approved code from `lua models list --workflows --json` (checked at push against the org's set); otherwise never pin
+Reasoning depth?                                        → effort 'low' (tool-heavy orchestration) · 'medium' · 'high' (reason, code) — recorded only; applied from `lua push workflow --apply-effort`
+```
+
+A pushed step that names a `taskClass` must also carry a `model` (`task-class-without-model` at push). The org's ceiling and overrides are `lua workflows policy models get` (`maxClass`, `classMap`, `allow`, `pins`).
+
+---
+
+## "Will a workflow start without asking a person?"
+
+Only agent-initiated starts are scored (the compose tool, a saved workflow the agent's tool starts, batch starts); `lua workflows start` / REST / SDK starts are not (workflows.md §3).
+
+```
+Estimate ≤ 15 steps AND ≤ 20 credits AND expected wall ≤ 1 h?
+├── Yes → auto (nobody asked; no stamp)
+└── No
+    ├── org config askAboveThresholds: false                       → refuse (autonomy never changes this)
+    ├── goal run or batch start                                    → ask (these legs never auto-start)
+    ├── org autonomy envelope enabled (⏳ `lua workflows policy autonomy get`: enabled true)
+    │   AND form admitted (default graph,static — script opts in)
+    │   AND ≤ maxSteps (15) · ≤ maxCredits (20) · ≤ maxDurationSeconds (1 d) · ≤ maxActions (org consentActions)
+    │   ├── hourly allowance left (maxRunsPerHour, default 20 per agent) → auto (policy) — `Consent: auto (policy) — ≤ …` on `status`
+    │   └── allowance spent, or the meter unreachable                  → ask (the safe answer, never refuse)
+    └── otherwise                                                  → ask: the run is `gated` (`start-consent`) until a person clears it from the desktop
+```
+
+Design for the top branch (small composed graphs, short waits — an approval or signal wait counts toward the expected wall) and put the exact `lua workflows policy autonomy set …` line in the plan when the org needs a wider envelope; it is an org-wide consent surface the plugin asks before running.
+
 ---
 
 ## "How do I handle identity / authentication for users?"
