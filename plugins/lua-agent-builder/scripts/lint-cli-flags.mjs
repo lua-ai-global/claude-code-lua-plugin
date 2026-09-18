@@ -53,6 +53,12 @@ const DENY = [
   { pattern: 'User.update(', reason: 'fetch the instance first: `(await User.get(id)).update({...})`' },
   { pattern: "type: 'cron', pattern", reason: 'JobSchedule uses `expression`, not `pattern`' },
   { pattern: 'intervalMs', reason: 'JobSchedule interval uses `seconds`' },
+  // lua-cli 3.36.0 (`policy autonomy set`, commands/workflows.ts `buildAutonomyPolicyPatch`):
+  // the envelope's duration flag is `--max-duration <seconds>`; `--max-duration-seconds` belongs to
+  // `raise-budget` and bounds ONE run. `--agent` is registered only so the verb can refuse it — no
+  // route writes a per-agent envelope (the sub-agent PATCH discards `workflows`).
+  { pattern: 'policy autonomy set --max-duration-seconds', reason: 'the envelope flag is `--max-duration <seconds>`; `--max-duration-seconds` is `raise-budget`\'s' },
+  { pattern: 'policy autonomy set --agent', reason: '`--agent` is refused: no route writes a per-agent autonomy envelope — set the organization\'s with `lua workflows policy autonomy set …`' },
   { pattern: 'lua auth configure --email', reason: 'email and OTP input must stay in a private terminal', authFlow: true },
   { pattern: 'lua auth configure --api-key', reason: 'credentials must stay out of the model conversation', authFlow: true },
 ];

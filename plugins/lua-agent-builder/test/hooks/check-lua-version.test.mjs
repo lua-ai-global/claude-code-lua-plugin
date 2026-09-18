@@ -64,6 +64,7 @@ describe('check-lua-version decide()', () => {
     expect(result?.warn).toContain(`requires lua-cli ≥${PINNED_MIN_LUA_CLI}`);
     expect(result?.warn).toContain(`you have ${tooOld}`);
     expect(result?.warn).toContain('/lua-update');
+    expect(result?.warn).toContain('npm i -g lua-cli@latest');
   });
 
   test('warns when lua --version exits non-zero', () => {

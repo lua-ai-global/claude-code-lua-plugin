@@ -7,16 +7,19 @@ import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs
 import { spawnLua } from '../lib/lua-cli.mjs';
 
 // Pinned minimum lua-cli version. The plugin's commands, agents and knowledge
-// files describe the lua-cli 3.33.0 surface (workflows, triggers, devices,
-// voice, agent versions, `lua auth sessions`, the typed exit-code classes,
-// `lua test preprocessor|postprocessor|workflow`, `lua push --no-include-source`).
+// files describe the lua-cli 3.36.0 surface: the 3.33.0 base (workflows,
+// triggers, devices, voice, agent versions, `lua auth sessions`, the typed
+// exit-code classes, `lua test preprocessor|postprocessor|workflow`, `lua push
+// --no-include-source`) plus the 3.36.0 workflow verbs (`policy models|autonomy`,
+// `clear-gate`, `recompose`, `models list --workflows`, `push --apply-effort`)
+// that answer exit 2 on anything older.
 // Older CLIs still work for the core loop — this hook only WARNS, never
 // blocks — but a user on an older release sees the upgrade hint once per
 // session so the command shapes the plugin emits match what their CLI
-// accepts. The pin must be a version that is published on npm (3.33.0 was
-// published 2026-09-10), so `/lua-update` can always satisfy it; the lint at
+// accepts. The pin must be a version that is published on npm (3.36.0 is
+// published 2026-09-18), so `/lua-update` can always satisfy it; the lint at
 // scripts/lint-pinned-version.mjs enforces that inside the monorepo.
-export const PINNED_MIN_LUA_CLI = '3.33.0';
+export const PINNED_MIN_LUA_CLI = '3.36.0';
 
 /**
  * Parse "X.Y.Z" into [X, Y, Z]. Returns null on garbage input.
@@ -64,7 +67,7 @@ export function decide(versionResult) {
   const minimum = parseSemver(PINNED_MIN_LUA_CLI);
   if (compareSemver(installed, minimum) < 0) {
     return {
-      warn: `Lua plugin requires lua-cli ≥${PINNED_MIN_LUA_CLI} (you have ${installed.join('.')}) — run /lua-update. The plugin will continue to work with degraded functionality until you do.`,
+      warn: `Lua plugin requires lua-cli ≥${PINNED_MIN_LUA_CLI} (you have ${installed.join('.')}) — run /lua-update or: npm i -g lua-cli@latest. The plugin will continue to work with degraded functionality until you do (the workflow policy, clear-gate and recompose verbs it describes do not exist below ${PINNED_MIN_LUA_CLI}).`,
     };
   }
 

@@ -2,7 +2,7 @@
 
 A [Claude Code](https://code.claude.com) plugin for building, testing, and deploying [Lua AI agents](https://heylua.ai) from inside your Claude Code session. It wraps the `lua-cli` toolchain (a TypeScript SDK/CLI — unrelated to the Lua programming language) with single-permission slash commands, hook-enforced production gates, a source-verified knowledge base, and two MCP servers.
 
-Verified against **lua-cli 3.33.0** (September 2026): every command shape, SDK type and API endpoint the plugin uses was read from the lua-cli / lua-api source, not from the public docs.
+Verified against **lua-cli 3.33.0** (September 2026): every command shape, SDK type and API endpoint the plugin uses was read from the lua-cli / lua-api source, not from the public docs. 1.3.0 adds the per-step model classes (`taskClass`, `class/fast|balanced|strong`, `--apply-effort`, `lua workflows policy models`, `clear-gate`, `recompose`, `lua models list --workflows`) and the workflow autonomy envelope (`lua workflows policy autonomy`, `Consent: auto (policy)`), read from lua-cli `main` and `feat/workflow-autonomy` — the refs lua-cli 3.36.0 is cut from — and marked ⏳ in the knowledge base; the pin is 3.36.0 since 1.3.0.
 
 ## Install
 
@@ -10,7 +10,7 @@ Verified against **lua-cli 3.33.0** (September 2026): every command shape, SDK t
 /plugin marketplace add lua-ai-global/claude-code-lua-plugin
 /plugin install lua-agent-builder@claude-code-lua-plugin
 /reload-plugins
-/lua-doctor        # Node, npm, lua-cli ≥ 3.33.0, auth, permission rules
+/lua-doctor        # Node, npm, lua-cli ≥ 3.36.0, auth, permission rules
 ```
 
 New login runs in your own terminal (`lua auth configure`) — the plugin never handles your email, one-time code or credential. `/lua-auth` guides it.
