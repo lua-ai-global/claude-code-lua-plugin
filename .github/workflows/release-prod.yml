@@ -3,6 +3,10 @@ name: release-prod
 on:
   push:
     branches: [main]
+  # Manual re-run for the case a merge to main fires its push event late or not
+  # at all (2026-09-18: the 1.3.0 squash merge queued nothing for seven minutes).
+  # The existing tag check makes a dispatch on an already-released version a no-op.
+  workflow_dispatch:
 
 # Production release: every merge to `main` cuts a stable release.
 #
