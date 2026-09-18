@@ -53,7 +53,7 @@ const DENY = [
   { pattern: 'User.update(', reason: 'fetch the instance first: `(await User.get(id)).update({...})`' },
   { pattern: "type: 'cron', pattern", reason: 'JobSchedule uses `expression`, not `pattern`' },
   { pattern: 'intervalMs', reason: 'JobSchedule interval uses `seconds`' },
-  // lua-cli main after 3.35.0 (`policy autonomy set`, commands/workflows.ts `buildAutonomyPolicyPatch`):
+  // lua-cli 3.36.0 (`policy autonomy set`, commands/workflows.ts `buildAutonomyPolicyPatch`):
   // the envelope's duration flag is `--max-duration <seconds>`; `--max-duration-seconds` belongs to
   // `raise-budget` and bounds ONE run. `--agent` is registered only so the verb can refuse it — no
   // route writes a per-agent envelope (the sub-agent PATCH discards `workflows`).

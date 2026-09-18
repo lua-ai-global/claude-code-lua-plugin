@@ -53,7 +53,7 @@ function setSub(parent, set) {
 }
 
 // Hand-curated from command-definitions.ts / aliases.ts (lua-cli 3.33.0, plus
-// the `workflows` verbs on lua-cli main after 3.35.0 — `policy`, `clear-gate`,
+// the `workflows` verbs of lua-cli 3.36.0 — `policy`, `clear-gate`,
 // `recompose`, aliases.ts `workflows.action`); the lint won't try to parse free
 // text exhaustively (too brittle). Update when commands gain/lose actions.
 setSub('auth',         ['configure', 'logout', 'key', 'sessions']);
@@ -85,7 +85,7 @@ setSub('workflows',    ['list', 'view', 'versions', 'deploy', 'activate', 'deact
                         'watch', 'cancel', 'resume', 'retry-step', 'resolve-step', 'raise-budget', 'approve', 'approval-payload',
                         'signal', 'replay', 'logs', 'delete', 'delete-run', 'env-overlay', 'export', 'archive-runs',
                         'workspace', 'jobs', 'job-logs', 'goals', 'schedules',
-                        // lua-cli main after 3.35.0 (WMC-E7 / WMC-A6): the org's model and autonomy
+                        // lua-cli 3.36.0 (WMC-E7 / WMC-A6): the org's model and autonomy
                         // policy (`policy models|autonomy get|set`), the `model_policy` gate, and the
                         // deterministic rewrite of a chat-composed definition.
                         'policy', 'clear-gate', 'recompose']);

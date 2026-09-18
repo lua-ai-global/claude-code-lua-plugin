@@ -128,7 +128,7 @@ Single is usually right. Split when personas must differ (customer-facing vs int
 
 Omit `model` for the platform default (`alibaba/qwen3.8-flash`). Pick from `lua models list --json` — never invent a code. Per-channel or per-request choice → a model resolver function `(req) => …`. Tune with `modelSettings` (`temperature`, `reasoning.effort`, `maxOutputTokens`).
 
-**Per agent step inside a workflow** (⏳ lua-cli > 3.35.0 — unreleased as of 2026-09-18; workflows.md §2):
+**Per agent step inside a workflow** (⏳ lua-cli 3.36.0 or later; workflows.md §2):
 
 ```
 What does the step do?                                  → taskClass                  → model

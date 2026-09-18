@@ -21,7 +21,7 @@ Then `/lua-auth`: an existing credential is kept; a new login runs `lua auth con
 
 | Plugin | Description |
 |---|---|
-| [`lua-agent-builder`](./plugins/lua-agent-builder/) | 20 slash commands, 5 subagents, 10 hooks, a 5-file knowledge base verified against lua-cli 3.33.0 source (1.3.0 adds per-step model classes and the workflow autonomy envelope, read from lua-cli `main` / `feat/workflow-autonomy` ahead of the > 3.35.0 release that carries them), a local read-only platform MCP server and the public docs MCP |
+| [`lua-agent-builder`](./plugins/lua-agent-builder/) | 20 slash commands, 5 subagents, 10 hooks, a 5-file knowledge base verified against lua-cli source (3.33.0 base; 1.3.0 adds per-step model classes and the workflow autonomy envelope from lua-cli 3.36.0, read from `main` / `feat/workflow-autonomy`), a local read-only platform MCP server and the public docs MCP |
 
 ## Quick walkthrough
 
