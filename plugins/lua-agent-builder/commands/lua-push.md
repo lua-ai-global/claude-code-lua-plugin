@@ -32,7 +32,7 @@ Always `--ci --force`. **NEVER** `--auto-deploy` (denied at the permission layer
 
 `--set-version` must be `x.y.z`; a `0.x.y` value draws the `warn-version-zero` hook. A push also attaches per-skill source so the admin Builder sees CLI edits (`--no-include-source` disables that) and refreshes the source backup.
 
-⏳ **lua-cli 3.36.0 or later** (the plugin's pinned minimum; the installed `lua --version` tells you which case applies):
+⏳ **lua-cli 3.36.0 or later** (the plugin pins 3.37.0; the installed `lua --version` tells you which case applies):
 - `workflow` pushes accept `--apply-effort`: the pushed envelope is stamped `luaWorkflow: 2` and each agent step's `effort` is sent to the model from that version on — a plain push records effort and applies nothing. Add it only when `$ARGUMENTS` says `--apply-effort` or the user asks; say so in the report (`⚙️ --apply-effort: … per-step effort ENABLED` is the CLI's own notice).
 - ⚠ **`lua push all` also pushes every workflow and ACTIVATES the pushed version** (main `push.ts`, PR #3024 — stage-all queues workflows for deployment with or without `--auto-deploy`; below 3.36.0 workflows are simply excluded). On that CLI, before running `all` in a project whose `dist-v2/manifest.json` lists workflows, tell the user in your one line that the workflow versions go **live**; if that is not wanted, push per type instead (`skill`, `webhook`, …) and leave workflows to `/lua-deploy`.
 

@@ -47,7 +47,7 @@ If several apply, the agent usually needs all of them. Stage: tools → integrat
 Is it one unit of work under ~10 minutes with no human in the loop?
 ├── Yes → LuaJob (cron / interval / once) or Jobs.create for user-scheduled one-offs
 └── No → createWorkflow when ANY of: several dependent steps · needs approval / a signal / an input request ·
-         fan-out over a list (foreach) · retries with backoff and a credit budget · long Job-tier code (git workspace, `ctx.$`) ·
+         fan-out over a list (foreach) · retries with backoff and a run budget (credits, or actions on a seat plan) · long Job-tier code (git workspace, `ctx.$`) ·
          a schedule whose fires must not overlap (`concurrencyPolicy: 'forbid'` — guards scheduled fires only; manual/API/SDK starts are not checked today, workflows.md §1) · an iterative goal with a judge
 ```
 A workflow can itself be on a `schedule` (it becomes a platform Job) — prefer that over a LuaJob that calls `Workflows.start`.
@@ -127,6 +127,8 @@ Single is usually right. Split when personas must differ (customer-facing vs int
 ## "Which model?"
 
 Omit `model` for the platform default (`alibaba/qwen3.8-flash`). Pick from `lua models list --json` — never invent a code. Per-channel or per-request choice → a model resolver function `(req) => …`. Tune with `modelSettings` (`temperature`, `reasoning.effort`, `maxOutputTokens`).
+
+⚠ That default is the **agent's**, and a workflow **Job-tier** step does not use it: a Job step runs on its own `model`, failing that the platform's default for Job steps, failing that the organization's default — and every model reply of the attempt is billed at THAT model's multiplier (workflows.md §4). Leaving `model` off a Job step is a cost decision, not a neutral one; ⏳ lua-cli 3.37.0 or later says so with a `job-model-default` advisory at `lua workflows deploy` and an `⚙` line under `lua workflows status --steps`.
 
 **Per agent step inside a workflow** (⏳ lua-cli 3.36.0 or later; workflows.md §2):
 

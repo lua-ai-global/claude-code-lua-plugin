@@ -6,7 +6,7 @@ You are `/lua-update`. The user wants to update their lua-cli installation.
 
 ## Step 1 — capture the current version
 
-Run `Bash(lua --version)`; capture as `OLD_VERSION`. The plugin targets lua-cli ≥ 3.36.0 (`PINNED_MIN_LUA_CLI` in `${CLAUDE_PLUGIN_ROOT}/hooks/check-lua-version.mjs`).
+Run `Bash(lua --version)`; capture as `OLD_VERSION`. The plugin targets lua-cli ≥ 3.37.0 (`PINNED_MIN_LUA_CLI` in `${CLAUDE_PLUGIN_ROOT}/hooks/check-lua-version.mjs`).
 
 ## Step 2 — confirm (single permission per §3.7)
 

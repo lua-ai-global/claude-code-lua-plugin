@@ -2,6 +2,34 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.4.0 — 2026-09-20
+
+**What a workflow run costs, and why.** The plugin described a Job-tier attempt as a flat 4 credits and every run budget in "credits". Both are wrong for a priced run: a Job step is billed per model **REPLY** — one credit per reply on a legacy plan, **actions** (the call's price band × the resolved model's multiplier, cached prompt tokens at the fraction the provider charges) on a seat plan — and a coding turn makes dozens of replies in ONE attempt. Read from lua-core-services `main` at `ebcf6689c` (the lua-cli 3.37.0 release, `#3095`; the billing train `#3094`) — the CLI renderers in `src/commands/workflows.ts`, the wire shapes in `src/interfaces/workflows.ts`, the deploy advisory in lua-api's developer workflow service, the Job model legs and their labels in shared-types, the cache weighting in lua-core's Job rate module — never from the public docs.
+
+**Version.** lua-cli **3.37.0** adds **no command and no option**: its only `src/cli/command-definitions.ts` change is the `--credits` help string, so every shape the plugin emits runs unchanged on 3.36.0 and only prints less. `PINNED_MIN_LUA_CLI` moves 3.36.0 → 3.37.0 because the plugin's agents now READ output that only 3.37.0 prints. The existing "⏳ 3.36.0 or later" markers are untouched; new material is marked "⏳ 3.37.0".
+
+### The billing rule (true on every CLI — not gated on 3.37.0)
+
+- `workflows.md` §4 — the flat rule ("an inline agent step is 1 credit, a Job-tier attempt is 4, tokens never metered") is now scoped to a run the platform is still metering flat, which is exactly what `lua workflows status` still prints for such a run, and the **priced** legacy and seat rules stand beside it. Budget a Job workflow from model replies, not steps.
+- `workflows.md` §4 — **which model a Job step runs on is not the agent's model**: the step's own `model`, failing that the platform's Job default, failing that the organization's. Every reply is billed at that model's multiplier, so pinning `model` on a Job step is a cost decision. Mirrored in `decision-trees.md` ("Which model?"), `primitives.md` §11 and gotcha 35, `agents/lua-architect.md` (decision 6), `agents/lua-skill-builder.md` and `agents/lua-qa.md` (an unpinned Job step is now a QA finding).
+- `lua workflows raise-budget <runId> --credits <n>` — the **flag keeps its name on both plans**, but `<n>` is a cap in the run's own unit (actions on a seat plan). Corrected in `workflows.md` §4 and §7, `primitives.md` §12, `commands/lua-workflow.md`, `commands/lua-status.md`, `agents/lua-debug.md` and the user guide; `decision-trees.md`'s "credit budget" is now "run budget (credits, or actions on a seat plan)". The consent ladder's own "≤ 20 credits" is a different quantity and is deliberately unchanged.
+
+### The lua-cli 3.37.0 read-outs (⏳, and printed only when the server projects them)
+
+- `workflows.md` §2 gains **"Reading what a run cost"**: the engine-aware `Budget:` sentence and `finished past the cap`; the run-level `Tokens:` line; the `Uncached` / `Cached` / `Output` step columns (`Cached` folds reads and writes for width; `—`, never `0`, for a step nobody reported); the `⚙` Job-model line naming the model, the multiplier and the leg that chose it; and the reminder that these are **signals, not charges** and must never be summed — a cache read is a subset of the uncached input figure. A missing line means "not projected", not a defect.
+- `lua workflows logs` now renders `step.job_model_resolved` and the three budget events (`run.budget_parked`, `run.budget_raised`, `run.budget_exceeded`), which below 3.37.0 it did not print at all; the unit inside them is the gate's own word and is quoted verbatim (`workflows.md` §2, `commands/lua-logs.md`, `commands/lua-workflow.md`).
+- `lua workflows deploy` prints a `job-model-default` **advisory** (`  ⚠ <message>`) for a Job step that names no `model` — advisory only, the deploy still succeeds, like the older `job-tier-not-enabled` (`workflows.md` §4 and §8, `cli-reference.md` §4, `commands/lua-deploy.md`, `agents/lua-deploy-pilot.md`, `decision-trees.md`).
+- `raise-budget` names the unit it raised, and a seat run parked before its first priced call no longer reads the legacy sentence.
+
+### Unchanged on purpose
+
+- No new verb, flag, permission rule or hook behaviour: `lib/permissions-template.json`, `hooks/hooks.json`, `confirm-deploy`, `tokenizer`, `scripts/lint-knowledge-commands.mjs` and `scripts/lint-cli-flags.mjs` all hold, because 3.37.0 adds no command surface.
+- `budget.unit`, `budget.reserved` and `usage.engine` are **not** new in 3.37.0 — 3.36.0 already sent them; `reserved` still has no human line and is `--json` only.
+
+### Housekeeping
+
+- Bump 1.3.0 → 1.4.0 everywhere; `mcp/lua-platform/dist/server.js` rebuilt; `PINNED_MIN_LUA_CLI` 3.36.0 → 3.37.0 (`hooks/check-lua-version.mjs`, `/lua-init`, `/lua-update`, `/lua-doctor`, both READMEs and the user guide). `scripts/lint-pinned-version.mjs` compares the pin with npm's `latest` and is therefore **red by design until lua-cli 3.37.0 is published**; it was not weakened.
+
 ## 1.3.0 — 2026-09-18
 
 Two shipped platform features reach the knowledge base, the slash commands and the subagents: **per-step model classes** for workflows and the **workflow autonomy envelope** (pre-consented starts). Every claim was read from lua-core-services — lua-cli `main` at `12cefb7ec` (WMC-E7 `#2969`, hotfixes H7 `#3053` and H8 `#3051`, the stage-all fix `#3024`) and `feat/workflow-autonomy` at `378403322` (WMC-A1…A7) — never from the public docs. **Version**: lua-cli 3.36.0 — cut from those two refs and published 2026-09-18 — carries all of it and nothing below it does (3.35.0, tag `8d65d1ba8`, has none of the verbs), so every addition is marked "⏳ requires lua-cli 3.36.0 or later" and `PINNED_MIN_LUA_CLI` moves 3.33.0 → 3.36.0 (the session hook now also names `npm i -g lua-cli@latest`). That pin is the only hook change (no hook reads a `lua workflows` exit code); the permission template gains the new verbs.
