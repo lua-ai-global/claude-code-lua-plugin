@@ -2,7 +2,7 @@
 
 A complete walkthrough of the [`lua-agent-builder`](https://github.com/lua-ai-global/claude-code-lua-plugin) Claude Code plugin — what it does, how to install it, the canonical build loops (tools, integrations, workflows, templates), the safety model, and what to do when things go wrong.
 
-The plugin wraps **lua-cli 3.36.0** (the pinned minimum: the 3.33.0 base plus the 3.36.0 workflow verbs, marked ⏳ in the knowledge base), the TypeScript SDK/CLI for the Lua agent platform. It has nothing to do with the Lua programming language. Everything in this guide (command shapes, SDK types, API routes) was verified against the lua-cli and lua-api source, not only the public docs.
+The plugin wraps **lua-cli 3.37.0** (the pinned minimum: the 3.33.0 base, the 3.36.0 workflow verbs and the 3.37.0 Job-billing read-outs, all marked ⏳ in the knowledge base), the TypeScript SDK/CLI for the Lua agent platform. It has nothing to do with the Lua programming language. Everything in this guide (command shapes, SDK types, API routes) was verified against the lua-cli and lua-api source, not only the public docs.
 
 If you just want to start: [Installation](#installation) → [Your first agent](#your-first-agent).
 
@@ -34,7 +34,7 @@ If you just want to start: [Installation](#installation) → [Your first agent](
 
 - **Slash commands** wrap every `lua` command you need (`/lua-init`, `/lua-new`, `/lua-test`, `/lua-workflow`, `/lua-push`, `/lua-deploy`, `/lua-status`, …), collect the inputs up-front in one prompt, and surface errors with the CLI's typed exit codes explained.
 - **Subagents** do the heavy lifting in their own context with restricted tools: the architect plans, the skill-builder scaffolds and tests any primitive (including workflows, triggers, devices and voices), the debug agent diagnoses failures, the deploy pilot runs the gated ship sequence, the QA agent runs conversational and offline-workflow suites.
-- **A knowledge base** (`lib/knowledge/`) gives those agents the exact SDK shapes, workflow builder, CLI matrix, integration patterns and decision trees — checked against lua-cli source (3.33.0 base; the ⏳ additions against the `main` / `feat/workflow-autonomy` refs lua-cli 3.36.0 is cut from).
+- **A knowledge base** (`lib/knowledge/`) gives those agents the exact SDK shapes, workflow builder, CLI matrix, integration patterns and decision trees — checked against lua-cli source (3.33.0 base; the ⏳ additions against the `main` / `feat/workflow-autonomy` refs lua-cli 3.36.0 and 3.37.0 are cut from).
 - **Hooks** probe your environment, inject the current agent into Claude's context, and gate every production-affecting verb.
 - **Two MCP servers**: a local read-only platform server (what's deployed, versions, logs) and the public docs MCP.
 
@@ -45,11 +45,13 @@ If you just want to start: [Installation](#installation) → [Your first agent](
 | Requirement | Why | How |
 |---|---|---|
 | **Node.js ≥ 18** | hooks and the MCP server are Node ESM | macOS `brew install node@20` · Windows `winget install OpenJS.NodeJS.LTS` · Linux NodeSource / `nvm install 20` |
-| **lua-cli ≥ 3.36.0** | the command shapes the plugin emits (3.36.0 adds the workflow policy, clear-gate and recompose verbs the knowledge base describes) | `npm install -g lua-cli` (or `/lua-update`) |
+| **lua-cli ≥ 3.37.0** | the command shapes and output the plugin reads (3.36.0 added the workflow policy, clear-gate and recompose verbs; 3.37.0 adds no verb at all — it prints what a run cost: the `Tokens:` line, the per-step token columns, the `⚙` Job-model line, the engine-aware budget wording, the budget events in `workflows logs`) | `npm install -g lua-cli` (or `/lua-update`) |
 | **Claude Code** | the host | https://claude.com/claude-code |
 | **A Lua account** | to talk to `api.heylua.ai` | https://admin.heylua.ai — `/lua-auth` guides the login |
 
 `/lua-doctor` checks all of these and offers consent-gated fixes. Platforms: macOS 14+, Ubuntu 22.04+, Windows 11; CI runs the suite on all three with Node 18 and 20.
+
+New in the 1.4.0 knowledge base: **what a workflow run costs.** A Job-tier step is billed per model **reply**, not per attempt — a coding turn that answers two hundred times is charged two hundred times — which is one credit per reply on a legacy plan and, on a seat plan, **actions** (the call's price band × the model's multiplier, with cached prompt tokens counted at the fraction the provider charges). `lua workflows raise-budget <runId> --credits <n>` keeps its flag name on both plans, but `<n>` is a cap in the run's OWN unit — actions on a seat plan — and `/lua-workflow status` names it. A Job step also runs on its own `model`, failing that the platform's Job default, failing that your organization's — never the agent's model — so leaving `model` off a Job step is a cost decision. Those are platform rules, true on any CLI. **lua-cli 3.37.0** is what makes them visible: a `Tokens:` line and `Uncached` / `Cached` / `Output` columns under `--steps` (signals, never charges — do not add them up), `⚙ <step>: model … · ×<multiplier> · chosen by <leg>` on Job rows, `finished past the cap` on a run that crossed its budget and completed anyway, the three budget events in `lua workflows logs`, a `raise-budget` confirmation that names the unit, and a `job-model-default` advisory at `lua workflows deploy`. 3.37.0 adds no command and no option, so nothing the plugin runs breaks on an older CLI — it simply prints less.
 
 Two platform features are new in the 1.3.0 knowledge base: **per-step model classes** (`taskClass`, `model: 'class/fast|balanced|strong'`, `requires`, `effort`, `lua models list --workflows`, `lua workflows policy models`, `lua push workflow --apply-effort`, `clear-gate`, `recompose`) and the **workflow autonomy envelope** (`lua workflows policy autonomy`, the `Consent: auto (policy)` line). They need **lua-cli 3.36.0 or later** — the plugin's pinned minimum since 1.3.0; the knowledge files mark them ⏳ and were read from the lua-cli source on `main` / `feat/workflow-autonomy`, the refs 3.36.0 is cut from, so the slashes tell you when your CLI predates a verb (exit 2) instead of guessing.
 
@@ -121,6 +123,7 @@ Workflows are durable multi-step graphs with approvals, signals, fan-out, retrie
 5. `/lua-workflow start reply-approval --input @in.json` (one confirmation) → `/lua-workflow status <runId>` → `/lua-workflow approve <runId> <wfa_…>` / `signal` / `resume` / `cancel`.
 6. ⏳ **A model per step** (lua-cli 3.36.0 or later): give each `agentStep` a `taskClass` (`classify extract transform draft research reason code judge`) and `model: 'class/fast' | 'class/balanced' | 'class/strong'` — the platform resolves the class through your organization's policy (`/lua-workflow policy models get`; an admin sets `maxClass`, `classMap`, `allow`, `pins`, `fallback`, `consent-actions`), `requires: ['structured']` when the step has an `outputSchema`, and an `effort` that is recorded but only applied once you push with `--apply-effort`. `/lua-workflow models` shows the catalog as a step sees it (class, best for, speed, cost). A step whose class cannot be served parks instead of failing — `/lua-workflow clear-gate <runId>` once the policy is fixed.
 7. ⏳ **Will it start without asking?** A run the agent composes or starts from chat above 15 steps · 20 credits · 1 h parks `gated` until someone consents from the desktop (`status` exits 6 under `--strict`). An organization can pre-consent to a bounded envelope — `/lua-workflow policy autonomy get` shows it; an admin sets it with `lua workflows policy autonomy set --enabled on --max-credits <n> --max-steps <n> --max-duration <seconds> --max-actions <n> --max-runs-per-hour <n> --forms graph,static` (the plugin asks before that org-wide write). Such a start shows `Consent: auto (policy) — ≤ …` on `status`. Goal runs and batch starts always ask; a refusal (`askAboveThresholds: false`) is never turned into an auto-start.
+8. **What did it cost?** `/lua-workflow status <runId>` — the `Budget:` line gives the figure, the unit your organization counts in (credits, or **actions** on a seat plan) and one sentence saying what that unit buys. A Job step is charged per model **reply**, so budget from replies; pin `model` on every Job step (it otherwise runs on the platform or organization default and bills every reply at that model's multiplier). Parked on the budget? `/lua-workflow raise-budget <runId> <n>` — `<n>` is in the run's own unit even though the flag is spelled `--credits`. ⏳ On lua-cli 3.37.0 or later `status` adds a `Tokens:` line and per-step token columns (signals, not charges — never add them up), an `⚙` line naming the Job model and its multiplier, and `lua workflows logs` finally shows the budget park / raise / exceeded events.
 
 Chat-composed workflows can't be deployed from the CLI (`WORKFLOW_DYNAMIC`); `/lua-workflow export <name>` brings one into source, and ⏳ `/lua-workflow recompose <name>` rewrites its task classes into `class/<c>` as a new version.
 
@@ -185,7 +188,7 @@ Subagents never ask questions; the slash that spawned them already collected the
 
 | Event | Hook | What it does |
 |---|---|---|
-| SessionStart | `check-lua-version` | warns (never blocks) if lua-cli < 3.36.0, pointing at `/lua-update` / `npm i -g lua-cli@latest` |
+| SessionStart | `check-lua-version` | warns (never blocks) if lua-cli < 3.37.0, pointing at `/lua-update` / `npm i -g lua-cli@latest` |
 | SessionStart | `detect-project` | "✓ Lua agent project detected: <agentId>" from `lua.skill.yaml` |
 | SessionStart | `check-lua-auth` | probes `lua models list --json --ci` (1–2 s); exit 9 → recommends `/lua-auth`, exit 11 → API-unreachable note, timeout → "could not confirm" |
 | UserPromptSubmit | `inject-context` | `[lua] agent: <id> / org: <id>` every prompt |
@@ -256,6 +259,7 @@ Precedence is deny → ask → allow. **The production gate is the `confirm-depl
 - **Compile: "No skills found" or a primitive is missing from the manifest** — it isn't referenced from the `LuaAgent` arrays in `src/index.ts`.
 - **Workflow push refused** — `unplaced_step`, `tool_unbundled`, `env-template-missing`, `WORKFLOW_NAME_TAKEN`; ⏳ `task-class-without-model`, `model-class-unknown` (and the other vocabulary codes), `model-class-resolution-off`; the debug subagent maps each to a fix (`lib/knowledge/workflows.md` §9).
 - **A workflow run sits `gated` / exit 6** — a consent gate is a person's to clear from the desktop or the approvals inbox (`lua workflows approve` needs a `wfa_` id and cannot); ⏳ on lua-cli 3.36.0 or later `status --strict` exits 6 on it (below 3.36.0 it exits 0). A `model_policy` park (⏳) is cleared with `/lua-workflow clear-gate <runId>` once the org's model policy serves the class.
+- **A budget figure or a raise in the wrong unit** — a seat organization counts **actions**, a legacy one **credits**; read the unit off `/lua-workflow status <runId>` and pass `--credits <n>` with `<n>` in THAT unit (the flag name never changes). Below lua-cli 3.37.0 the raise confirmation always says "credits" whatever the plan — ignore the word, check `status`.
 - **`lua push all` made a workflow live** — ⏳ lua-cli 3.36.0 or newer pushes and activates workflows in stage-all (`lib/knowledge/cli-reference.md` §4); push per type, or use `/lua-deploy` for workflows, when that is not what you want.
 
 ---
@@ -274,6 +278,8 @@ Precedence is deny → ask → allow. **The production gate is the `confirm-depl
 
 **Where does my code go?** From lua-cli to `api.heylua.ai` (and `webhook.heylua.ai`, `cdn.heylua.ai`). The MCP server talks to `api.heylua.ai` and, for a session login, to Google's token endpoint to refresh the session. Claude Code sends the conversation to Anthropic per its own policy.
 
-**How do I update the plugin?** `/plugin marketplace update claude-code-lua-plugin` then reinstall; 1.3.0 targets lua-cli 3.36.0 (the pin; it carries the per-step model classes and workflow autonomy verbs the plugin describes).
+**How do I update the plugin?** `/plugin marketplace update claude-code-lua-plugin` then reinstall; 1.4.0 targets lua-cli 3.37.0 (the pin; 3.36.0 carries the per-step model classes and workflow autonomy verbs, 3.37.0 the Job-billing read-outs the plugin describes).
+
+**Why does my run show no `Tokens:` line or `⚙` model line?** Those print only when the server projected the figures — an unmetered run, a run metered before the platform shipped them, or a CLI below 3.37.0. A missing line means "nobody reported", not a fault; and the token figures are never what you were charged (the `Budget:` line is), so never sum them.
 
 **Where do I report bugs?** Plugin: https://github.com/lua-ai-global/claude-code-lua-plugin/issues · Security: security@heylua.ai · lua-cli: https://github.com/lua-ai-global/lua-cli/issues · Docs: https://docs.heylua.ai (and `mcp__plugin_lua-agent-builder_lua-docs__submit_feedback` for a wrong page).

@@ -7,19 +7,26 @@ import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs
 import { spawnLua } from '../lib/lua-cli.mjs';
 
 // Pinned minimum lua-cli version. The plugin's commands, agents and knowledge
-// files describe the lua-cli 3.36.0 surface: the 3.33.0 base (workflows,
+// files describe the lua-cli 3.37.0 surface: the 3.33.0 base (workflows,
 // triggers, devices, voice, agent versions, `lua auth sessions`, the typed
 // exit-code classes, `lua test preprocessor|postprocessor|workflow`, `lua push
-// --no-include-source`) plus the 3.36.0 workflow verbs (`policy models|autonomy`,
+// --no-include-source`), the 3.36.0 workflow verbs (`policy models|autonomy`,
 // `clear-gate`, `recompose`, `models list --workflows`, `push --apply-effort`)
-// that answer exit 2 on anything older.
+// that answer exit 2 on anything older, and the 3.37.0 Job-billing read-outs
+// (the `Tokens:` line and the `Uncached`/`Cached`/`Output` columns, the `⚙`
+// Job-model line, the engine-aware budget wording and `finished past the cap`,
+// the budget events in `workflows logs`, the unit-aware `raise-budget`
+// confirmation and the `job-model-default` deploy advisory). 3.37.0 adds NO
+// command and NO option — every shape the plugin emits already runs on 3.36.0,
+// which is why this pin still only warns.
 // Older CLIs still work for the core loop — this hook only WARNS, never
 // blocks — but a user on an older release sees the upgrade hint once per
-// session so the command shapes the plugin emits match what their CLI
-// accepts. The pin must be a version that is published on npm (3.36.0 is
-// published 2026-09-18), so `/lua-update` can always satisfy it; the lint at
-// scripts/lint-pinned-version.mjs enforces that inside the monorepo.
-export const PINNED_MIN_LUA_CLI = '3.36.0';
+// session so the output the plugin's agents read matches what their CLI
+// prints. The pin must be a version that is published on npm, so
+// `/lua-update` can always satisfy it; the lint at
+// scripts/lint-pinned-version.mjs enforces that inside the monorepo (it is
+// RED by design between raising this pin and the npm publish of 3.37.0).
+export const PINNED_MIN_LUA_CLI = '3.37.0';
 
 /**
  * Parse "X.Y.Z" into [X, Y, Z]. Returns null on garbage input.

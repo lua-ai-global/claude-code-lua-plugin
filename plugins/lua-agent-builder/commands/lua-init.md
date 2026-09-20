@@ -8,7 +8,7 @@ You are `/lua-init`. The user wants a Lua agent project in the current directory
 ## Step 0 — preflight
 
 1. **Auth probe**: Run `Bash(lua models list --json --ci)` — a 1–2 s authenticated call (no project needed). Exit 0 or 10 = authenticated (10 = a typed key scoped away from the model catalog; fine). Exit 9 = not authenticated: use the **Skill tool** with `skill: "lua-auth"`, then re-probe; if still 9, abort with the CLI error verbatim. Exit 11 = the Lua API is unreachable: abort with that line (do not start a login). Do not use `lua agents` as the probe — it walks every organisation and can take 20 s or more on large accounts. If authentication cannot be established, abort: "Authentication didn't complete. Re-run `/lua-auth` then `/lua-init`."
-2. **Version probe** (informational): `Bash(lua --version)`. If below the plugin's pinned minimum (`PINNED_MIN_LUA_CLI` in `${CLAUDE_PLUGIN_ROOT}/hooks/check-lua-version.mjs`, currently 3.36.0), use the **Skill tool** with `skill: "lua-update"` — that slash asks its own confirmation. If declined, continue with the older CLI.
+2. **Version probe** (informational): `Bash(lua --version)`. If below the plugin's pinned minimum (`PINNED_MIN_LUA_CLI` in `${CLAUDE_PLUGIN_ROOT}/hooks/check-lua-version.mjs`, currently 3.37.0), use the **Skill tool** with `skill: "lua-update"` — that slash asks its own confirmation. If declined, continue with the older CLI.
 3. **Existing project**: if `lua.skill.yaml` exists here, say so; `lua init` over it requires `--force` (exit 2 otherwise) — only proceed if the user's request clearly means re-init.
 
 ## Step 1 — collect inputs (single permission per §3.7)

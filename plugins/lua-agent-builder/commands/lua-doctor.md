@@ -15,7 +15,7 @@ Run `Bash(npm --version)`; if non-zero try `pnpm --version`. If neither, AskUser
 
 ## Step 3 — lua-cli
 
-Run `Bash(lua --version)`. Not installed → AskUserQuestion to install via `npm install -g lua-cli`. Installed but below `PINNED_MIN_LUA_CLI` in `${CLAUDE_PLUGIN_ROOT}/hooks/check-lua-version.mjs` (3.36.0 — the plugin's knowledge describes workflow verbs that do not exist below it) → point at `/lua-update`.
+Run `Bash(lua --version)`. Not installed → AskUserQuestion to install via `npm install -g lua-cli`. Installed but below `PINNED_MIN_LUA_CLI` in `${CLAUDE_PLUGIN_ROOT}/hooks/check-lua-version.mjs` (3.37.0 — the plugin's knowledge describes workflow verbs that do not exist below 3.36.0 and cost read-outs that only 3.37.0 prints) → point at `/lua-update`.
 
 ## Step 4 — authentication
 
