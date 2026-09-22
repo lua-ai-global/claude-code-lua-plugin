@@ -12,6 +12,10 @@
 //     the legacy spelling for months.
 //   - `lua logs --type mastra` appears in the CLI's own help text but is
 //     rejected by the alias table (exit 2).
+//   - `lua logs --follow` was denied until lua-cli 3.38.0, which added it
+//     (PRO-1838 / A5) alongside `--since`, `--until` and `--environment`.
+//     The entry was removed, not inverted — the same mistake that made the
+//     plugin ship `lua sync --accept` for months.
 //   - `lua deploy workflow|mcp|device|voice` are not deploy types; workflows
 //     go live with `lua workflows deploy`, MCP servers with `lua mcp activate`.
 //   - `defineTool` / `lua-cli/skill` / `welcomeMessage` / `Jobs.schedule` /
@@ -37,7 +41,15 @@ const DENY = [
   { pattern: 'lua jobs list', reason: 'the action is `lua jobs view`' },
   { pattern: 'lua jobs run ', reason: 'the action is `lua jobs trigger -i <name>`' },
   { pattern: 'lua chat --json', reason: '`lua chat` has no --json flag' },
-  { pattern: 'lua logs --follow', reason: '`lua logs` has no --follow flag (one-shot fetch)' },
+  // `lua logs --follow` WAS denied here: it did not exist before lua-cli 3.38.0.
+  // PRO-1838 (A5) shipped it (a poll, not a stream), together with --since/--until/
+  // --environment, so the entry is gone rather than inverted. What is still wrong is
+  // a SEVERITY flag on `lua logs`: --min-severity is a log-DRAIN selector and `lua
+  // logs` has no severity option at all — severity is filtered client-side on `subType`.
+  { pattern: 'lua logs --min-severity', reason: '`lua logs` has no severity flag; `--min-severity` is a `lua drains` selector — filter on the entry\'s `subType` instead' },
+  // lua-cli 3.38.0 `commands/drains.mutations.ts` `updateDrainCore`: a drain cannot
+  // change kind in place, and the flag is refused before any request is sent.
+  { pattern: 'lua drains update --type', reason: 'a drain cannot change type in place — delete it and create a new one' },
   { pattern: 'lua dev ', reason: 'there is no `lua dev` command in lua-cli 3.x' },
   { pattern: 'lua integrations add', reason: 'the action is `lua integrations connect --integration <type>`' },
   { pattern: 'lua triggers pause', reason: 'integration triggers moved to `lua integrations webhooks pause --webhook-id <id>`' },

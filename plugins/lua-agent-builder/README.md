@@ -10,7 +10,7 @@ Verified against **lua-cli 3.33.0** (September 2026): every command shape, SDK t
 /plugin marketplace add lua-ai-global/claude-code-lua-plugin
 /plugin install lua-agent-builder@claude-code-lua-plugin
 /reload-plugins
-/lua-doctor        # Node, npm, lua-cli ≥ 3.37.0, auth, permission rules
+/lua-doctor        # Node, npm, lua-cli ≥ 3.38.0, auth, permission rules
 ```
 
 New login runs in your own terminal (`lua auth configure`) — the plugin never handles your email, one-time code or credential. `/lua-auth` guides it.
@@ -21,11 +21,11 @@ New login runs in your own terminal (`lua auth configure`) — the plugin never 
 plugins/lua-agent-builder/
 ├── .claude-plugin/plugin.json   # plugin manifest
 ├── .mcp.json                    # lua-platform (local stdio) + lua-docs (https://docs.heylua.ai/mcp)
-├── commands/                    # 20 slash commands
+├── commands/                    # 21 slash commands
 ├── agents/                      # 5 subagents (architect, skill-builder, debug, deploy-pilot, qa)
 ├── hooks/                       # 10 Node ESM hooks + hooks.json
 ├── lib/
-│   ├── knowledge/               # primitives, workflows, cli-reference, integrations, decision-trees
+│   ├── knowledge/               # primitives, workflows, cli-reference, integrations, decision-trees, log-drains
 │   ├── permissions-template.json# allow/ask/deny rules /lua-doctor merges into .claude/settings.json
 │   ├── tokenizer.mjs            # production-verb classifier for the deploy gate
 │   └── credentials.mjs, hook-runtime.mjs, lua-cli.mjs, platform.mjs
@@ -49,7 +49,8 @@ plugins/lua-agent-builder/
 | `/lua-test [type]` | `lua test --ci skill\|webhook\|job\|preprocessor\|postprocessor\|workflow`; failures go to the debug subagent |
 | `/lua-workflow <verb>` | Offline workflow runs with scripted approvals/signals; list/status/watch; start/approve/signal/resume/cancel with one confirmation |
 | `/lua-chat` | One-shot `lua chat --ci -e <env> -m … -t` on an isolated thread |
-| `/lua-logs` | `lua logs --ci --json` with the real `--type` list |
+| `/lua-logs` | `lua logs --ci --json` with the real 18-source `--type` list and ⏳ the 3.38.0 read window (`--since` / `--until` / `--environment` / `--follow`) |
+| `/lua-drains` | ⏳ 3.38.0 log drains: `lua drains list\|status\|deliveries\|create\|update\|delete\|test\|verify\|pause\|resume\|rotate-secret`; reads run at once, the seven config verbs confirm once, the signing secret is never stored |
 | `/lua-env` | `lua env <sandbox\|production> --list \| -k KEY -v VALUE \| -k KEY --delete`; the Bash prompt is the confirmation, values never echoed |
 | `/lua-integrations` | `lua integrations available\|list\|info\|webhooks …\|mcp …`; read-only verbs run at once, mutations confirm once, OAuth connects go to your terminal |
 | `/lua-sync` | Drift report from `lua status --json` + `lua sync --check`; `--pull` / `--push` |
@@ -63,6 +64,7 @@ plugins/lua-agent-builder/
 
 - **Production gate** — every verb that changes what runs in production is blocked by the `confirm-deploy` hook (on every Bash call) unless it carries the `LUA_DEPLOY_CONFIRMED=1` prefix, which only the deploy flow emits after your single confirmation: `lua deploy`, `lua skills|webhooks|jobs|preprocessors|postprocessors deploy`, `lua persona production deploy`, `lua workflows deploy|activate`, `lua version promote`, `lua mcp activate`, `lua marketplace template publish|apply` — in every spelling lua-cli accepts (its `publish`/`on`/`enable`/`submit`/`rollout`/`prod` aliases and the `heylua`/`lua-ai` binaries). A hook block wins over any allow rule. The permission template allows the literal prefixed forms and carries no deny/ask rule for the bare verbs, because Claude Code evaluates deny/ask past a leading env assignment and such a rule would block the confirmed form too. `lib/tokenizer.mjs` is the one classifier; `test/lib/permissions-mirror.test.mjs` fails if the layers drift.
 - **`--auto-deploy`** is denied and blocked unconditionally.
+- **Log drains** (⏳ lua-cli 3.38.0) are ORGANIZATION configuration, not a deploy: `lua drains list|status|deliveries|test` are allowed, and `create|update|delete|verify|pause|resume|rotate-secret` sit in the `ask` tier — that prompt is `/lua-drains`'s single confirmation. They are deliberately **not** in `lib/tokenizer.mjs`: none of them changes what runs in production, and `LUA_DEPLOY_CONFIRMED=1` would be the wrong sentence for a log-shipping change. No secret ever reaches a command line — a header value is prompted or read from an environment variable (`--header-from-env NAME=ENV_VAR`), and the HMAC signing secret is minted server-side and printed exactly once.
 - **Credential isolation** — `lua auth configure|key|logout` are denied for the model; login happens in your terminal.
 - **Single permission per slash** — each slash asks at most one question (`x-lua-multi-step: true` marks the diagnostic exceptions).
 

@@ -7,26 +7,32 @@ import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs
 import { spawnLua } from '../lib/lua-cli.mjs';
 
 // Pinned minimum lua-cli version. The plugin's commands, agents and knowledge
-// files describe the lua-cli 3.37.0 surface: the 3.33.0 base (workflows,
+// files describe the lua-cli 3.38.0 surface: the 3.33.0 base (workflows,
 // triggers, devices, voice, agent versions, `lua auth sessions`, the typed
 // exit-code classes, `lua test preprocessor|postprocessor|workflow`, `lua push
 // --no-include-source`), the 3.36.0 workflow verbs (`policy models|autonomy`,
 // `clear-gate`, `recompose`, `models list --workflows`, `push --apply-effort`)
-// that answer exit 2 on anything older, and the 3.37.0 Job-billing read-outs
+// that answer exit 2 on anything older, the 3.37.0 Job-billing read-outs
 // (the `Tokens:` line and the `Uncached`/`Cached`/`Output` columns, the `⚙`
 // Job-model line, the engine-aware budget wording and `finished past the cap`,
 // the budget events in `workflows logs`, the unit-aware `raise-budget`
-// confirmation and the `job-model-default` deploy advisory). 3.37.0 adds NO
-// command and NO option — every shape the plugin emits already runs on 3.36.0,
-// which is why this pin still only warns.
-// Older CLIs still work for the core loop — this hook only WARNS, never
-// blocks — but a user on an older release sees the upgrade hint once per
-// session so the output the plugin's agents read matches what their CLI
-// prints. The pin must be a version that is published on npm, so
-// `/lua-update` can always satisfy it; the lint at
-// scripts/lint-pinned-version.mjs enforces that inside the monorepo (it is
-// RED by design between raising this pin and the npm publish of 3.37.0).
-export const PINNED_MIN_LUA_CLI = '3.37.0';
+// confirmation and the `job-model-default` deploy advisory), and — new here —
+// the 3.38.0 log-drain surface: the whole `lua drains` command (eleven verbs,
+// `/lua-drains`, `lib/knowledge/log-drains.md`) and the `lua logs` read window
+// `--since` / `--until` / `--environment` / `--follow` with all 18 log sources
+// reachable through `--type`.
+// 3.36.0 → 3.37.0 added no command and no option, so that pin only sharpened
+// what the agents could READ. 3.38.0 is the first pin in a while that adds
+// COMMAND SURFACE: below it `lua drains` exits 1 as an unknown command and the
+// four new `lua logs` options exit 1 as unknown options. Older CLIs still work
+// for the core loop — this hook only WARNS, never blocks — but a user on an
+// older release sees the upgrade hint once per session, and `/lua-drains` and
+// the `--since` recipes say ⏳ 3.38.0 in their own text.
+// The pin must be a version that is published on npm, so `/lua-update` can
+// always satisfy it; the lint at scripts/lint-pinned-version.mjs enforces that
+// inside the monorepo (it is RED by design between raising this pin and the
+// npm publish of 3.38.0 — the same window 1.4.0 sat in before 3.37.0 shipped).
+export const PINNED_MIN_LUA_CLI = '3.38.0';
 
 /**
  * Parse "X.Y.Z" into [X, Y, Z]. Returns null on garbage input.
@@ -74,7 +80,7 @@ export function decide(versionResult) {
   const minimum = parseSemver(PINNED_MIN_LUA_CLI);
   if (compareSemver(installed, minimum) < 0) {
     return {
-      warn: `Lua plugin requires lua-cli ≥${PINNED_MIN_LUA_CLI} (you have ${installed.join('.')}) — run /lua-update or: npm i -g lua-cli@latest. The plugin will continue to work with degraded functionality until you do (the workflow policy, clear-gate and recompose verbs it describes do not exist below ${PINNED_MIN_LUA_CLI}).`,
+      warn: `Lua plugin requires lua-cli ≥${PINNED_MIN_LUA_CLI} (you have ${installed.join('.')}) — run /lua-update or: npm i -g lua-cli@latest. The plugin will continue to work with degraded functionality until you do (lua drains, and the lua logs --since/--until/--environment/--follow options, do not exist below ${PINNED_MIN_LUA_CLI}).`,
     };
   }
 

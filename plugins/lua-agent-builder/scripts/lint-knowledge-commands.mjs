@@ -52,7 +52,8 @@ function setSub(parent, set) {
   for (const s of set) SUBCOMMANDS[parent].add(s);
 }
 
-// Hand-curated from command-definitions.ts / aliases.ts (lua-cli 3.33.0, plus
+// Hand-curated from command-definitions.ts / aliases.ts (lua-cli 3.33.0, the
+// `drains` verbs of lua-cli 3.38.0, plus
 // the `workflows` verbs of lua-cli 3.36.0 — `policy`, `clear-gate`,
 // `recompose`, aliases.ts `workflows.action`); the lint won't try to parse free
 // text exhaustively (too brittle). Update when commands gain/lose actions.
@@ -78,6 +79,10 @@ setSub('mcp',          ['list', 'activate', 'deactivate', 'delete']);
 setSub('devices',      ['list', 'status', 'enable', 'disable', 'remove', 'test', 'test-trigger']);
 setSub('jobs',         ['view', 'versions', 'deploy', 'activate', 'deactivate', 'trigger', 'history', 'delete']);
 setSub('webhooks',     ['view', 'versions', 'deploy', 'activate', 'deactivate', 'delete', 'list-events', 'subscribe', 'unsubscribe']);
+// lua-cli 3.38.0 (PRO-1798, log drains) — `src/utils/aliases.ts` `drains.action`.
+// `rotate-secret` keeps its hyphen: it is the route name too.
+setSub('drains',       ['list', 'status', 'deliveries', 'create', 'update', 'delete', 'test', 'verify',
+                        'pause', 'resume', 'rotate-secret']);
 setSub('preprocessors',  ['view', 'versions', 'deploy', 'activate', 'deactivate', 'delete']);
 setSub('postprocessors', ['view', 'versions', 'deploy', 'activate', 'deactivate', 'delete']);
 setSub('skills',       ['sandbox', 'staging', 'production', 'view', 'versions', 'deploy', 'delete']);

@@ -183,6 +183,13 @@ describe('permission layer (lib/permissions-template.json) under Claude Code sem
       'lua status --json --ci',
       'lua chat --ci -e production -m ping -t lua-plugin-smoke-1',
       'lua logs --ci --type all --limit 20 --json',
+      // lua-cli 3.38.0: the `lua logs` read window, and the log-drain READ verbs
+      // (`test` sends one record down the real path but changes no configuration).
+      'lua logs --ci --type workflow-step --since 15m --environment production --json',
+      'lua drains list --json',
+      'lua drains status drn_9f31a7c04b2e615d8a03cc71 --json',
+      'lua drains deliveries drn_9f31a7c04b2e615d8a03cc71 --limit 20 --kind batch --json',
+      'lua drains test drn_9f31a7c04b2e615d8a03cc71 --json',
       'lua workflows run outreach --input @in.json --agents fake --fast-retries --json',
       'lua workflows watch run_1 --wait-for-human --timeout 900',
       // lua-cli 3.36.0: the org policy READ verbs (`policy models|autonomy get`) are read-only.
@@ -222,6 +229,17 @@ describe('permission layer (lib/permissions-template.json) under Claude Code sem
       'lua marketplace skill publish --skill-name x',
       'lua marketplace skill transfer --skill-name x --to-org o',
       'lua env production -k KEY -v value',
+      // lua-cli 3.38.0: every `lua drains` verb that changes the ORGANIZATION's drain
+      // configuration. They are not production verbs (the tokenizer classifies them as
+      // null, asserted below) — the ask prompt IS /lua-drains's single confirmation.
+      'lua drains create --ci --json --name prod-siem --type http --endpoint https://logs.example.com/lua',
+      'lua drains update drn_9f31a7c04b2e615d8a03cc71 --ci --json --min-severity warn',
+      'lua drains delete drn_9f31a7c04b2e615d8a03cc71 --ci --json --yes',
+      'lua drains verify drn_9f31a7c04b2e615d8a03cc71 --json',
+      'lua drains pause drn_9f31a7c04b2e615d8a03cc71 --reason noisy --json',
+      'lua drains resume drn_9f31a7c04b2e615d8a03cc71 --json',
+      'lua drains rotate-secret drn_9f31a7c04b2e615d8a03cc71 --json',
+      'lua drains rotate-secret drn_9f31a7c04b2e615d8a03cc71 --finalize --json',
     ]) {
       expect({ cmd, asked: matchesRestrictive(ask, cmd), denied: matchesRestrictive(deny, cmd), allowed: matchesAllow(cmd) })
         .toEqual({ cmd, asked: true, denied: false, allowed: false });
