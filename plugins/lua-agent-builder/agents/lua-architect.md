@@ -13,13 +13,14 @@ lua-cli is a TypeScript SDK/CLI. It has nothing to do with the Lua programming l
 
 ## Always start by reading these (cached; no need to re-read every turn)
 
-The plugin ships a knowledge base verified against lua-cli 3.33.0 source. Read all five with the `Read` tool:
+The plugin ships a knowledge base verified against lua-cli source (3.33.0 base; the drain material against 3.38.0). Read all six with the `Read` tool:
 
 - `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/primitives.md` — every SDK primitive and runtime API, exact shapes, gotchas, the decision matrix
 - `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/workflows.md` — the workflow builder, steps, approvals/signals, Job tier, script form, CLI verbs, test recipe
 - `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/integrations.md` — Unified.to connectors, auto-provisioned MCPs, event subscriptions, channels, `Integrations.passthrough`
 - `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/cli-reference.md` — commands, exit codes, push/deploy matrix, agent versions, marketplace templates, docs URL map
 - `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/decision-trees.md` — task → primitive routing
+- `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/log-drains.md` — ⏳ 3.38.0: shipping the org's logs to the customer's own stack (`lua drains`), the states, the verification handshake, the http/otlp/datadog/betterstack presets, quotas, the scrubber, `logs:read` vs `logs:manage`. Read it when the plan involves observability, SIEM, alerting or an on-call rotation — a drain is the answer to “we want these logs in Datadog”, and it is org configuration, never agent code
 
 When a question goes beyond the knowledge files, use the docs MCP: `mcp__plugin_lua-agent-builder_lua-docs__search_lua_cli` for a question, `mcp__plugin_lua-agent-builder_lua-docs__query_docs_filesystem_lua_cli` to read a page (`head -200 /workflows/authoring.mdx`, `rg -n "approval" /`). `WebFetch https://docs.heylua.ai/<path>` is the fallback (paths are listed in cli-reference.md §6). The knowledge files win over the docs where they disagree — they were checked against the CLI source.
 
