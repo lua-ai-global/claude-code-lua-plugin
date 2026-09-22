@@ -5,13 +5,19 @@
 // `* deploy|publish` spellings, `lua persona production deploy`,
 // `lua workflows deploy`, `lua version promote`, `lua mcp activate` — the
 // SMOKE_LABELS set in lib/tokenizer.mjs, so the list cannot drift from the
-// gate): ping the agent and scan recent logs for fresh errors. Surfaces
+// gate): ping the agent and scan the last minute of logs for fresh errors,
+// asking the route for that window with `--since` rather than reconstructing
+// it from a page and this machine's clock (PRO-1896). Surfaces
 // problems as a warn message (non-blocking — the change already happened).
 // Registered for every Bash call with no `if` glob; non-matching commands
 // return null at once.
 
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
 import { classifyProductionCommand, SMOKE_LABELS } from '../lib/tokenizer.mjs';
+
+/** How far back the post-deploy log scan looks, in both spellings. */
+const SMOKE_WINDOW = '1m';
+const SMOKE_WINDOW_MS = 60_000;
 
 /**
  * @param {{tool_input?: {command?: string}, tool_response?: {success?: boolean}}|null} input
@@ -54,7 +60,32 @@ export async function decide(
   // document `{ logs: LogEntry[], pagination: {...} }`; each entry uses
   // `entry.subType` ('error' | 'warn' | 'info' | 'debug' | 'start' | 'complete')
   // — there is no `entry.level` field (src/interfaces/logs.ts).
-  const logs = await spawnLuaFn(['logs', '--ci', '--type', 'all', '--limit', '20', '--json'], { timeoutMs: 10_000 });
+  //
+  // PRO-1896 / PRO-1838: ask the ROUTE for the window instead of pulling a
+  // page and filtering it against this machine's clock. `--since 1m` is a
+  // relative bound, so the SERVER resolves it (src/commands/logs.ts
+  // `parseWindowBound` passes a relative value through verbatim) and a skewed
+  // laptop can no longer widen the window or miss the deploy entirely.
+  //
+  // `--environment production` is deliberately NOT passed: a deploy makes
+  // something live in production, but the step-1 ping goes through `lua chat`,
+  // whose rows the A1 call sites may stamp `sandbox`, and a smoke check that
+  // silently hid its own ping's errors would be worse than a slightly wider
+  // scan.
+  //
+  // The version pin only WARNS, so a session on lua-cli < 3.38.0 is still in
+  // the field; there `--since` is an unknown option and commander exits 1.
+  // One fallback to the pre-3.38.0 shape (a page plus a local-clock filter)
+  // keeps the check working instead of silently reporting nothing.
+  let windowedByServer = true;
+  let logs = await spawnLuaFn(
+    ['logs', '--ci', '--type', 'all', '--since', SMOKE_WINDOW, '--limit', '20', '--json'],
+    { timeoutMs: 10_000 }
+  );
+  if (logs.exitCode !== 0) {
+    windowedByServer = false;
+    logs = await spawnLuaFn(['logs', '--ci', '--type', 'all', '--limit', '20', '--json'], { timeoutMs: 10_000 });
+  }
   if (logs.exitCode !== 0) return null;
 
   let entries = [];
@@ -65,11 +96,15 @@ export async function decide(
     return null;
   }
 
-  const sixtySecondsAgo = Date.now() - 60_000;
+  const sixtySecondsAgo = Date.now() - SMOKE_WINDOW_MS;
   const errorEntries = entries.filter((entry) => {
     if (!entry || typeof entry !== 'object') return false;
+    if (entry.subType !== 'error') return false;
+    // The route already bounded the window on its own clock; re-applying a
+    // local one would re-introduce exactly the skew `--since` removes.
+    if (windowedByServer) return true;
     const ts = entry.timestamp ? new Date(entry.timestamp).getTime() : 0;
-    return entry.subType === 'error' && ts >= sixtySecondsAgo;
+    return ts >= sixtySecondsAgo;
   });
 
   if (errorEntries.length > 0) {

@@ -132,11 +132,16 @@ describe('post-deploy-smoke decide()', () => {
     expect(result?.warn).toContain('3 error log entry');
   });
 
-  test('ignores stale errors (older than 60s)', async () => {
+  // PRO-1896: the window comes from the ROUTE (`--since 1m`). On a lua-cli
+  // older than 3.38.0 that option does not exist and commander exits 1, so the
+  // hook falls back to the pre-3.38.0 shape — a page plus this machine's clock
+  // — rather than reporting nothing. These two tests drive that fallback.
+  test('falls back to the local-clock filter below 3.38.0 and ignores stale errors', async () => {
     const old = new Date(Date.now() - 120_000).toISOString();
     const stdout = logsResponse([{ subType: 'error', timestamp: old, metadata: {} }]);
     const spawnLuaFn = fakeSpawn([
       { exitCode: 0, stdout: 'pong', stderr: '', timedOut: false },
+      { exitCode: 1, stdout: '', stderr: "error: unknown option '--since'", timedOut: false },
       { exitCode: 0, stdout, stderr: '', timedOut: false },
     ]);
     const result = await decide(
@@ -158,9 +163,10 @@ describe('post-deploy-smoke decide()', () => {
     expect(result).toBeNull();
   });
 
-  test('returns null when logs command itself fails', async () => {
+  test('returns null when the logs command fails both windowed and unwindowed', async () => {
     const spawnLuaFn = fakeSpawn([
       { exitCode: 0, stdout: 'pong', stderr: '', timedOut: false },
+      { exitCode: 1, stdout: '', stderr: 'logs error', timedOut: false },
       { exitCode: 1, stdout: '', stderr: 'logs error', timedOut: false },
     ]);
     const result = await decide(
@@ -264,8 +270,41 @@ describe('post-deploy-smoke decide()', () => {
     expect(threadId).toMatch(/^lua-plugin-smoke-\d+$/);
   });
 
-  test('treats log entries without timestamp as stale (counts 0)', async () => {
+  test('below 3.38.0, treats log entries without timestamp as stale (counts 0)', async () => {
     const stdout = logsResponse([{ subType: 'error', message: 'no ts' }]);
+    const spawnLuaFn = fakeSpawn([
+      { exitCode: 0, stdout: 'pong', stderr: '', timedOut: false },
+      { exitCode: 1, stdout: '', stderr: "error: unknown option '--since'", timedOut: false },
+      { exitCode: 0, stdout, stderr: '', timedOut: false },
+    ]);
+    const result = await decide(
+      { tool_input: { command: 'LUA_DEPLOY_CONFIRMED=1 lua deploy skill' } },
+      { spawnLuaFn }
+    );
+    expect(result).toBeNull();
+  });
+
+  // PRO-1896 / PRO-1838 (A5): the scan asks the ROUTE for its window. A
+  // relative bound is resolved by the SERVER's clock, which is the whole point
+  // — so a row the LOCAL clock would call stale must still be counted when the
+  // route returned it. `--environment` is deliberately absent: the step-1 ping
+  // goes through `lua chat`, whose rows may be stamped `sandbox`.
+  test('asks the route for the window with --since, and not for an environment', async () => {
+    const spawnLuaFn = fakeSpawn([
+      { exitCode: 0, stdout: 'pong', stderr: '', timedOut: false },
+      { exitCode: 0, stdout: logsResponse([]), stderr: '', timedOut: false },
+    ]);
+    await decide({ tool_input: { command: 'LUA_DEPLOY_CONFIRMED=1 lua deploy skill' } }, { spawnLuaFn });
+    expect(spawnLuaFn.calls).toHaveLength(2);
+    const logsArgs = spawnLuaFn.calls[1][0];
+    expect(logsArgs).toEqual(['logs', '--ci', '--type', 'all', '--since', '1m', '--limit', '20', '--json']);
+    expect(logsArgs).not.toContain('--environment');
+    expect(logsArgs).not.toContain('--page');
+  });
+
+  test('trusts the server window: a row the local clock calls stale still counts', async () => {
+    const old = new Date(Date.now() - 120_000).toISOString();
+    const stdout = logsResponse([{ subType: 'error', timestamp: old, metadata: {} }]);
     const spawnLuaFn = fakeSpawn([
       { exitCode: 0, stdout: 'pong', stderr: '', timedOut: false },
       { exitCode: 0, stdout, stderr: '', timedOut: false },
@@ -274,6 +313,7 @@ describe('post-deploy-smoke decide()', () => {
       { tool_input: { command: 'LUA_DEPLOY_CONFIRMED=1 lua deploy skill' } },
       { spawnLuaFn }
     );
-    expect(result).toBeNull();
+    expect(result?.warn).toContain('1 error log entry');
+    expect(spawnLuaFn.calls).toHaveLength(2);
   });
 });
