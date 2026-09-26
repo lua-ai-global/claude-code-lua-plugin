@@ -14,6 +14,7 @@
 
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
 import { classifyProductionCommand, SMOKE_LABELS } from '../lib/tokenizer.mjs';
+import { isHeadless } from '../lib/headless.mjs';
 
 /** How far back the post-deploy log scan looks, in both spellings. */
 const SMOKE_WINDOW = '1m';
@@ -21,12 +22,17 @@ const SMOKE_WINDOW_MS = 60_000;
 
 /**
  * @param {{tool_input?: {command?: string}, tool_response?: {success?: boolean}}|null} input
- * @param {{spawnLuaFn?: Function}} [opts] — injectable for tests
+ * @param {{spawnLuaFn?: Function, env?: Record<string, string|undefined>}} [opts] — injectable for tests
  */
 export async function decide(
   input,
-  { spawnLuaFn } = {}
+  { spawnLuaFn, env = process.env } = {}
 ) {
+  // Headless (LUA_PLUGIN_HEADLESS=1): never send a production `lua chat` ping
+  // from an unattended run. confirm-deploy blocks every production verb there,
+  // so reaching this point would itself be a finding for the harness, not
+  // something to probe with more production traffic.
+  if (isHeadless(env)) return null;
   const command = input?.tool_input?.command ?? '';
   const classified = classifyProductionCommand(command);
   if (!classified || !SMOKE_LABELS.has(classified.label)) return null;

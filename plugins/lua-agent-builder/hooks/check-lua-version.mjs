@@ -5,6 +5,7 @@
 
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
 import { spawnLua } from '../lib/lua-cli.mjs';
+import { isHeadless, HEADLESS_NOTE } from '../lib/headless.mjs';
 
 // Pinned minimum lua-cli version. The plugin's commands, agents and knowledge
 // files describe the lua-cli 3.38.0 surface: the 3.33.0 base (workflows,
@@ -62,25 +63,34 @@ export function compareSemver(a, b) {
  * Returns null (allow silently), or { warn } to print a warning.
  *
  * @param {{stdout: string, exitCode: number|null}} versionResult
+ * @param {Record<string, string|undefined>} [env] — defaults to process.env. Headless
+ *   (LUA_PLUGIN_HEADLESS=1): the same findings, but no /lua-doctor or /lua-update
+ *   pointer and no install instruction — the image, not the run, owns lua-cli.
  */
-export function decide(versionResult) {
+export function decide(versionResult, env = process.env) {
+  const headless = isHeadless(env);
   if (versionResult.exitCode !== 0) {
     return {
-      warn: 'Could not detect lua-cli version. Run /lua-doctor to install.',
+      warn: headless
+        ? `Could not detect lua-cli (\`lua --version\` failed). ${HEADLESS_NOTE}`
+        : 'Could not detect lua-cli version. Run /lua-doctor to install.',
     };
   }
 
   const installed = parseSemver(versionResult.stdout);
   if (!installed) {
     return {
-      warn: `Couldn't parse lua --version output: "${versionResult.stdout.trim()}". Run /lua-doctor.`,
+      warn: `Couldn't parse lua --version output: "${versionResult.stdout.trim()}". ` +
+        (headless ? HEADLESS_NOTE : 'Run /lua-doctor.'),
     };
   }
 
   const minimum = parseSemver(PINNED_MIN_LUA_CLI);
   if (compareSemver(installed, minimum) < 0) {
     return {
-      warn: `Lua plugin requires lua-cli ≥${PINNED_MIN_LUA_CLI} (you have ${installed.join('.')}) — run /lua-update or: npm i -g lua-cli@latest. The plugin will continue to work with degraded functionality until you do (lua drains, and the lua logs --since/--until/--environment/--follow options, do not exist below ${PINNED_MIN_LUA_CLI}).`,
+      warn: headless
+        ? `lua-cli ${installed.join('.')} is older than the plugin's minimum ${PINNED_MIN_LUA_CLI}: lua drains, and the lua logs --since/--until/--environment/--follow options, do not exist on it. ${HEADLESS_NOTE}`
+        : `Lua plugin requires lua-cli ≥${PINNED_MIN_LUA_CLI} (you have ${installed.join('.')}) — run /lua-update or: npm i -g lua-cli@latest. The plugin will continue to work with degraded functionality until you do (lua drains, and the lua logs --since/--until/--environment/--follow options, do not exist below ${PINNED_MIN_LUA_CLI}).`,
     };
   }
 

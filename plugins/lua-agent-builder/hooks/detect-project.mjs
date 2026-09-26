@@ -13,6 +13,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
+import { isHeadless } from '../lib/headless.mjs';
 
 /**
  * Pure decision function. Reads from disk synchronously — file existence
@@ -25,7 +26,9 @@ import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs
  * Test injection point retained as `opts.cwd` for backward compat.
  *
  * @param {{cwd?: string}|null} input — Claude Code hook payload
- * @param {{cwd?: string}} [opts] — test override; takes precedence over input.cwd
+ * @param {{cwd?: string, env?: Record<string, string|undefined>}} [opts] — test override;
+ *   `cwd` takes precedence over input.cwd; `env` defaults to process.env (headless switch:
+ *   no "run /lua-doctor" pointer when LUA_PLUGIN_HEADLESS=1)
  */
 export function decide(input, opts = {}) {
   const cwd = opts.cwd ?? input?.cwd ?? process.cwd();
@@ -48,10 +51,9 @@ export function decide(input, opts = {}) {
     // Permission denied, etc. — print a generic message and move on.
   }
 
+  const detected = agentId ? `✓ Lua agent project detected: ${agentId}.` : '✓ Lua agent project detected.';
   return {
-    warn: agentId
-      ? `✓ Lua agent project detected: ${agentId}. Run /lua-doctor or /lua-test to begin.`
-      : '✓ Lua agent project detected. Run /lua-doctor or /lua-test to begin.',
+    warn: isHeadless(opts.env ?? process.env) ? detected : `${detected} Run /lua-doctor or /lua-test to begin.`,
   };
 }
 

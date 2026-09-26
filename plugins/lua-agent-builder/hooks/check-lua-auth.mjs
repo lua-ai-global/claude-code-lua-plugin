@@ -17,9 +17,17 @@
 // were signed out. lua-cli's exit-code classes (3.33.0) tell the outcomes
 // apart: 0 ok · 9 auth · 10 forbidden (a typed key scoped too narrowly for
 // the catalog route — still a valid login) · 11 Lua API unavailable.
+//
+// Headless (LUA_PLUGIN_HEADLESS=1, 1.6.0): every failure becomes one neutral
+// note that names no slash command. In the Lua Job tier the credential is the
+// pod's, lua-cli talks to a Lua-API proxy, and a proxy that refuses
+// `GET /agents/self-serve/models` makes this probe fail with a perfectly good
+// credential — "run /lua-auth" would send the model into an AskUserQuestion
+// flow that cannot complete in `claude -p`.
 
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
 import { spawnLua } from '../lib/lua-cli.mjs';
+import { isHeadless, HEADLESS_NOTE } from '../lib/headless.mjs';
 
 export const AUTH_PROBE_ARGS = ['models', 'list', '--json', '--ci'];
 const AUTH_PROBE_TIMEOUT_MS = 15_000;
@@ -29,8 +37,9 @@ const AUTH_PROBE_TIMEOUT_MS = 15_000;
  *   Result of `lua --version` (must succeed before auth probe makes sense).
  * @param {{exitCode: number|null, stdout?: string, stderr?: string, timedOut?: boolean}} authResult
  *   Result of `lua models list --json --ci`.
+ * @param {Record<string, string|undefined>} [env] — defaults to process.env (headless switch)
  */
-export function decide(versionResult, authResult) {
+export function decide(versionResult, authResult, env = process.env) {
   // If lua-cli isn't installed, check-lua-version already warned the user.
   // Don't double-warn here.
   if (versionResult.exitCode !== 0) return null;
@@ -38,6 +47,18 @@ export function decide(versionResult, authResult) {
   // Authenticated → silent. Exit 10 means the credential is valid but scoped
   // away from the catalog route — still authenticated for its own agents.
   if (authResult.exitCode === 0 || authResult.exitCode === 10) return null;
+
+  if (isHeadless(env)) {
+    const outcome = authResult.timedOut || authResult.exitCode === null
+      ? `did not answer within ${AUTH_PROBE_TIMEOUT_MS / 1000}s`
+      : `exited ${authResult.exitCode}`;
+    return {
+      warn:
+        `ℹ Lua authentication could not be confirmed at session start (\`lua models list\` ${outcome}). ` +
+        'Behind a Lua-API proxy this often means only that the probe route is not allowed; lua-cli commands ' +
+        'that need the platform may still work, and any that fail will say why. ' + HEADLESS_NOTE,
+    };
+  }
 
   // A slow probe is not a missing credential.
   if (authResult.timedOut || authResult.exitCode === null) {
