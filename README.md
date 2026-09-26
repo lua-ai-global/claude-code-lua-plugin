@@ -4,6 +4,8 @@ A [Claude Code](https://code.claude.com) marketplace + plugin for building, test
 
 📖 **[User Guide →](./docs/USER_GUIDE.md)** — installation, walkthroughs, every slash command, hooks, MCP tools, safety model, troubleshooting.
 
+🤖 **[Running in the Lua Job tier →](./docs/JOB_TIER.md)** — headless use (`LUA_PLUGIN_HEADLESS=1`, `claude -p`): inline playbooks, `--mcp-config`, and why the Lua-API proxy, not the hooks, is the boundary.
+
 lua-cli is a TypeScript SDK/CLI. It has nothing to do with the Lua programming language.
 
 ## Install
@@ -21,7 +23,7 @@ Then `/lua-auth`: an existing credential is kept; a new login runs `lua auth con
 
 | Plugin | Description |
 |---|---|
-| [`lua-agent-builder`](./plugins/lua-agent-builder/) | 21 slash commands, 5 subagents, 10 hooks, a 6-file knowledge base verified against lua-cli source (3.33.0 base; 1.3.0 added per-step model classes and the workflow autonomy envelope from lua-cli 3.36.0, 1.4.0 the Job-tier billing rules and the lua-cli 3.37.0 cost read-outs, 1.5.0 log drains and the `lua logs` read window from lua-cli 3.38.0, read from `main`), a local read-only platform MCP server and the public docs MCP |
+| [`lua-agent-builder`](./plugins/lua-agent-builder/) | 21 slash commands, 5 subagents, 10 hooks, a 6-file knowledge base verified against lua-cli source (3.33.0 base; 1.3.0 added per-step model classes and the workflow autonomy envelope from lua-cli 3.36.0, 1.4.0 the Job-tier billing rules and the lua-cli 3.37.0 cost read-outs, 1.5.0 log drains and the `lua logs` read window from lua-cli 3.38.0, read from `main`; 1.6.0 headless mode and a hardened production-gate parser), a local read-only platform MCP server and the public docs MCP |
 
 ## Quick walkthrough
 

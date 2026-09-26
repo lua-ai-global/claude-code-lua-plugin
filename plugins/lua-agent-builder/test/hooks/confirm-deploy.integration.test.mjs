@@ -25,6 +25,26 @@ describe('confirm-deploy script entry (spawned)', () => {
     expect(result.stderr).toContain('Use /lua-deploy');
   });
 
+  // EM-WS8: the Job-tier audit's chain bypasses, end to end.
+  test.each([
+    'cd agent && lua deploy all --force',
+    'true; lua version promote 3',
+    'FOO=1 lua deploy all',
+    'npx lua-cli deploy all',
+    'export LUA_DEPLOY_CONFIRMED=1; lua deploy all',
+  ])('exits 2 on the chained / launched form %s', async (command) => {
+    const result = await runHook('confirm-deploy.mjs', { tool_input: { command } }, { env: { LUA_PLUGIN_HEADLESS: '' } });
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain('DEPLOY_DENIED_BARE');
+  });
+
+  test('exits 0 when the prefix sits on the simple command that deploys', async () => {
+    const result = await runHook('confirm-deploy.mjs', {
+      tool_input: { command: 'cd agent && LUA_DEPLOY_CONFIRMED=1 lua deploy skill --ci --force' },
+    }, { env: { LUA_PLUGIN_HEADLESS: '' } });
+    expect(result.exitCode).toBe(0);
+  });
+
   test('exits 2 with DEPLOY_DENIED_AUTO on --auto-deploy', async () => {
     const result = await runHook('confirm-deploy.mjs', {
       tool_input: { command: 'LUA_DEPLOY_CONFIRMED=1 lua deploy --auto-deploy' },

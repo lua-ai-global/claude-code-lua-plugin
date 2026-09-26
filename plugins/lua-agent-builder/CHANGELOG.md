@@ -2,6 +2,122 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.6.0 — 2026-09-26
+
+**Headless hardening and a standalone MCP server (EM-WS8).** Three findings from the Lua Job-tier audit, where the plugin runs unattended inside `claude -p`:
+- the `lua-platform` MCP server could not start without an `npm ci` nobody runs;
+- the `confirm-deploy` parser was a start-anchored regex with five known bypasses;
+- the hooks steered an unattended model into interactive flows that cannot complete.
+
+The lua-cli pin is unchanged (3.38.0).
+
+### `lua-platform` runs with no `node_modules`
+
+- `mcp/lua-platform/scripts/bundle.mjs` no longer marks `@modelcontextprotocol/sdk` external. `dist/server.js` now inlines every npm dependency from the committed lockfile: 106 KB → 529 KB, against a 5 MB budget. The build also writes `dist/THIRD_PARTY_NOTICES.txt`, generated from the esbuild metafile: every bundled package (`@modelcontextprotocol/sdk`, `zod`, both MIT) with its version and full licence text. Any `/*! */` legal comments are kept at the end of the bundle.
+  - Before this, a marketplace install, or the plugin baked into an image, died with `ERR_MODULE_NOT_FOUND`, which Claude Code reports as `lua-platform CONNECTION_CLOSED`. The plugin ships no `node_modules`, and `.mcp.json` launches `dist/server.js` directly.
+  - A `createRequire` banner gives the ESM bundle a real `require` for any CommonJS dependency.
+- New `tests/standalone-bundle.test.mjs`:
+  - copies the bundle into an empty temp directory, asserting no `node_modules` exists anywhere above it;
+  - spawns it with `NODE_PATH` removed and runs `initialize` → `tools/list` over stdio;
+  - asserts the five tools, and that `serverInfo.version` equals `package.json`, which catches a version bump that forgot to rebuild `dist/`.
+  - Against the 1.5.0 bundle it fails with `ERR_MODULE_NOT_FOUND`, as intended.
+
+### `confirm-deploy`: the parser reads the whole command
+
+`lib/tokenizer.mjs` used to test one regex anchored at the start of the string. These all ran a production verb straight past it:
+- `cd x && lua deploy …`
+- `true; lua version promote 3`
+- `FOO=1 lua deploy all`
+- `/usr/local/bin/lua deploy all`
+- `npx lua deploy all`
+
+It now lexes the command the way a POSIX shell does (quotes, escapes, `&& || ; | |& &`, newlines, `( )` and `{ }` groups, redirections, heredocs) and checks **every simple command**:
+
+- **The binary is found at any word position, by basename.** That covers:
+  - `./node_modules/.bin/lua`, `C:/…/npm/lua.cmd`, and `"lua"` or `l\ua` spellings;
+  - env-assignment prefixes, and the `sudo` / `env` / `command` / `exec` / `timeout N` wrappers;
+  - launchers: `npx lua`, `npx lua-cli`, `npx -y lua-cli@3.38.0`, `pnpm exec lua`, `pnpm dlx lua-cli`, `yarn lua`, `npm exec -- lua`, `bunx lua-cli`;
+  - `node [opts] …/lua-cli/dist/index.js` and a directly executed `…/lua-cli/dist/index.js`.
+  - A bare `lua-cli` at the head is still unclassified, as in 1.5.0: it is not an installed binary.
+- **Options between the binary and the verb are skipped**, both as boolean flags and as `--flag value` pairs. `lua --ci deploy`, `lua workflows -v 3 deploy x`.
+- **Substitutions are parsed recursively.** That covers `$( )`, backticks and `<( )`, including inside double quotes.
+- **Strings run by another shell are parsed too.** That covers `bash -c` / `sh -lc` / `eval` / `ssh host "…"` / `watch` / `npx -c`, `… | sh`, heredocs and here-strings fed to a shell, and `alias` / `trap` bodies.
+  - Inline interpreter code (`node -e`, `python3 -c`, `perl -e`) is searched as text.
+- **A shell variable in the binary or verb position is blocked**, because it cannot be resolved: `L=lua; $L deploy all`, `lua $VERB all`, `… | xargs lua`. The label is `lua <unresolved command>`.
+- **Input the lexer cannot close** (an unterminated quote or substitution) falls back to an unanchored textual search, reported as unprefixed.
+- **Alias gaps closed**, from lua-cli `aliases.ts`:
+  - `marketplace.noun` maps `templates`, `agent-template` and `agent-templates` to `template`;
+  - `normalizeArg` lower-cases action words, so `lua workflows DEPLOY x` is live. Matching is now case-insensitive.
+- **`LUA_DEPLOY_CONFIRMED=1` counts only in its canonical shape.** It must be the first word of the very simple command that runs the verb (optionally after `env`), with the binary spelled bare, outside any pipe, group, substitution or wrapper string.
+  - Each verb in a chain needs its own prefix, and one unprefixed verb blocks the whole command.
+  - Blocked: `export LUA_DEPLOY_CONFIRMED=1; lua deploy all`, `LUA_DEPLOY_CONFIRMED=1 true && lua deploy all`, `LUA_DEPLOY_CONFIRMED=1 npx lua deploy all`, `FOO=1 LUA_DEPLOY_CONFIRMED=1 lua deploy all`.
+  - Allowed: `cd agent && LUA_DEPLOY_CONFIRMED=1 lua deploy skill …`, and redirections such as `> deploy.log 2>&1`.
+  - Every form `/lua-deploy`, the deploy pilot and `/lua-template` emit is unchanged and still allowed.
+- **Text that only *mentions* a verb stays unclassified**: `git commit -m "lua deploy all"`, `grep -r "lua deploy" .`, `lua chat … -m "please lua deploy all"`, and a heredoc written to a file.
+- **Fails closed, and decides inside the hook timeout.** A PreToolUse hook that throws or runs past its 10 s timeout fails *open*. The independent review reproduced exactly that against a draft, with 24 KB inputs. So:
+  - Everything is linear.
+    - The textual fallback is a token scan that reuses the parser's argument matcher, not a set of regexes.
+    - Two regex drafts backtracked: one exponentially (28 options ≈ 200 s), one quadratically (`lua/` × 6000 ≈ 10 s).
+  - A command over **32 KB** (`MAX_COMMAND_LENGTH`) is not parsed.
+  - A classification has a **1.5 s budget** (`TIME_BUDGET_MS`).
+  - An over-length command, a spent budget, or an internal error **blocks** the command if it mentions a lua binary (`DEPLOY_DENIED_UNCLASSIFIABLE`, `lua <unclassifiable command>`), and passes it otherwise.
+  - New `test/hooks/confirm-deploy.timeout.test.mjs` spawns the real hook on adversarial inputs up to 100 KB, including the review's reproductions and inputs just under the cap. It asserts a decision in under 2 s.
+  - The review's performance probe and a 3,000-string shell fuzz run as unit tests.
+- **Command position only.** The binary is recognised as the command a shell would run, not at any word position.
+  - Recognised: the first word after assignments, and the command a wrapper, launcher or shell keyword runs, including `find … -exec lua` and `if/then/do/coproc`.
+  - `cp -r lua deploy`, `ls lua deploy` and `echo lua deploy all` no longer block.
+  - A pipeline feeding a shell (`echo lua deploy all | sh`) is still searched.
+- **Computed words (review finding 2).** An unquoted glob (`/usr/local/bin/lu? deploy`) or brace expansion (`{lua,} deploy`, `lua de{ploy,} all`) is a runtime-computed word, like `$VAR`. `lua${IFS}deploy${IFS}all` is split at its expansions. A computed binary with a computed verb (`$(printf lua) $(printf deploy) all`, `L=lua; V=deploy; $L $V all`) is blocked when the command mentions lua anywhere. Unicode spaces count as separators.
+- **More strings that run as code (review finding 3):**
+  - `env -S` / `--split-string`;
+  - awk `system(…)`, `print … | "cmd"` and `"cmd" | getline`;
+  - `osascript -e`, and editor `-c '!…'` / `+cmd`;
+  - GNU sed's `e` command and `s///e`;
+  - `git -c alias.x='!…'`;
+  - `tmux` / `screen`, `docker exec c sh -c` (a shell name counts at any position), and `bash < <(…)` / `source <(…)`;
+  - `$(…)` inside an unquoted heredoc;
+  - a heredoc written to a script that the same command then runs (`cat > x.sh <<EOF … EOF; sh x.sh`).
+- **Heredocs inside `$(…)` are text (review finding 4).** `findClose` skips heredoc bodies and comments, so Claude Code's own `git commit -m "$(cat <<'EOF' … it's … EOF)"` and `gh pr create --body "$(cat <<'EOF' … EOF)"` pass.
+- `classifyProductionCommand` keeps its `{ label, slash, prefixed }` shape, and `PRODUCTION_COMMANDS` keeps `label` / `slash` / `re`, now with a `seq` token table. `lex()` and `UNRESOLVED_LABEL` are new exports.
+- The `DEPLOY_DENIED_BARE` text now explains where the prefix counts.
+- New `test/lib/tokenizer-hardening.test.mjs`, 319 cases:
+  - every audit bypass and its neighbours;
+  - the independent review's probe sets, verbatim plus a few neighbours: 74 bypasses, 33 interactive commands that must pass, and 23 performance shapes;
+  - the prefix rule in both directions;
+  - false-positive guards;
+  - the fail-closed fallbacks;
+  - the lexer.
+- The spawned `confirm-deploy` integration test gains the chain cases, and the new spawned timeout test covers inputs up to 100 KB.
+
+This is still a belt, not a sandbox. A command assembled at runtime (`base64 -d | sh`, a script file, an npm script, a raw HTTP call) is out of any static classifier's reach. `SECURITY.md` now says so, and names the Lua-API proxy as the boundary for unattended runs.
+
+### Headless mode: `LUA_PLUGIN_HEADLESS=1`
+
+New `lib/headless.mjs`. With `LUA_PLUGIN_HEADLESS=1` (or `true` / `yes` / `on`):
+
+- **`check-lua-auth`**: every failure (exit 9, exit 11, other, timeout) becomes one neutral note. Authentication could not be confirmed; behind a Lua-API proxy that often means only that the probe route (`GET /agents/self-serve/models`) is refused; carry on. The note never says "run /lua-auth", which led the model into an `AskUserQuestion` flow that cannot complete in `-p` mode.
+- **`check-lua-version` and `detect-project`**: the same findings, with no `/lua-doctor`, `/lua-update` or `npm i -g` instruction.
+- **`confirm-deploy`**: the `LUA_DEPLOY_CONFIRMED=1` prefix is **void**, and every production verb is blocked with `DEPLOY_DENIED_HEADLESS`. The prefix means a person confirmed; headless, the model would be confirming to itself. `block-auto-deploy` loses its slash pointer as well.
+- **`post-deploy-smoke`**: never sends its production `lua chat` ping.
+- **`lib/hook-runtime.mjs`**: the too-old-Node message drops "re-run /lua-doctor".
+- Interactive behaviour and text are unchanged. New `test/hooks/headless.test.mjs` asserts:
+  - no headless message matches `/lua-…`;
+  - nothing blocked interactively is allowed headless;
+  - a spawned headless `confirm-deploy` exits 2 on a prefixed deploy.
+
+### Docs
+
+- New **`docs/JOB_TIER.md`, "Running in the Lua Job tier"**. It covers:
+  - what headless mode changes;
+  - `--strict-mcp-config` dropping plugin MCP servers, so pass `lua-docs` (http) and `lua-platform` (stdio) through `--mcp-config`;
+  - the denied `Agent` tool, so read `agents/lua-skill-builder.md`, `lua-debug.md` and `lua-qa.md` inline as playbooks;
+  - which slashes work with full arguments and which need `AskUserQuestion`;
+  - the proxy as the boundary, with suggested inline deny rows because allow rules do nothing under `bypassPermissions`;
+  - allowing `GET /agents/self-serve/models` rather than disabling hooks;
+  - `LUA_TELEMETRY=false`, and environment scrubbing.
+- Also updated: `SECURITY.md` (the gate row, the MCP bundle, the headless row), both READMEs, and the MCP README's build section.
+- Bump 1.5.0 → 1.6.0 everywhere `lint-release-version` checks, plus both lockfiles. `dist/server.js` is rebuilt.
+
 ## 1.5.0 — 2026-09-22
 
 **Log drains, and a `lua logs` that reads a window instead of a page.** Two shipped CLI surfaces reach the plugin: the whole `lua drains` command — the rules that copy an organization's agent log records to a destination the customer owns — and the `lua logs` read window `--since` / `--until` / `--environment` / `--follow`, with all **18** log sources finally reachable through `--type`. Everything below was read from lua-core-services `main`: `packages/lua-cli/src/cli/command-definitions.ts` (the `drains` and `logs` declarations), `src/commands/drains.ts`, `src/commands/drains.mutations.ts`, `src/commands/logs.ts`, `src/api/drains.api.service.ts`, `src/utils/aliases.ts` (`drains.action`, `logs.type`), `@lua/shared-types` `log-drain.types.ts` / `vm-execution-log.types.ts` and `@lua/shared-observability` `drain-scrubber.ts` — never from the public docs, which agree with all of it and are cited only as a destination for the user. [PRO-1896]

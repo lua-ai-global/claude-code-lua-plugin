@@ -6,6 +6,7 @@
 
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
+import { isHeadless } from './headless.mjs';
 
 const REQUIRED_NODE_MAJOR = 18;
 
@@ -23,7 +24,8 @@ export function checkNodeVersion() {
   if (major < REQUIRED_NODE_MAJOR) {
     log.toClaudeCode(
       `LUA_NODE_VERSION_TOO_OLD: This plugin requires Node ≥${REQUIRED_NODE_MAJOR}. ` +
-      `You have ${process.versions.node}. Update Node and re-run /lua-doctor.`
+      `You have ${process.versions.node}. ` +
+      (isHeadless() ? 'The plugin hooks are inactive in this run.' : 'Update Node and re-run /lua-doctor.')
     );
     exit(0);  // Fail-open per §6.1
   }
