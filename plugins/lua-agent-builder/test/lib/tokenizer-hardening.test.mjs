@@ -302,6 +302,44 @@ describe('input the lexer cannot close falls back to a textual search (fail clos
   });
 });
 
+describe('the classifier stays fast and fails closed (a hook that times out or throws fails OPEN)', () => {
+  // Before the fix, 28 options made the textual fallback backtrack for ~200 s.
+  test.each([
+    ['inline code', 'node -e 1 "lua ' + '--a '.repeat(40) + 'zz"; lua deploy all', 'lua deploy'],
+    ['opaque input', 'lua ' + '--a '.repeat(40) + 'zz "', null],
+    ['opaque input with values', 'lua ' + '--a=1 '.repeat(40) + 'zz "', null],
+    ['opaque input that deploys', 'lua ' + '--a=1 '.repeat(40) + 'deploy all "', 'lua deploy'],
+    ['long chains', 'lua status --ci && '.repeat(400) + 'lua deploy all', 'lua deploy'],
+    ['deep substitutions', 'echo '.concat('$('.repeat(50), 'lua deploy all', ')'.repeat(50)), 'lua deploy'],
+  ])('%s', (_name, cmd, label) => {
+    const t0 = performance.now();
+    const result = classifyProductionCommand(cmd);
+    expect(performance.now() - t0).toBeLessThan(500);
+    expect(result?.label ?? null).toBe(label);
+  });
+
+  test('random shell soup never throws and never takes long', () => {
+    const parts = ['"', "'", '\\', '$', '(', ')', '`', '|', '&', ';', '<', '>', '{', '}', '\n', ' ', '#', '=',
+      'lua deploy all', 'lua', 'deploy', '--ci', '<<E', 'E', '$(', 'bash -c ', 'npx ', 'LUA_DEPLOY_CONFIRMED=1 ', 'x'];
+    let seed = 42;
+    const rand = (n) => { seed = (seed * 1103515245 + 12345) % 2 ** 31; return seed % n; };
+    const t0 = performance.now();
+    for (let k = 0; k < 3000; k++) {
+      let cmd = '';
+      for (let p = rand(30); p > 0; p--) cmd += parts[rand(parts.length)];
+      expect(() => classifyProductionCommand(cmd)).not.toThrow();
+    }
+    expect(performance.now() - t0).toBeLessThan(10_000);
+  });
+
+  test('an internal error blocks a command that mentions lua, and ignores one that does not', () => {
+    const boom = () => { throw new Error('classifier bug'); };
+    expect(classifyProductionCommand('lua status', { analyze: boom }))
+      .toEqual({ label: UNRESOLVED_LABEL, slash: '/lua-deploy', prefixed: false });
+    expect(classifyProductionCommand('git status', { analyze: boom })).toBeNull();
+  });
+});
+
 describe('lex()', () => {
   test('splits a chain into simple commands and marks pipelines and groups', () => {
     const { segments, subs, opaque } = lex('a 1 && (b 2 | c 3); d "x y" 2>&1 > out');

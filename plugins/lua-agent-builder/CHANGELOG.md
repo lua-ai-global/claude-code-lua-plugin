@@ -54,6 +54,10 @@ It now lexes the command the way a POSIX shell does (quotes, escapes, `&& || ; |
   - Allowed: `cd agent && LUA_DEPLOY_CONFIRMED=1 lua deploy skill …`, and redirections such as `> deploy.log 2>&1`.
   - Every form `/lua-deploy`, the deploy pilot and `/lua-template` emit is unchanged and still allowed.
 - **Text that only *mentions* a verb stays unclassified**: `git commit -m "lua deploy all"`, `grep -r "lua deploy" .`, `lua chat … -m "please lua deploy all"`, and a heredoc written to a file.
+- **Fails closed, and stays fast.** A hook that throws or runs past its 10 s timeout fails *open*, so:
+  - an internal classifier error now returns an unresolved, unprefixed hit for any command that mentions a lua binary;
+  - the textual-fallback option pattern has exactly one parse per option. A draft with `-{1,2}[\w-]+` backtracked exponentially (28 options ≈ 200 s); it now takes under 1 ms.
+  - Tests bound pathological inputs to 500 ms and fuzz 3,000 random shell strings.
 - `classifyProductionCommand` keeps its `{ label, slash, prefixed }` shape, and `PRODUCTION_COMMANDS` keeps `label` / `slash` / `re`, now with a `seq` token table. `lex()` and `UNRESOLVED_LABEL` are new exports.
 - The `DEPLOY_DENIED_BARE` text now explains where the prefix counts.
 - New `test/lib/tokenizer-hardening.test.mjs`, about 170 cases:

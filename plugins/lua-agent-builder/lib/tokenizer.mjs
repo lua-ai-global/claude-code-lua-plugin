@@ -158,15 +158,25 @@ export const SMOKE_LABELS = new Set([
 
 // Unanchored textual patterns — the fallback for input the lexer cannot close
 // and for inline interpreter code. `lua-cli/<path>` covers a node entry point.
+//
+// The option group MUST have exactly one way to match each option: `--?`
+// then a word character first. An earlier `-{1,2}[\w-]+` could split `--a`
+// as `--`+`a` or `-`+`-a`, which backtracked exponentially on a failing
+// match (28 options ≈ 200 s) — past the hook timeout, and a hook that times
+// out fails OPEN. test/lib/tokenizer-hardening.test.mjs pins the bound.
+const RAW_OPTION = '(?:--?\\w[\\w-]*(?:=\\S*)?\\s+)*';
 const RAW_PATTERNS = PRODUCTION_COMMANDS.map((e) => ({
   entry: e,
   re: new RegExp(
-    `(?<![\\w-])(?:lua|heylua|lua-ai|lua-cli)(?:[\\\\/][^\\s'"]*)?['"]?\\s+(?:-{1,2}[\\w-]+(?:=\\S*)?\\s+)*` +
-      e.seq.map((alts) => `(?:${alts.join('|')})`).join('\\s+(?:-{1,2}[\\w-]+(?:=\\S*)?\\s+)*') +
+    `(?<![\\w-])(?:lua|heylua|lua-ai|lua-cli)(?:[\\\\/][^\\s'"]*)?['"]?\\s+${RAW_OPTION}` +
+      e.seq.map((alts) => `(?:${alts.join('|')})`).join(`\\s+${RAW_OPTION}`) +
       '(?![\\w-])',
     'i',
   ),
 }));
+
+/** Does the text mention a lua binary at all? (Used to fail closed on an internal error.) */
+const MENTIONS_LUA = /(?<![\w-])(?:lua|heylua|lua-ai|lua-cli)(?![\w-])/i;
 
 // ── Lexer ──────────────────────────────────────────────────────────────────
 
@@ -670,12 +680,18 @@ function analyzeScript(src, ctx, hits) {
  * true only when every gated verb in it carries the canonical prefix.
  *
  * @param {unknown} command
+ * @param {{analyze?: Function}} [opts] — test seam for the fail-closed path
  * @returns {{label: string, slash: string, prefixed: boolean}|null}
  */
-export function classifyProductionCommand(command) {
+export function classifyProductionCommand(command, { analyze = analyzeScript } = {}) {
   if (typeof command !== 'string') return null;
   const hits = [];
-  analyzeScript(command, { nested: false, depth: 0 }, hits);
+  try {
+    analyze(command, { nested: false, depth: 0 }, hits);
+  } catch {
+    // Fail closed: a classifier bug must not wave a lua command through.
+    return MENTIONS_LUA.test(command) ? { label: UNRESOLVED_LABEL, slash: '/lua-deploy', prefixed: false } : null;
+  }
   if (hits.length === 0) return null;
   const { label, slash, prefixed } = hits.find((h) => !h.prefixed) ?? hits[0];
   return { label, slash, prefixed };
