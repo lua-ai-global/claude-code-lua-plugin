@@ -27,7 +27,9 @@
 // It remains a belt; in the Lua Job tier the Lua-API proxy is the boundary.
 
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
-import { classifyProductionCommand, hasAutoDeploy } from '../lib/tokenizer.mjs';
+import {
+  classifyProductionCommand, hasAutoDeploy, UNCLASSIFIABLE_LABEL, MAX_COMMAND_LENGTH,
+} from '../lib/tokenizer.mjs';
 import { isHeadless } from '../lib/headless.mjs';
 
 const HEADLESS_REASON =
@@ -71,6 +73,16 @@ export function decide(input, env = process.env) {
   }
 
   if (classified.prefixed) return null;  // User-authorised via the slash flow — allow
+
+  if (classified.label === UNCLASSIFIABLE_LABEL) {
+    return {
+      block: true,
+      reason:
+        'DEPLOY_DENIED_UNCLASSIFIABLE: this command mentions lua but is too long or too complex to check for a ' +
+        `production verb (over ${MAX_COMMAND_LENGTH} bytes, or past the classifier's time budget), so it is ` +
+        'blocked. Split it into shorter commands, or write long text to a file first and pass the file.',
+    };
+  }
 
   return {
     block: true,

@@ -44,25 +44,35 @@
 // POSIX shell would — quotes, escapes, `&& || ; | |& &`, newlines, `( )` and
 // `{ }` groups, redirections, heredocs — and inspects EVERY simple command:
 //
-//   * the lua binary is found at any word position, by basename
-//     (`/usr/local/bin/lua`, `./node_modules/.bin/heylua`, `lua.cmd`), so
-//     env-assignment prefixes, `sudo`/`env`/`command`/`exec`/`timeout N`/…
-//     wrappers and launchers (`npx lua`, `npx lua-cli`, `npx -y lua-cli@3`,
-//     `pnpm exec lua`, `pnpm dlx lua-cli`, `yarn lua`, `npm exec -- lua`,
-//     `bunx lua`) are all seen through;
-//   * `node [opts] <path>` counts when the path is a lua-cli entry point
-//     (`…/lua-cli/dist/index.js`, `…/bin/lua`);
+//   * the lua binary is recognised in COMMAND POSITION, by basename
+//     (`/usr/local/bin/lua`, `./node_modules/.bin/heylua`, `lua.cmd`, `LUA`):
+//     the first word after env assignments, and the command a wrapper runs —
+//     `sudo`/`env`/`command`/`exec`/`timeout N`/`nohup`/`xargs`/`watch`/
+//     `coproc`/`if`/`then`/…, launchers (`npx lua`, `npx lua-cli`,
+//     `npx -y lua-cli@3`, `pnpm exec lua`, `pnpm dlx lua-cli`, `yarn lua`,
+//     `npm exec -- lua`, `bunx lua`), `node [opts] …/lua-cli/dist/index.js`
+//     and `find … -exec lua …`. `cp -r lua deploy` is not a deploy;
 //   * option tokens between the binary and the verb are skipped (both as
 //     boolean flags and as `--flag value` pairs);
-//   * a shell variable in the binary or verb position (`$L deploy all`,
-//     `lua $VERB skill`) cannot be resolved and is blocked (fail closed);
+//   * a word the shell computes at runtime — `$VAR`, `$(…)`, `${IFS}`,
+//     `$'\x6c…'`, an unquoted glob (`lu?`) or brace expansion (`{lua,}`) —
+//     in the binary or verb position cannot be resolved and is blocked when
+//     the command mentions lua (fail closed);
 //   * `$(…)`, backticks and `<(…)` are parsed recursively, also inside
-//     double quotes; a string handed to a shell (`bash -c`, `sh -c`, `eval`,
-//     `ssh host "…"`, `watch`, `npx -c`, `… | sh`, a heredoc or here-string
-//     fed to a shell, `trap`, `alias`) is parsed recursively too; inline code
-//     for `node -e` / `python -c` / `perl -e` is searched textually;
+//     double quotes and unquoted heredocs; heredoc bodies are skipped as text
+//     (`gh pr create --body "$(cat <<'EOF' … EOF)"` is not code); a string
+//     handed to a shell (`bash -c`, `eval`, `ssh`, `env -S`, `watch`,
+//     `tmux`, `npx -c`, `… | sh`, `bash < <(…)`, a heredoc fed to a shell or
+//     written to a script that is then run, `trap`, `alias`,
+//     `git -c alias.x='!…'`) is parsed recursively too; inline code for
+//     `node -e` / `python -c` / `perl -e` / `osascript -e`, awk `system(…)`,
+//     sed's `e` command and editor `-c '!…'` is searched as text;
 //   * input the lexer cannot close (an unterminated quote or substitution)
-//     falls back to an unanchored textual search.
+//     falls back to a textual token search;
+//   * everything is linear; a command over MAX_COMMAND_LENGTH, one that runs
+//     past TIME_BUDGET_MS, or an internal error BLOCKS if the command
+//     mentions lua — the hook must decide inside its timeout, because a hook
+//     that times out fails open.
 //
 // The LUA_DEPLOY_CONFIRMED=1 allowance survives ONLY in its canonical shape:
 // `[env ]LUA_DEPLOY_CONFIRMED=1 lua|heylua|lua-ai <verb> …` as ONE simple
@@ -87,30 +97,61 @@ const BINARIES = new Set(['lua', 'heylua', 'lua-ai']);
 /** Also accepted after a launcher (`npx lua-cli …`) or as a node entry point. */
 const PACKAGES = new Set([...BINARIES, 'lua-cli']);
 
-/** Commands that take ANOTHER command as argv (the verb can follow them). */
+/**
+ * Commands (and shell keywords) that take ANOTHER command as argv: the word
+ * after them — past their options and option values — is again in command
+ * position. The lua binary is only recognised in command position, so
+ * `cp -r lua deploy` and `ls lua deploy` are not deploys.
+ */
 const WRAPPERS = new Set([
   'env', 'command', 'exec', 'builtin', 'nohup', 'time', 'nice', 'ionice', 'timeout', 'sudo', 'doas',
   'xargs', 'stdbuf', 'setsid', 'caffeinate', 'unbuffer', 'chronic', 'npx', 'pnpx', 'bunx', 'npm',
-  'pnpm', 'yarn', 'bun', 'run', 'exec', 'dlx', 'x', '!', '{', 'then', 'do', 'else', 'if', 'while', 'until',
+  'pnpm', 'yarn', 'bun', 'run', 'dlx', 'x', 'eval', 'watch', 'coproc', 'flock', 'nodemon', 'entr',
+  'node', 'nodejs', 'tsx', 'ts-node', 'deno', 'ssh', 'su', 'runuser', 'parallel', 'strace', 'ltrace',
+  'gtimeout', 'unshare', 'chroot', 'nsenter', 'firejail', 'script', 'tmux', 'screen',
+  '!', 'then', 'do', 'else', 'elif', 'if', 'while', 'until',
 ]);
 
-/** Commands that run a STRING as shell code (their string arguments are parsed recursively). */
+/** `find … -exec CMD …`: the word after one of these is in command position. */
+const EXEC_FLAGS = new Set(['-exec', '-execdir', '-ok', '-okdir']);
+
+/** Commands that run a STRING as shell code (their string arguments are parsed, and searched, as code). */
 const SCRIPT_RUNNERS = new Set([
   'sh', 'bash', 'zsh', 'dash', 'ksh', 'mksh', 'ash', 'fish', 'busybox', 'pwsh', 'powershell', 'cmd',
   'eval', 'ssh', 'su', 'runuser', 'script', 'flock', 'watch', 'parallel', 'npx', 'npm', 'concurrently',
-  'nodemon', 'entr', 'trap', 'at', 'batch',
+  'nodemon', 'entr', 'trap', 'at', 'batch', 'source', '.', 'tmux', 'screen', 'xargs',
 ]);
 
-/** Interpreters whose inline code (`-e`, `-c`, `-p`, …) is searched textually. */
-const INLINE_CODE = new Set(['node', 'nodejs', 'bun', 'deno', 'python', 'python3', 'perl', 'ruby', 'php']);
+/** Shell interpreters: their name counts as a runner at any word position. */
+const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'mksh', 'ash', 'fish', 'pwsh', 'powershell']);
 
-/** `node`-like launchers that take a script path as their first positional. */
-const NODE_LIKE = new Set(['node', 'nodejs', 'bun', 'tsx', 'ts-node']);
+/** Shells, and `source`/`.` — running one of these on a FILE executes whatever was written to it. */
+const FILE_RUNNERS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'mksh', 'ash', 'fish', 'source', '.']);
 
-/** Node options that consume the following word. */
-const NODE_VALUE_FLAGS = new Set(['-r', '--require', '--import', '--loader', '--experimental-loader', '--env-file', '--title', '--inspect-port']);
+/** Interpreters whose inline code (after `-e`, `-c`, `-p`, `-r`, …) is searched textually. */
+const INLINE_CODE = new Set([
+  'node', 'nodejs', 'bun', 'deno', 'python', 'python2', 'python3', 'perl', 'ruby', 'php', 'osascript',
+  'luajit', 'tclsh', 'rscript', 'pwsh', 'powershell',
+]);
+/** An option that introduces inline code for one of INLINE_CODE (`-e`, `-pe`, `-c`, `--eval`, …). */
+const INLINE_FLAG = /^-(?:[a-zA-Z]*[ecEpr]|-eval|-print|-command|-exec)$/;
+/** awk runs shell commands through `system(…)`, `print … | "cmd"` and `"cmd" | getline`. */
+const AWK = new Set(['awk', 'gawk', 'mawk', 'nawk', 'busybox']);
+const AWK_EXEC = /system\s*\(|\|\s*["'$]|["']\s*\|\s*getline|\|&/;
+/** Editors whose `-c` / `+cmd` / `:!cmd` run shell commands. */
+const EDITORS = new Set(['vim', 'vi', 'nvim', 'ex', 'view', 'gvim', 'mvim', 'nano', 'emacs']);
 
 const MAX_DEPTH = 6;
+
+/**
+ * Commands longer than this are not parsed: a command that mentions a lua
+ * binary is blocked as unclassifiable, any other passes. Every step below is
+ * linear, but the hook must decide well inside its 10 s timeout on any input —
+ * a hook that times out fails OPEN.
+ */
+export const MAX_COMMAND_LENGTH = 32 * 1024;
+/** Wall-clock budget for one classification; exceeding it fails closed. */
+export const TIME_BUDGET_MS = 1500;
 
 const rule = (label, seq, slash) => ({
   label,
@@ -146,8 +187,10 @@ export const PRODUCTION_COMMANDS = [
   rule('lua marketplace template apply', [['marketplace'], TEMPLATE, ['apply', 'deploy', 'fleet-apply', 'rollout']], '/lua-template'),
 ];
 
-/** Label for a lua invocation whose verb is a shell variable (cannot be resolved statically). */
+/** Label for a lua invocation whose binary or verb comes from an expansion (cannot be resolved statically). */
 export const UNRESOLVED_LABEL = 'lua <unresolved command>';
+/** Label for a command that mentions lua but could not be classified (too long, over budget, internal error). */
+export const UNCLASSIFIABLE_LABEL = 'lua <unclassifiable command>';
 
 /** Labels whose success should trigger the post-deploy smoke check (something now runs live). */
 export const SMOKE_LABELS = new Set([
@@ -159,24 +202,32 @@ export const SMOKE_LABELS = new Set([
 // Unanchored textual patterns — the fallback for input the lexer cannot close
 // and for inline interpreter code. `lua-cli/<path>` covers a node entry point.
 //
-// The option group MUST have exactly one way to match each option: `--?`
-// then a word character first. An earlier `-{1,2}[\w-]+` could split `--a`
-// as `--`+`a` or `-`+`-a`, which backtracked exponentially on a failing
-// match (28 options ≈ 200 s) — past the hook timeout, and a hook that times
-// out fails OPEN. test/lib/tokenizer-hardening.test.mjs pins the bound.
-const RAW_OPTION = '(?:--?\\w[\\w-]*(?:=\\S*)?\\s+)*';
-const RAW_PATTERNS = PRODUCTION_COMMANDS.map((e) => ({
-  entry: e,
-  re: new RegExp(
-    `(?<![\\w-])(?:lua|heylua|lua-ai|lua-cli)(?:[\\\\/][^\\s'"]*)?['"]?\\s+${RAW_OPTION}` +
-      e.seq.map((alts) => `(?:${alts.join('|')})`).join(`\\s+${RAW_OPTION}`) +
-      '(?![\\w-])',
-    'i',
-  ),
-}));
+// The textual fallback (for input the lexer cannot close, and for inline
+// interpreter code) is a TOKEN scan, not a regex: split on everything that
+// cannot be part of a word, then read each lua token's next few tokens with
+// the same matchArgs() the parser uses. Linear in the text, and interruptible
+// by the time budget. Two regex drafts were not: `-{1,2}[\w-]+` backtracked
+// exponentially (28 options ≈ 200 s) and a path group re-scanned the text
+// from every `lua` (`lua/` × 6000 ≈ 10 s) — both past the hook timeout, where
+// a hook fails OPEN. test/lib/tokenizer-hardening.test.mjs and
+// test/hooks/confirm-deploy.timeout.test.mjs pin the bound.
+const RAW_TOKEN_SPLIT = /[^\w.@/\\-]+/;
 
-/** Does the text mention a lua binary at all? (Used to fail closed on an internal error.) */
+/** Does the text mention a lua binary at all? (Used to fail closed.) */
 const MENTIONS_LUA = /(?<![\w-])(?:lua|heylua|lua-ai|lua-cli)(?![\w-])/i;
+
+/** Unicode spaces bash does not split on; treated as separators anyway (fail closed). */
+const UNICODE_SPACE = new RegExp('[\\u00a0\\u1680\\u2000-\\u200b\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]');
+
+// ── Budget ─────────────────────────────────────────────────────────────────
+
+class BudgetExceeded extends Error {}
+let deadline = Infinity;
+let ticks = 0;
+/** Throws once the classification's time budget is spent (caught → fail closed). */
+function checkBudget() {
+  if ((++ticks & 255) === 0 && performance.now() > deadline) throw new BudgetExceeded('time budget exceeded');
+}
 
 // ── Lexer ──────────────────────────────────────────────────────────────────
 
@@ -186,13 +237,77 @@ const MENTIONS_LUA = /(?<![\w-])(?:lua|heylua|lua-ai|lua-cli)(?![\w-])/i;
  *            heredocs: string[], herestrings: string[]}} Segment
  */
 
-const newSegment = () => ({ words: [], sep: null, grouped: false, pipeline: false, pipeId: 0, heredocs: [], herestrings: [] });
+const newSegment = () => ({
+  words: [], sep: null, grouped: false, pipeline: false, pipeId: 0, heredocs: [], herestrings: [], subs: [],
+});
 
-/** Index of the `)` closing the `(` at `start`, honouring quotes and nesting; -1 if none. */
+/**
+ * Parse the delimiter of a heredoc whose `<<` starts at `i`.
+ * @returns {{delim: string, strip: boolean, quoted: boolean, end: number}}
+ */
+function parseHeredocDelim(src, i) {
+  const n = src.length;
+  i += 2;
+  const strip = src[i] === '-';
+  if (strip) i++;
+  while (src[i] === ' ' || src[i] === '\t') i++;
+  let delim = '';
+  let quoted = false;
+  while (i < n && !/[\s;&|<>()]/.test(src[i])) {
+    if (src[i] === "'" || src[i] === '"' || src[i] === '\\') quoted = true;
+    else delim += src[i];
+    i++;
+  }
+  return { delim, strip, quoted, end: i };
+}
+
+/**
+ * Skip heredoc bodies that start at `i` (just after a newline), one per
+ * pending delimiter. Returns the index after the last body and each body.
+ */
+function skipHeredocBodies(src, i, pending) {
+  const n = src.length;
+  const bodies = [];
+  for (const h of pending) {
+    const lines = [];
+    while (i < n) {
+      checkBudget();
+      let end = src.indexOf('\n', i);
+      if (end < 0) end = n;
+      const line = src.slice(i, end);
+      i = end + 1;
+      if ((h.strip ? line.replace(/^\t+/, '') : line) === h.delim) break;
+      lines.push(line);
+    }
+    if (i > n) i = n;
+    bodies.push(lines.join('\n'));
+  }
+  return { next: i, bodies };
+}
+
+/**
+ * Index of the `)` closing the `(` at `start`, honouring quotes, nesting and
+ * heredoc bodies (a body is literal text: `$(cat <<'EOF'\n it's \nEOF\n)` is
+ * how Claude Code writes every commit message and PR body); -1 if none.
+ */
 function findClose(src, start) {
   let depth = 0;
+  let pending = [];
   for (let i = start; i < src.length; i++) {
+    checkBudget();
     const c = src[i];
+    if (c === '\n' && pending.length) {
+      i = skipHeredocBodies(src, i + 1, pending).next - 1;
+      pending = [];
+      continue;
+    }
+    if (c === '<' && src[i + 1] === '<') {
+      if (src[i + 2] === '<') { i += 2; continue; }
+      const h = parseHeredocDelim(src, i);
+      pending.push(h);
+      i = h.end - 1;
+      continue;
+    }
     if (c === '\\') { i++; continue; }
     if (c === "'") {
       const j = src.indexOf("'", i + 1);
@@ -205,6 +320,13 @@ function findClose(src, start) {
       while (j < src.length && src[j] !== '"') j += src[j] === '\\' ? 2 : 1;
       if (j >= src.length) return -1;
       i = j;
+      continue;
+    }
+    if (c === '#' && (i === start + 1 || /[\s;&|(]/.test(src[i - 1]))) {
+      // A comment runs to end of line; its quotes and parentheses are text.
+      const nl = src.indexOf('\n', i);
+      if (nl < 0) return -1;
+      i = nl - 1;
       continue;
     }
     if (c === '(') depth++;
@@ -224,8 +346,13 @@ function findBacktick(src, start) {
 
 /**
  * Split a shell command into simple commands. Collects command-substitution
- * bodies (`$(…)`, backticks, `<(…)`) in `subs` for recursive inspection and
+ * bodies (`$(…)`, backticks, `<(…)`, and those inside an unquoted heredoc) in
+ * `subs` — and in the owning segment's `subs` — for recursive inspection, and
  * sets `opaque` when something could not be closed.
+ *
+ * A word is `dynamic` when the shell would compute it at runtime: parameter
+ * or command expansion, ANSI-C quoting, an unquoted glob (`lu?`, `l*a`) or an
+ * unquoted brace expansion (`{lua,}`, `de{ploy,}`).
  *
  * @param {string} src
  * @returns {{segments: Segment[], subs: string[], opaque: boolean}}
@@ -236,30 +363,42 @@ export function lex(src) {
   const subs = [];
   let opaque = false;
   let seg = newSegment();
-  /** @type {Word|null} */
+  /** @type {(Word & {brace?: boolean})|null} */
   let word = null;
   let depth = 0;
   let redirTarget = null; // null | 'file' | 'herestring'
-  /** @type {{delim: string, strip: boolean, seg: Segment}[]} */
+  /** @type {{delim: string, strip: boolean, quoted: boolean, seg: Segment}[]} */
   let pendingHeredocs = [];
   const n = src.length;
   let i = 0;
 
+  const addSub = (text) => { subs.push(text); seg.subs.push(text); };
   const startWord = () => { if (!word) word = { text: '', quoted: false, dynamic: false }; return word; };
   const endWord = () => {
     if (!word) return;
-    if (redirTarget === 'herestring') seg.herestrings.push(word.text);
-    if (redirTarget) redirTarget = null;
-    else if (!word.quoted && (word.text === '{' || word.text === '}')) {
-      // Brace group: `{ cmd; }` runs in the current shell but is still a group.
-      depth = Math.max(0, depth + (word.text === '{' ? 1 : -1));
-      if (word.text === '{') seg.grouped = true;
-    } else seg.words.push(word);
+    const w = word;
     word = null;
+    if (w.brace && /\{[^{}]*(?:,|\.\.)[^{}]*\}/.test(w.text)) w.dynamic = true;
+    delete w.brace;
+    if (redirTarget) {
+      if (redirTarget === 'herestring') seg.herestrings.push(w.text);
+      redirTarget = null;
+      return;
+    }
+    if (!w.quoted && w.text === '{') {
+      // Brace group: `{ cmd; }` (also `function f { …; }`). What precedes it is
+      // its own command; what follows starts a new, grouped one.
+      if (seg.words.length) endSegment(';');
+      depth++;
+      seg.grouped = true;
+      return;
+    }
+    if (!w.quoted && w.text === '}') { depth = Math.max(0, depth - 1); return; }
+    seg.words.push(w);
   };
   const endSegment = (sep) => {
     endWord();
-    if (seg.words.length || seg.heredocs.length || seg.herestrings.length) {
+    if (seg.words.length || seg.heredocs.length || seg.herestrings.length || seg.subs.length) {
       seg.sep = sep;
       if (depth > 0) seg.grouped = true;
       segments.push(seg);
@@ -271,29 +410,46 @@ export function lex(src) {
   const takeSubstitution = (open) => {
     // `open` indexes the `(` of `$(`, `<(` or `>(`.
     const close = findClose(src, open);
-    if (close < 0) { opaque = true; subs.push(src.slice(open + 1)); return n; }
-    subs.push(src.slice(open + 1, close));
+    if (close < 0) { opaque = true; addSub(src.slice(open + 1)); return n; }
+    addSub(src.slice(open + 1, close));
     return close + 1;
   };
-  const readHeredocBodies = () => {
-    for (const h of pendingHeredocs) {
-      const lines = [];
-      let found = false;
-      while (i < n) {
-        let end = src.indexOf('\n', i);
-        if (end < 0) end = n;
-        const line = src.slice(i, end);
-        i = end + 1;
-        if ((h.strip ? line.replace(/^\t+/, '') : line) === h.delim) { found = true; break; }
-        lines.push(line);
+  /** Command substitutions inside an UNQUOTED heredoc body run (`cat <<EOF\n$(lua …)\nEOF`). */
+  const scanExpandingBody = (body, owner) => {
+    for (let k = 0; k < body.length; k++) {
+      checkBudget();
+      if (body[k] === '\\') { k++; continue; }
+      if (body[k] === '$' && body[k + 1] === '(') {
+        const close = findClose(body, k + 1);
+        const text = close < 0 ? body.slice(k + 2) : body.slice(k + 2, close);
+        if (close < 0) opaque = true;
+        subs.push(text);
+        owner.subs.push(text);
+        if (close < 0) return;
+        k = close;
+      } else if (body[k] === '`') {
+        const close = findBacktick(body, k);
+        const text = close < 0 ? body.slice(k + 1) : body.slice(k + 1, close);
+        if (close < 0) opaque = true;
+        subs.push(text);
+        owner.subs.push(text);
+        if (close < 0) return;
+        k = close;
       }
-      h.seg.heredocs.push(lines.join('\n'));
-      if (!found) i = n;
     }
+  };
+  const readHeredocBodies = () => {
+    const { next, bodies } = skipHeredocBodies(src, i, pendingHeredocs);
+    pendingHeredocs.forEach((h, k) => {
+      h.seg.heredocs.push(bodies[k]);
+      if (!h.quoted) scanExpandingBody(bodies[k], h.seg);
+    });
+    i = next;
     pendingHeredocs = [];
   };
 
   while (i < n) {
+    checkBudget();
     const c = src[i];
     const next = src[i + 1];
 
@@ -320,6 +476,7 @@ export function lex(src) {
       let j = i + 1;
       let closed = false;
       while (j < n) {
+        checkBudget();
         const d = src[j];
         if (d === '"') { closed = true; break; }
         if (d === '\\') {
@@ -334,8 +491,8 @@ export function lex(src) {
         if (d === '`') {
           const k = findBacktick(src, j);
           w.dynamic = true;
-          if (k < 0) { opaque = true; subs.push(src.slice(j + 1)); j = n; break; }
-          subs.push(src.slice(j + 1, k));
+          if (k < 0) { opaque = true; addSub(src.slice(j + 1)); j = n; break; }
+          addSub(src.slice(j + 1, k));
           w.text += '`…`';
           j = k + 1;
           continue;
@@ -352,8 +509,8 @@ export function lex(src) {
       const w = startWord();
       w.dynamic = true;
       const k = findBacktick(src, i);
-      if (k < 0) { opaque = true; subs.push(src.slice(i + 1)); i = n; continue; }
-      subs.push(src.slice(i + 1, k));
+      if (k < 0) { opaque = true; addSub(src.slice(i + 1)); i = n; continue; }
+      addSub(src.slice(i + 1, k));
       w.text += '`…`';
       i = k + 1;
       continue;
@@ -378,7 +535,7 @@ export function lex(src) {
       i++;
       continue;
     }
-    if (c === ' ' || c === '\t' || c === '\r') { endWord(); i++; continue; }
+    if (c === ' ' || c === '\t' || c === '\r' || UNICODE_SPACE.test(c)) { endWord(); i++; continue; }
     if (c === '\n') {
       endWord();
       i++;
@@ -447,16 +604,9 @@ export function lex(src) {
       else endWord();
       if (src.startsWith('<<<', i)) { i += 3; redirTarget = 'herestring'; continue; }
       if (src.startsWith('<<', i)) {
-        i += 2;
-        const strip = src[i] === '-';
-        if (strip) i++;
-        while (src[i] === ' ' || src[i] === '\t') i++;
-        let delim = '';
-        while (i < n && !/[\s;&|<>()]/.test(src[i])) {
-          if (src[i] !== "'" && src[i] !== '"' && src[i] !== '\\') delim += src[i];
-          i++;
-        }
-        pendingHeredocs.push({ delim, strip, seg });
+        const h = parseHeredocDelim(src, i);
+        pendingHeredocs.push({ delim: h.delim, strip: h.strip, quoted: h.quoted, seg });
+        i = h.end;
         continue;
       }
       i++;
@@ -469,7 +619,10 @@ export function lex(src) {
       redirTarget = 'file';
       continue;
     }
-    startWord().text += c;
+    const w = startWord();
+    if (c === '*' || c === '?' || c === '[') w.dynamic = true; // unquoted glob
+    if (c === '{') w.brace = true; // possible brace expansion, decided at endWord
+    w.text += c;
     i++;
   }
   if (pendingHeredocs.length) readHeredocBodies();
@@ -500,52 +653,82 @@ function commandName(text) {
 }
 
 const isFlag = (w) => w.text.length > 1 && w.text.startsWith('-');
+/** An assignment in the shell's sense (unquoted name). */
 const isAssignment = (w) => !w.quoted && /^[A-Za-z_][A-Za-z0-9_]*=/.test(w.text);
+/** Anything that LOOKS like an assignment — skipped when looking for the command (fail closed). */
+const looksLikeAssignment = (w) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(w.text);
 const isPrefixWord = (w) => !!w && !w.quoted && !w.dynamic && w.text === 'LUA_DEPLOY_CONFIRMED=1';
+const nameOf = (w) => (w.dynamic ? '' : commandName(w.text));
 
-/** True when every word before `j` is an assignment, a wrapper/launcher, an option or a bare number. */
-function isCommandPosition(words, j) {
-  for (let k = 0; k < j; k++) {
-    const w = words[k];
-    if (isAssignment(w) || isFlag(w) || /^\d+[smhd]?$/.test(w.text) || WRAPPERS.has(commandName(w.text))) continue;
-    return false;
-  }
-  return true;
+/** Is `text` (a literal word, or the literal head of a dynamic one) a lua-cli binary or entry point? */
+function isLuaBinaryText(text, afterLauncher) {
+  const name = commandName(text);
+  if (BINARIES.has(name)) return true;
+  // `lua-cli` is the package name, not an installed binary: gated after a
+  // launcher (`npx lua-cli`), or as a path to the package.
+  if (name === 'lua-cli' && (afterLauncher || /[\\/]/.test(text))) return true;
+  // The entry point run by node or through its shebang: `…/lua-cli/dist/index.js`.
+  // Only the tail is examined, so a pathological 30 KB word costs one bounded scan.
+  return /(?:^|[\\/])(?:lua-cli|heylua|lua-ai)[\\/]\S*\.[mc]?js$/i.test(text.slice(-512));
 }
 
-/** Does `path` (the script handed to node) point at a lua-cli entry point? */
-function isLuaEntryPoint(path) {
-  const base = commandName(path).replace(/\.(?:m|c)?js$/i, '');
-  if (PACKAGES.has(base)) return true;
-  return /(?:^|[\\/])(?:lua-cli|heylua|lua-ai)(?:[\\/]|$)/i.test(path);
+/** Splits a dynamic word at its expansions: `lua${IFS}deploy${IFS}all` → lua, deploy, all. */
+const EXPANSION = /\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*|\$[0-9@*#?$!-]|\$\(…\)|`…`|\$'[^']*'|[<>]\(…\)|[*?]|\[[^\]]*\]|[{},]/;
+
+/**
+ * Word indexes in command position: the first word after any leading
+ * assignments, and — after a wrapper (`sudo`, `env`, `npx`, `timeout`, `if`,
+ * `xargs`, `node`, …) — the next word past its options, option values,
+ * assignments and durations. An option's value may itself be the command
+ * (`sudo -u me lua …` vs `sudo -E lua …`), so both readings are kept.
+ * `find … -exec CMD` adds CMD.
+ */
+function commandPositions(words) {
+  const out = new Set();
+  const seen = new Set();
+  const walk = (start) => {
+    let k = start;
+    while (k < words.length && looksLikeAssignment(words[k])) k++;
+    if (k >= words.length || seen.has(k)) return;
+    seen.add(k);
+    out.add(k);
+    if (!WRAPPERS.has(nameOf(words[k]))) return;
+    let q = k + 1;
+    let afterFlag = false;
+    while (q < words.length) {
+      checkBudget();
+      const w = words[q];
+      if (w.text === '--' || isFlag(w)) { afterFlag = w.text !== '--' && !w.text.includes('='); q++; continue; }
+      if (looksLikeAssignment(w) || /^\d+(?:\.\d+)?[smhd]?$/.test(w.text)) { afterFlag = false; q++; continue; }
+      walk(q);
+      if (!afterFlag) return;
+      afterFlag = false; // it may have been the option's value: keep looking
+      q++;
+    }
+  };
+  walk(0);
+  words.forEach((w, k) => { if (EXEC_FLAGS.has(w.text) && k + 1 < words.length) walk(k + 1); });
+  return [...out].sort((a, b) => a - b);
 }
 
 /**
- * If a lua-cli invocation starts at word `j`, return the index of its first
- * argument (and whether the binary itself was a shell variable); else null.
+ * If a lua-cli invocation starts at word `j` (a command position), return its
+ * arguments and whether the binary itself was computed at runtime; else null.
  */
-function invocationAt(words, j) {
+function invocationAt(words, j, afterLauncher) {
   const w = words[j];
+  const rest = words.slice(j + 1, j + 1 + 64);
   if (w.dynamic) {
-    return isCommandPosition(words, j) ? { start: j + 1, dynamicHead: true } : null;
-  }
-  const name = commandName(w.text);
-  if (BINARIES.has(name)) return { start: j + 1, dynamicHead: false };
-  // `lua-cli` is the package name, not an installed binary: gated after a
-  // launcher (`npx lua-cli`), or as a path to the package.
-  if (name === 'lua-cli' && (j > 0 || /[\\/]/.test(w.text))) return { start: j + 1, dynamicHead: false };
-  // The entry point run directly through its shebang: `/opt/lua-cli/dist/index.js deploy`.
-  if (/(?:^|[\\/])(?:lua-cli|heylua|lua-ai)[\\/].*\.[mc]?js$/i.test(w.text)) return { start: j + 1, dynamicHead: false };
-  if (NODE_LIKE.has(name)) {
-    let k = j + 1;
-    while (k < words.length && isFlag(words[k])) {
-      if (NODE_VALUE_FLAGS.has(words[k].text)) k++;
-      k++;
+    // `lua${IFS}deploy`, `"$DIR/lua"`: the literal part can still name lua.
+    const pieces = w.text.split(new RegExp(EXPANSION.source, 'g')).filter(Boolean);
+    if (pieces.length && isLuaBinaryText(pieces[0], true)) {
+      const extra = pieces.slice(1).flatMap((p) => p.split(/\s+/)).filter(Boolean)
+        .map((text) => ({ text, quoted: false, dynamic: false }));
+      return { args: [...extra, ...rest], dynamicHead: false };
     }
-    if (k < words.length && !words[k].dynamic && isLuaEntryPoint(words[k].text)) {
-      return { start: k + 1, dynamicHead: false };
-    }
+    return { args: rest, dynamicHead: true };
   }
+  if (isLuaBinaryText(w.text, afterLauncher)) return { args: rest, dynamicHead: false };
   return null;
 }
 
@@ -555,7 +738,7 @@ function invocationAt(words, j) {
  * pairs — so neither reading hides a verb.
  *
  * @param {Word[]} args
- * @param {boolean} allowDynamic  a `$VAR` token may stand in for a verb
+ * @param {boolean} allowDynamic  a computed token may stand in for a verb
  * @returns {{label: string, slash: string, dynamic: boolean}|null}
  */
 function matchArgs(args, allowDynamic) {
@@ -563,6 +746,7 @@ function matchArgs(args, allowDynamic) {
   const strict = []; // flags and the word after a value-less `--flag` dropped
   let pendingValue = false;
   for (const a of args) {
+    if (loose.length >= 3 && strict.length >= 3) break;
     if (a.text === '--') { pendingValue = false; continue; }
     if (isFlag(a)) { pendingValue = !a.text.includes('='); continue; }
     loose.push(a);
@@ -592,56 +776,103 @@ function matchArgs(args, allowDynamic) {
   return dynamicHit;
 }
 
-/** Unanchored textual search, for text the lexer cannot structure. */
+/** Unanchored textual search, for text the lexer cannot structure. Linear: a bounded window per lua token. */
 function rawSearch(text, hits) {
-  for (const { entry, re } of RAW_PATTERNS) {
-    if (re.test(text)) hits.push({ label: entry.label, slash: entry.slash, prefixed: false });
+  checkBudget();
+  if (!MENTIONS_LUA.test(text)) return;
+  const toks = text.split(RAW_TOKEN_SPLIT);
+  for (let k = 0; k < toks.length; k++) {
+    checkBudget();
+    const t = toks[k];
+    if (!t || !isLuaBinaryText(t, true)) continue;
+    const args = [];
+    for (let q = k + 1; q < toks.length && args.length < 64; q++) {
+      if (toks[q]) args.push({ text: toks[q], quoted: false, dynamic: false });
+    }
+    const m = matchArgs(args, false);
+    if (m) hits.push({ label: m.label, slash: m.slash, prefixed: false });
   }
 }
 
+/** GNU sed's `e` command / `s///e` flag runs the pattern space as a shell command. */
+function sedExecutes(script) {
+  if (/(?:^|[;\n{}]|\d|\$|\/)\s*e(?:\s|$)/.test(script)) return true;
+  const m = /^s(.)/.exec(script);
+  if (!m) return false;
+  const parts = script.split(m[1]);
+  return parts.length >= 4 && /e/.test(parts[parts.length - 1]);
+}
+
 /**
+ * @typedef {{nested: boolean, depth: number, mentionsLua: boolean}} Ctx
  * @param {Segment} seg
- * @param {{nested: boolean, depth: number}} ctx
+ * @param {Ctx} ctx
  * @param {boolean} pipedIntoRunner  another stage of this pipeline runs its input as code
  * @param {Array<{label: string, slash: string, prefixed: boolean}>} hits
  */
 function analyzeSegment(seg, ctx, pipedIntoRunner, hits) {
+  checkBudget();
   const words = seg.words;
-  const names = words.map((w) => (w.dynamic ? '' : commandName(w.text)));
-  const runsStrings = pipedIntoRunner || names.some((nm) => SCRIPT_RUNNERS.has(nm));
-  const inlineCode = names.some((nm) => INLINE_CODE.has(nm));
-  const nested = { nested: true, depth: ctx.depth + 1 };
+  const names = words.map(nameOf);
+  const positions = commandPositions(words);
+  // A runner counts in command position (`sudo bash -c`, `xargs sh -c`); a
+  // shell's name counts anywhere (`docker exec c sh -c …`). `rg x .` is not `source`.
+  const hasRunner =
+    positions.some((j) => SCRIPT_RUNNERS.has(names[j])) || names.some((nm) => SHELLS.has(nm));
+  const runsStrings = pipedIntoRunner || hasRunner;
+  const inline = names.some((nm) => INLINE_CODE.has(nm));
+  const awk = names.some((nm) => AWK.has(nm));
+  const editor = names.some((nm) => EDITORS.has(nm));
+  const sed = names.some((nm) => nm === 'sed' || nm === 'gsed');
+  const hasEnv = names.includes('env');
+  const nested = { ...ctx, nested: true, depth: ctx.depth + 1 };
 
+  // Whatever feeds a shell (`… | sh`) or a runner's argv (`ssh host lua …`,
+  // `eval lua …`) is searched as text as well as parsed.
+  if (runsStrings) rawSearch(words.map((w) => w.text).join(' '), hits);
   words.forEach((w, k) => {
     if (k === 0) return;
+    const prev = words[k - 1].text;
     if (runsStrings && /[\s;&|`$()]/.test(w.text)) analyzeScript(w.text, nested, hits);
-    if (inlineCode) rawSearch(w.text, hits);
+    if (inline && (INLINE_FLAG.test(prev) || (prev === 'eval' && names.includes('deno')))) rawSearch(w.text, hits);
+    if (awk && AWK_EXEC.test(w.text)) rawSearch(w.text, hits);
+    if (editor && (/^[-+]c$|^--cmd$/.test(prev) || /^[+:]/.test(w.text) || w.text.includes('!'))) rawSearch(w.text, hits);
+    if (sed && !isFlag(w) && sedExecutes(w.text)) rawSearch(w.text, hits);
+    if (hasEnv && (prev === '-S' || prev === '--split-string')) analyzeScript(w.text, nested, hits);
+    if (hasEnv && /^(?:-S|--split-string=)./.test(w.text)) analyzeScript(w.text.replace(/^(?:-S|--split-string=)/, ''), nested, hits);
+    // `git -c alias.x='!cmd'` runs cmd through the shell.
+    const alias = /^alias\.[^=]*=\s*!(.*)$/s.exec(w.text);
+    if (alias) { analyzeScript(alias[1], nested, hits); rawSearch(alias[1], hits); }
     if (names[0] === 'alias' || names[0] === 'trap') {
       const eq = w.text.indexOf('=');
-      if (eq > 0) analyzeScript(w.text.slice(eq + 1), nested, hits);
+      analyzeScript(eq > 0 ? w.text.slice(eq + 1) : w.text, nested, hits);
     }
   });
   for (const body of [...seg.heredocs, ...seg.herestrings]) {
-    if (runsStrings || inlineCode || names.some((nm) => nm === 'source' || nm === '.')) {
+    if (runsStrings || inline || awk) {
       analyzeScript(body, nested, hits);
-      if (inlineCode) rawSearch(body, hits);
+      rawSearch(body, hits);
     }
   }
+  // `bash < <(echo lua …)`, `source <(…)`: the substitution's OUTPUT is code.
+  if (runsStrings) for (const sub of seg.subs) rawSearch(sub, hits);
 
-  for (let j = 0; j < words.length; j++) {
-    const inv = invocationAt(words, j);
+  for (const j of positions) {
+    const afterLauncher = j > 0;
+    const inv = invocationAt(words, j, afterLauncher);
     if (!inv) continue;
-    const args = words.slice(inv.start);
-    // `… | xargs lua` or `lua` with nothing but a variable after it: the verb
-    // arrives at runtime and cannot be classified.
+    // `… | xargs lua`: the verb arrives on stdin and cannot be classified.
     const fedByXargs = names.slice(0, j).includes('xargs');
-    let match = matchArgs(args, !inv.dynamicHead);
+    // A computed binary with a computed verb (`$(printf lua) $(printf deploy)`)
+    // is blocked when the command mentions lua anywhere.
+    let match = matchArgs(inv.args, !inv.dynamicHead || ctx.mentionsLua);
     if (!match && fedByXargs && !inv.dynamicHead) {
       match = { label: UNRESOLVED_LABEL, slash: '/lua-deploy', dynamic: true };
     }
     if (!match) continue;
     const canonicalPrefix =
       !inv.dynamicHead &&
+      !words[j].dynamic &&
       BINARIES.has(words[j].text) &&
       ((j === 1 && isPrefixWord(words[0])) ||
         (j === 2 && words[0].text === 'env' && !words[0].quoted && isPrefixWord(words[1])));
@@ -653,10 +884,11 @@ function analyzeSegment(seg, ctx, pipedIntoRunner, hits) {
 
 /**
  * @param {string} src
- * @param {{nested: boolean, depth: number}} ctx
+ * @param {Ctx} ctx
  * @param {Array<{label: string, slash: string, prefixed: boolean}>} hits
  */
 function analyzeScript(src, ctx, hits) {
+  checkBudget();
   if (ctx.depth > MAX_DEPTH) { rawSearch(src, hits); return; }
   const { segments, subs, opaque } = lex(src);
   if (opaque) rawSearch(src, hits);
@@ -665,12 +897,26 @@ function analyzeScript(src, ctx, hits) {
   // turns every string in the pipeline into code.
   const runnerPipes = new Set(
     segments
-      .filter((s) => s.pipeline && s.words.some((w) => !w.dynamic && SCRIPT_RUNNERS.has(commandName(w.text))))
+      .filter((s) => s.pipeline && commandPositions(s.words).some((j) => SCRIPT_RUNNERS.has(nameOf(s.words[j]))))
       .map((s) => s.pipeId),
   );
   for (const seg of segments) analyzeSegment(seg, ctx, runnerPipes.has(seg.pipeId), hits);
-  for (const sub of subs) analyzeScript(sub, { nested: true, depth: ctx.depth + 1 }, hits);
+  for (const sub of subs) analyzeScript(sub, { ...ctx, nested: true, depth: ctx.depth + 1 }, hits);
+
+  // `cat > x.sh <<EOF … EOF; sh x.sh` — a script written here and run here.
+  const runsAFile = segments.some((s) => {
+    const first = commandPositions(s.words)[0];
+    if (first === undefined) return false;
+    const w = s.words[first];
+    if (/\.(?:sh|bash|zsh|command)$/i.test(w.text)) return true;
+    return FILE_RUNNERS.has(nameOf(w)) && s.words.slice(first + 1).some((a) => !isFlag(a));
+  });
+  if (runsAFile) {
+    for (const s of segments) for (const body of [...s.heredocs, ...s.herestrings]) rawSearch(body, hits);
+  }
 }
+
+const unclassifiable = () => ({ label: UNCLASSIFIABLE_LABEL, slash: '/lua-deploy', prefixed: false });
 
 /**
  * Classify a command. Returns null for commands that run no gated verb, or
@@ -679,18 +925,28 @@ function analyzeScript(src, ctx, hits) {
  * returned (so one unconfirmed verb blocks the whole chain); `prefixed` is
  * true only when every gated verb in it carries the canonical prefix.
  *
+ * Fails closed: a command that mentions a lua binary and is longer than
+ * MAX_COMMAND_LENGTH, runs past TIME_BUDGET_MS, or trips an internal error
+ * is returned as UNCLASSIFIABLE_LABEL, unprefixed.
+ *
  * @param {unknown} command
- * @param {{analyze?: Function}} [opts] — test seam for the fail-closed path
+ * @param {{analyze?: Function, budgetMs?: number}} [opts] — test seams
  * @returns {{label: string, slash: string, prefixed: boolean}|null}
  */
-export function classifyProductionCommand(command, { analyze = analyzeScript } = {}) {
+export function classifyProductionCommand(command, { analyze = analyzeScript, budgetMs = TIME_BUDGET_MS } = {}) {
   if (typeof command !== 'string') return null;
+  const mentionsLua = MENTIONS_LUA.test(command);
+  if (command.length > MAX_COMMAND_LENGTH) return mentionsLua ? unclassifiable() : null;
   const hits = [];
+  deadline = performance.now() + budgetMs;
+  ticks = 0;
   try {
-    analyze(command, { nested: false, depth: 0 }, hits);
+    analyze(command, { nested: false, depth: 0, mentionsLua }, hits);
   } catch {
-    // Fail closed: a classifier bug must not wave a lua command through.
-    return MENTIONS_LUA.test(command) ? { label: UNRESOLVED_LABEL, slash: '/lua-deploy', prefixed: false } : null;
+    // A classifier bug or a spent budget must not wave a lua command through.
+    return mentionsLua ? unclassifiable() : null;
+  } finally {
+    deadline = Infinity;
   }
   if (hits.length === 0) return null;
   const { label, slash, prefixed } = hits.find((h) => !h.prefixed) ?? hits[0];

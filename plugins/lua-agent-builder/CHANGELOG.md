@@ -13,7 +13,7 @@ The lua-cli pin is unchanged (3.38.0).
 
 ### `lua-platform` runs with no `node_modules`
 
-- `mcp/lua-platform/scripts/bundle.mjs` no longer marks `@modelcontextprotocol/sdk` external. `dist/server.js` now inlines every npm dependency from the committed lockfile: 106 KB → 529 KB, against a 5 MB budget.
+- `mcp/lua-platform/scripts/bundle.mjs` no longer marks `@modelcontextprotocol/sdk` external. `dist/server.js` now inlines every npm dependency from the committed lockfile: 106 KB → 529 KB, against a 5 MB budget. The build also writes `dist/THIRD_PARTY_NOTICES.txt`, generated from the esbuild metafile: every bundled package (`@modelcontextprotocol/sdk`, `zod`, both MIT) with its version and full licence text. Any `/*! */` legal comments are kept at the end of the bundle.
   - Before this, a marketplace install, or the plugin baked into an image, died with `ERR_MODULE_NOT_FOUND`, which Claude Code reports as `lua-platform CONNECTION_CLOSED`. The plugin ships no `node_modules`, and `.mcp.json` launches `dist/server.js` directly.
   - A `createRequire` banner gives the ESM bundle a real `require` for any CommonJS dependency.
 - New `tests/standalone-bundle.test.mjs`:
@@ -54,19 +54,40 @@ It now lexes the command the way a POSIX shell does (quotes, escapes, `&& || ; |
   - Allowed: `cd agent && LUA_DEPLOY_CONFIRMED=1 lua deploy skill …`, and redirections such as `> deploy.log 2>&1`.
   - Every form `/lua-deploy`, the deploy pilot and `/lua-template` emit is unchanged and still allowed.
 - **Text that only *mentions* a verb stays unclassified**: `git commit -m "lua deploy all"`, `grep -r "lua deploy" .`, `lua chat … -m "please lua deploy all"`, and a heredoc written to a file.
-- **Fails closed, and stays fast.** A hook that throws or runs past its 10 s timeout fails *open*, so:
-  - an internal classifier error now returns an unresolved, unprefixed hit for any command that mentions a lua binary;
-  - the textual-fallback option pattern has exactly one parse per option. A draft with `-{1,2}[\w-]+` backtracked exponentially (28 options ≈ 200 s); it now takes under 1 ms.
-  - Tests bound pathological inputs to 500 ms and fuzz 3,000 random shell strings.
+- **Fails closed, and decides inside the hook timeout.** A PreToolUse hook that throws or runs past its 10 s timeout fails *open*. The independent review reproduced exactly that against a draft, with 24 KB inputs. So:
+  - Everything is linear.
+    - The textual fallback is a token scan that reuses the parser's argument matcher, not a set of regexes.
+    - Two regex drafts backtracked: one exponentially (28 options ≈ 200 s), one quadratically (`lua/` × 6000 ≈ 10 s).
+  - A command over **32 KB** (`MAX_COMMAND_LENGTH`) is not parsed.
+  - A classification has a **1.5 s budget** (`TIME_BUDGET_MS`).
+  - An over-length command, a spent budget, or an internal error **blocks** the command if it mentions a lua binary (`DEPLOY_DENIED_UNCLASSIFIABLE`, `lua <unclassifiable command>`), and passes it otherwise.
+  - New `test/hooks/confirm-deploy.timeout.test.mjs` spawns the real hook on adversarial inputs up to 100 KB, including the review's reproductions and inputs just under the cap. It asserts a decision in under 2 s.
+  - The review's performance probe and a 3,000-string shell fuzz run as unit tests.
+- **Command position only.** The binary is recognised as the command a shell would run, not at any word position.
+  - Recognised: the first word after assignments, and the command a wrapper, launcher or shell keyword runs, including `find … -exec lua` and `if/then/do/coproc`.
+  - `cp -r lua deploy`, `ls lua deploy` and `echo lua deploy all` no longer block.
+  - A pipeline feeding a shell (`echo lua deploy all | sh`) is still searched.
+- **Computed words (review finding 2).** An unquoted glob (`/usr/local/bin/lu? deploy`) or brace expansion (`{lua,} deploy`, `lua de{ploy,} all`) is a runtime-computed word, like `$VAR`. `lua${IFS}deploy${IFS}all` is split at its expansions. A computed binary with a computed verb (`$(printf lua) $(printf deploy) all`, `L=lua; V=deploy; $L $V all`) is blocked when the command mentions lua anywhere. Unicode spaces count as separators.
+- **More strings that run as code (review finding 3):**
+  - `env -S` / `--split-string`;
+  - awk `system(…)`, `print … | "cmd"` and `"cmd" | getline`;
+  - `osascript -e`, and editor `-c '!…'` / `+cmd`;
+  - GNU sed's `e` command and `s///e`;
+  - `git -c alias.x='!…'`;
+  - `tmux` / `screen`, `docker exec c sh -c` (a shell name counts at any position), and `bash < <(…)` / `source <(…)`;
+  - `$(…)` inside an unquoted heredoc;
+  - a heredoc written to a script that the same command then runs (`cat > x.sh <<EOF … EOF; sh x.sh`).
+- **Heredocs inside `$(…)` are text (review finding 4).** `findClose` skips heredoc bodies and comments, so Claude Code's own `git commit -m "$(cat <<'EOF' … it's … EOF)"` and `gh pr create --body "$(cat <<'EOF' … EOF)"` pass.
 - `classifyProductionCommand` keeps its `{ label, slash, prefixed }` shape, and `PRODUCTION_COMMANDS` keeps `label` / `slash` / `re`, now with a `seq` token table. `lex()` and `UNRESOLVED_LABEL` are new exports.
 - The `DEPLOY_DENIED_BARE` text now explains where the prefix counts.
-- New `test/lib/tokenizer-hardening.test.mjs`, about 170 cases:
+- New `test/lib/tokenizer-hardening.test.mjs`, 319 cases:
   - every audit bypass and its neighbours;
+  - the independent review's probe sets, verbatim plus a few neighbours: 74 bypasses, 33 interactive commands that must pass, and 23 performance shapes;
   - the prefix rule in both directions;
   - false-positive guards;
   - the fail-closed fallbacks;
   - the lexer.
-- The spawned `confirm-deploy` integration test gains the chain cases.
+- The spawned `confirm-deploy` integration test gains the chain cases, and the new spawned timeout test covers inputs up to 100 KB.
 
 This is still a belt, not a sandbox. A command assembled at runtime (`base64 -d | sh`, a script file, an npm script, a raw HTTP call) is out of any static classifier's reach. `SECURITY.md` now says so, and names the Lua-API proxy as the boundary for unattended runs.
 

@@ -149,6 +149,17 @@ describe('confirm-deploy headless: every production verb blocked, the prefix is 
   });
 });
 
+describe('confirm-deploy: an unclassifiable command', () => {
+  test('is blocked with its own reason, interactive and headless alike', () => {
+    const command = `lua status ${'x'.repeat(40 * 1024)}`;
+    const interactive = confirmDeploy({ tool_input: { command } }, INTERACTIVE);
+    expect(interactive?.block).toBe(true);
+    expect(interactive?.reason).toContain('DEPLOY_DENIED_UNCLASSIFIABLE');
+    expect(interactive?.reason).not.toMatch(SLASH);
+    expect(confirmDeploy({ tool_input: { command } }, HEADLESS)?.block).toBe(true);
+  });
+});
+
 describe('block-auto-deploy headless', () => {
   test('still blocks, names no slash', () => {
     const result = blockAutoDeploy({ tool_input: { command: 'lua push all --auto-deploy' } }, HEADLESS);

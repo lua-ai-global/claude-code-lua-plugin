@@ -91,6 +91,7 @@ The following work inline with their arguments given up front:
   - in a string run by `bash -c` / `eval` / `ssh` / `… | sh`, or in a heredoc fed to a shell;
   - behind `FOO=1` prefixes, `sudo` / `env` / `timeout`, `npx lua`, `npx lua-cli`, `pnpm exec lua` or `node …/lua-cli/…`, and at a binary path.
 - A shell variable in the binary or verb position is blocked.
+- It fails closed. A command over 32 KB, one that exhausts the 1.5 s budget, or an internal error is blocked if it mentions lua, because a hook that hits its timeout lets the command run.
 - The confirmation prefix counts only as the first word of the exact simple command that runs the verb.
 
 It is still a **belt**:

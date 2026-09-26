@@ -81,7 +81,9 @@ Output: `dist/server.js` — a single self-contained file. Since 1.6.0 every npm
 dependency, `@modelcontextprotocol/sdk` included, is bundled from the
 lockfile, so the server runs with no `node_modules` anywhere (a marketplace
 install, or the plugin baked into a Lua Job-tier image).
-`tests/standalone-bundle.test.mjs` copies the bundle into an empty temp
+The build also writes `dist/THIRD_PARTY_NOTICES.txt` (every bundled package, its
+version and its full licence text, from the esbuild metafile); ship it with the
+bundle. `tests/standalone-bundle.test.mjs` copies the bundle into an empty temp
 directory and lists the tools over stdio to keep it that way; rebuild after
 any change to `src/` or a dependency bump and commit `dist/`. The plugin's `.mcp.json` launches it via
 `node ${CLAUDE_PLUGIN_ROOT}/mcp/lua-platform/dist/server.js`; the built file

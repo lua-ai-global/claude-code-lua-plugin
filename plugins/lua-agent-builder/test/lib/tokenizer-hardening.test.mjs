@@ -3,7 +3,9 @@
 // neighbour them. Every case here PASSED the 1.5.0 regex classifier.
 
 import { describe, test, expect } from '@jest/globals';
-import { classifyProductionCommand, isPrefixedDeploy, lex, UNRESOLVED_LABEL } from '../../lib/tokenizer.mjs';
+import {
+  classifyProductionCommand, isPrefixedDeploy, lex, UNRESOLVED_LABEL, UNCLASSIFIABLE_LABEL, MAX_COMMAND_LENGTH, TIME_BUDGET_MS,
+} from '../../lib/tokenizer.mjs';
 
 const bare = (label, slash = '/lua-deploy') => ({ label, slash, prefixed: false });
 const DEPLOY = bare('lua deploy');
@@ -335,8 +337,202 @@ describe('the classifier stays fast and fails closed (a hook that times out or t
   test('an internal error blocks a command that mentions lua, and ignores one that does not', () => {
     const boom = () => { throw new Error('classifier bug'); };
     expect(classifyProductionCommand('lua status', { analyze: boom }))
-      .toEqual({ label: UNRESOLVED_LABEL, slash: '/lua-deploy', prefixed: false });
+      .toEqual({ label: UNCLASSIFIABLE_LABEL, slash: '/lua-deploy', prefixed: false });
     expect(classifyProductionCommand('git status', { analyze: boom })).toBeNull();
+  });
+
+  test('a spent time budget fails closed', () => {
+    const cmd = 'lua status --ci && '.repeat(2000) + 'lua status';
+    expect(classifyProductionCommand(cmd, { budgetMs: -1 }))
+      .toEqual({ label: UNCLASSIFIABLE_LABEL, slash: '/lua-deploy', prefixed: false });
+    expect(classifyProductionCommand(cmd.replace(/lua/g, 'git'), { budgetMs: -1 })).toBeNull();
+    // The budget is per call: the next call starts fresh.
+    expect(classifyProductionCommand('lua status --ci')).toBeNull();
+  });
+
+  test(`a command over ${MAX_COMMAND_LENGTH} bytes is blocked if it mentions lua, passed if not`, () => {
+    const pad = 'x'.repeat(MAX_COMMAND_LENGTH);
+    expect(classifyProductionCommand(`lua status ${pad}`))
+      .toEqual({ label: UNCLASSIFIABLE_LABEL, slash: '/lua-deploy', prefixed: false });
+    expect(classifyProductionCommand(`git status ${pad}`)).toBeNull();
+  });
+
+  // The reviewer's performance probe: every shape decides within budget.
+  test.each([
+    ['opts-unclosed', 'lua ' + '--a '.repeat(5000) + 'x "'],
+    ['opts-unclosed-mixed', 'lua ' + '-a=b --c-d '.repeat(2500) + "'"],
+    ['many-lua-unclosed', 'lua lua-cli/x '.repeat(2000) + "'"],
+    ['many-lua-words', 'lua '.repeat(7000) + 'x'],
+    ['nested-subs', '$('.repeat(3000) + 'lua deploy all' + ')'.repeat(3000)],
+    ['nested-unclosed', '$('.repeat(15000)],
+    ['nested-quotes-subs', '"$('.repeat(3000) + 'x' + ')"'.repeat(3000)],
+    ['many-subs', '$(true) '.repeat(4000)],
+    ['many-backticks-unclosed', '`' + ' $( '.repeat(7000)],
+    ['open-parens', '('.repeat(30000)],
+    ['findclose-quad', '$( '.repeat(5000) + "'"],
+    ['dq-subs-unclosed', '"' + '$( '.repeat(5000)],
+    ['backtick-dq', '"' + '`x` '.repeat(7000)],
+    ['heredocs', 'cat <<A\n'.repeat(4000)],
+    ['runner-words', 'bash ' + '"a b" '.repeat(5000)],
+    ['inline-code', 'node -e "lua ' + '-a '.repeat(9000) + '"'],
+    ['raw-lua-slash', 'node -e "' + 'lua/'.repeat(7000) + '"; lua deploy all'],
+    ['raw-lua-sp', 'node -e "' + 'lua '.repeat(7000) + '"'],
+    ['opaque-slash', 'lua deploy all; echo ' + 'lua/'.repeat(7000) + " '"],
+    ['xargs-lots', 'echo | xargs ' + 'lua '.repeat(7000)],
+    ['sudo-flags', 'sudo ' + '-a b '.repeat(6000) + 'lua deploy all'],
+    ['array', 'a=('.repeat(10000)],
+    ['findclose-array', 'a=( '.repeat(5000) + ')'],
+  ])('%s', (_name, cmd) => {
+    const t0 = performance.now();
+    expect(() => classifyProductionCommand(cmd)).not.toThrow();
+    expect(performance.now() - t0).toBeLessThan(TIME_BUDGET_MS + 250);
+  });
+});
+
+// The independent review's probe sets (bypass.json / fp.json), verbatim.
+describe('review probes: bypasses are blocked', () => {
+  test.each([
+    '{lua,} deploy all',
+    'lua de{ploy,} all',
+    'lua {deploy,} all',
+    '/usr/local/bin/lu? deploy all',
+    '/usr/local/bin/l*a deploy all',
+    'lua${IFS}deploy${IFS}all',
+    '$(printf lua) $(printf deploy) all',
+    'L=lua; V=deploy; $L $V all',
+    'env -S "lua deploy all"',
+    'env --split-string="lua deploy all"',
+    'tmux new -d "lua deploy all"',
+    'awk \'BEGIN{system("lua deploy all")}\'',
+    'gawk \'BEGIN{print "x" | "lua deploy all"}\'',
+    "osascript -e 'do shell script \"lua deploy all\"'",
+    "git -c alias.x='!lua deploy all' x",
+    "vim -c '!lua deploy all' -c q",
+    "sed -n '1e lua deploy all' /etc/hosts",
+    "sed 's/x/lua deploy all/e' f",
+    'lua\tdeploy all',
+    "find . -maxdepth 0 -exec sh -c 'lua deploy all' \\;",
+    'find . -maxdepth 0 -exec lua deploy all \\;',
+    'xargs -a <(echo deploy all) lua',
+    'echo deploy all | xargs -I{} lua {}',
+    'LUA_DEPLOY_CONFIRMED=1 lua deploy all\nlua version promote 3',
+    'L\\UA_DEPLOY_CONFIRMED=1 lua deploy all',
+    'LUA_DEPLOY_CONFIRMED=1 lua deploy all & lua version promote 3',
+    'LUA_DEPLOY_CONFIRMED=1 lua deploy all || lua mcp on x',
+    'LUA_DEPLOY_CONFIRMED=1 lua deploy all <<< "$(lua version promote 3)"',
+    'LUA_DEPLOY_CONFIRMED=1 lua deploy all\\\n; lua version promote 3',
+    'lua Deploy all',
+    'LUA deploy all',
+    'Lua.exe deploy all',
+    "ruby -e 'system %q(lua deploy all)'",
+    "parallel ::: 'lua deploy all'",
+    'watch -n1 lua deploy all',
+    'coproc lua deploy all',
+    'case x in x) lua deploy all;; esac',
+    'function f { lua deploy all; }; f',
+    "x=$'\\x6cua'; $x deploy all",
+    "$'\\x6cua' deploy all",
+    "lua $'\\x64eploy' all",
+    'lua "$(echo deploy)" all',
+    "printf '%s' 'lua deploy all' | bash",
+    'echo lua deploy all | sh',
+    "bash <<< 'lua deploy all'",
+    'bash < <(echo lua deploy all)',
+    'source <(echo lua deploy all)',
+    'lua --profile=x -- deploy all',
+    'npx --yes lua-cli@latest deploy all',
+    'npm x lua-cli deploy all',
+    'node --require=x ./node_modules/lua-cli/dist/index.js deploy all',
+    'node --no-warnings --stack-size 999 ./node_modules/lua-cli/dist/index.js deploy all',
+    'node --stack-size 999 ./node_modules/lua-cli/dist/index.js deploy all',
+    'lua marketplace templates rollout x',
+    'lua persona live publish',
+    "cat > x.sh <<'EOF'\nlua deploy all\nEOF\nsh x.sh",
+    "cat > x.sh <<'EOF'\nlua deploy all\nEOF\n./x.sh",
+    'cat <<EOF\n$(lua deploy all)\nEOF',
+    'a=deploy; lua "$a" all',
+    "alias d='lua deploy all'; d",
+    'lua `echo deploy` all',
+    'exec lua deploy all',
+    'eval lua deploy all',
+    'ssh host lua deploy all',
+    'docker exec c sh -c "lua deploy all"',
+    'lua version promote 3',
+    'lua deploy all',
+    "lua ''deploy all",
+    'lu""a deploy all',
+    'lua de\\\nploy all',
+    'lua de$(true)ploy all',
+    'lua de${x}ploy all',
+    'lua de``ploy all',
+    '"$DIR/lua" deploy all',
+  ])('%j', (cmd) => {
+    const c = classifyProductionCommand(cmd);
+    expect(c).not.toBeNull();
+    expect(c.prefixed).toBe(false);
+  });
+
+  test('not bypasses: a comment, and command names lua-cli does not have', () => {
+    expect(classifyProductionCommand('LUA_DEPLOY_CONFIRMED=1 lua deploy all # ; lua version promote 3')?.prefixed).toBe(true);
+    expect(classifyProductionCommand('lua workflow deploy x -v 1')).toBeNull();
+    expect(classifyProductionCommand('lua skill deploy')).toBeNull();
+  });
+});
+
+describe('review probes: interactive commands are not blocked', () => {
+  test.each([
+    'lua compile --ci',
+    "lua test skill --name x --input '{}' --ci",
+    'lua chat --ci -e sandbox -m "please deploy all the things" -t abc',
+    'lua chat --ci -e production -m "lua deploy all" -t abc',
+    'lua push all --ci --force',
+    'lua push skill --name deploy --ci',
+    'lua logs --ci --json --type deploy',
+    'lua logs --ci --json --since 1h | jq \'.[] | select(.msg|test("deploy"))\'',
+    'lua status --json --ci',
+    'lua version list',
+    'lua version create -m "before deploy"',
+    'lua workflows list',
+    'lua env production --list',
+    "git commit -m \"$(cat <<'EOF'\nfix: don't run lua deploy all bare (it's gated)\n\nCo-Authored-By: x\nEOF\n)\"",
+    "git commit -m \"$(cat <<'EOF'\nfeat(deploy): support lua version promote (see docs)\nEOF\n)\"",
+    "gh pr create --title x --body \"$(cat <<'EOF'\n## Summary\n- blocks `lua deploy all` bare\n- it's fine :)\nEOF\n)\"",
+    "git log --oneline | grep 'lua deploy'",
+    'grep -rn "lua deploy" docs/',
+    "rg 'lua version promote' .",
+    "cat > notes.md <<'EOF'\nRun lua deploy all after review\nEOF",
+    'npm test && npm run lint',
+    'npm run deploy',
+    'cp -r lua deploy',
+    'ls lua deploy',
+    'echo lua deploy all',
+    'cd lua && npm install',
+    'node scripts/check.mjs "lua deploy all"',
+    "python3 -c 'print(1)' && echo done",
+    'echo "Next: lua deploy all"',
+    "echo 'Next: lua deploy all'",
+    "printf 'lua deploy all\\n' >> TODO.md",
+    "sed -i '' 's/lua deploy all/LUA_DEPLOY_CONFIRMED=1 lua deploy all/' README.md",
+    "awk '/lua deploy/ {print}' notes.md",
+  ])('%j', (cmd) => {
+    expect(classifyProductionCommand(cmd)).toBeNull();
+  });
+
+  test.each([
+    'LUA_DEPLOY_CONFIRMED=1 lua deploy skill --name x --skill-version 3 --ci --force',
+    'LUA_DEPLOY_CONFIRMED=1 lua version promote 4 --ci',
+    'env LUA_DEPLOY_CONFIRMED=1 lua mcp activate x --ci',
+    'cd agent && LUA_DEPLOY_CONFIRMED=1 lua deploy all --ci --force',
+    'LUA_DEPLOY_CONFIRMED=1 lua deploy all --ci --force && lua status --json --ci',
+  ])('the confirmed form is allowed: %j', (cmd) => {
+    expect(isPrefixedDeploy(cmd)).toBe(true);
+  });
+
+  test.each([
+    'LUA_DEPLOY_CONFIRMED=1 lua deploy all --ci --force 2>&1 | tail -20',
+    'LUA_DEPLOY_CONFIRMED=1 npx lua deploy all',
+  ])('by design a pipe or launcher voids the prefix: %j', (cmd) => {
+    expect(classifyProductionCommand(cmd)?.prefixed).toBe(false);
   });
 });
 
