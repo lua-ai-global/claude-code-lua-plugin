@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { isHeadless, HEADLESS_NOTE } from '../../lib/headless.mjs';
 import { decide as confirmDeploy } from '../../hooks/confirm-deploy.mjs';
 import { decide as blockAutoDeploy } from '../../hooks/block-auto-deploy.mjs';
+import { decide as blockDeviceSecret } from '../../hooks/block-device-secret.mjs';
 import { decide as checkAuth } from '../../hooks/check-lua-auth.mjs';
 import { decide as checkVersion, PINNED_MIN_LUA_CLI } from '../../hooks/check-lua-version.mjs';
 import { decide as detectProject } from '../../hooks/detect-project.mjs';
@@ -169,6 +170,26 @@ describe('block-auto-deploy headless', () => {
 
   test('interactive keeps /lua-deploy', () => {
     expect(blockAutoDeploy({ tool_input: { command: 'lua push all --auto-deploy' } }, INTERACTIVE)?.reason).toContain('/lua-deploy');
+  });
+});
+
+describe('block-device-secret headless (1.7.0)', () => {
+  const printing = { tool_input: { command: 'lua devices credential --ci --device-name pico' } };
+
+  test('still blocks, names no slash', () => {
+    const result = blockDeviceSecret(printing, HEADLESS);
+    expect(result?.block).toBe(true);
+    expect(result?.reason).not.toMatch(SLASH);
+  });
+
+  test('interactive keeps /lua-devices', () => {
+    expect(blockDeviceSecret(printing, INTERACTIVE)?.reason).toContain('/lua-devices');
+  });
+
+  test('the --out form passes in both modes', () => {
+    const safe = { tool_input: { command: 'lua devices credential --ci --device-name pico --out .env.device' } };
+    expect(blockDeviceSecret(safe, HEADLESS)).toBeNull();
+    expect(blockDeviceSecret(safe, INTERACTIVE)).toBeNull();
   });
 });
 

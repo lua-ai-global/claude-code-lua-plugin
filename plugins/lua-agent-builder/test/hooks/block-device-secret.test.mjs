@@ -18,6 +18,11 @@ describe('block-device-secret decide()', () => {
     'lua devices credential --ci --device-name pico --out --force',
     'lua devices credential --ci --device-name pico | tee out.txt',
     'bash -c "lua devices credential --device-name pico"',
+    // An out target that is the terminal again.
+    'lua devices credential --ci --device-name pico --out /dev/stdout --force',
+    'lua devices credential --ci --device-name pico --out=/dev/fd/1',
+    'lua devices credential --ci --device-name pico --out /dev/tty',
+    'lua devices credential --ci --device-name pico --out "/proc/self/fd/1"',
   ])('blocks %s', (command) => {
     const result = decide({ tool_input: { command } });
     expect(result?.block).toBe(true);
@@ -29,6 +34,8 @@ describe('block-device-secret decide()', () => {
     'lua devices credential --ci --device-name pico --out .env.device',
     'lua devices credential --ci --device-name pico --operations commands --out=.env.device.pico',
     'lua devices credential --ci --device-name pico --out .env.device --force',
+    "lua devices credential --ci --device-name pico --out '.env.device.pico'",
+    'lua devices credential --ci --device-name pico --out ./device/dev/.env.device',
     'lua devices credential --help',
     'lua devices credential -h',
     'lua devices status --ci --device-name pico',
@@ -44,6 +51,15 @@ describe('block-device-secret decide()', () => {
   test('allows missing input', () => {
     expect(decide(null)).toBeNull();
     expect(decide({})).toBeNull();
+  });
+
+  test('points at /lua-devices interactively, at no slash command headless', () => {
+    const input = { tool_input: { command: 'lua devices credential --ci --device-name pico' } };
+    expect(decide(input, {}).reason).toContain('/lua-devices');
+    const headless = decide(input, { LUA_PLUGIN_HEADLESS: '1' });
+    expect(headless.block).toBe(true);
+    expect(headless.reason).toContain('DEVICE_SECRET_DENIED');
+    expect(headless.reason).not.toMatch(/\/lua-/);
   });
 });
 

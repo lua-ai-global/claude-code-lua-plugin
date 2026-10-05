@@ -60,6 +60,10 @@ All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `
     - 3.44.0's `lua logs export` in both spellings. `--ci` binds anywhere, so `lua logs --ci export` used to ride the `lua logs --ci*` allow rule.
     - `lua drains confirm|replay`.
   - `lua devices list|status` stay allowed.
+  - **Re-run `/lua-doctor` in existing projects.** Its Step 5 unions the template into `.claude/settings.json`; until then a project merged under 1.6.0 has none of the rows above, so `lua push device` and `lua logs --ci export` still ride the old allow rules. `/lua-devices` and `/lua-push` Grep for the `lua push device` row and stop, pointing at `/lua-doctor`, when it is missing.
+- **`block-device-secret` details.**
+  - An `--out` target under `/dev/` or `/proc/` (`/dev/stdout`, `/dev/fd/1`, `/dev/tty`) does not count, because it writes the secret back to the terminal.
+  - Headless (`LUA_PLUGIN_HEADLESS=1`), its message names no slash command; `headless.test.mjs` covers it.
 
 ### Stale against lua-cli 3.44.0, fixed
 

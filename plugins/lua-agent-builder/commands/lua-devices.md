@@ -11,6 +11,7 @@ You are `/lua-devices`. The user typed `/lua-devices $ARGUMENTS` (`[setup | list
 1. `Bash(lua --version)` → remember `V`. **⏳ 3.45 path** when `V ≥ 3.45.0`; otherwise the **3.44 path** — every verb below names its fallback. Below 3.38.0, say `/lua-update` first and stop.
 2. Every verb except `client` and `troubleshoot` needs a project: if `lua.skill.yaml` is missing, say "Run `/lua-init` first (devices belong to an agent)" and stop.
 3. Auth: `Bash(lua models list --json --ci)` — exit 0/10 = fine; 9 = use the **Skill tool** with `skill: "lua-auth"`, then re-probe; 11 = API unreachable, stop with that line.
+4. Permission rules — with the **Grep** tool (not Bash), look for the literal `Bash(lua push device *)` in `.claude/settings.json` and `.claude/settings.local.json`. Missing ⇒ the project's rules predate plugin 1.7.0: there `lua push device …` rides the old `lua push * --ci --force*` allow and would go **live with no prompt**, and the other device verbs have no rule at all. For any verb other than `list`, `status`, `logs`, `client` or `troubleshoot`, say "This project's permission rules predate 1.7.0 — re-run `/lua-doctor` (Step 5 merges the new device `ask` rows), then `/lua-devices` again" and stop.
 
 ## Step 1 — collect what is missing (single permission per §3.7)
 
