@@ -24,6 +24,7 @@
 //
 //   lua deploy <type>                      per-primitive publish (skill, webhook, trigger, job, pre/postprocessor, persona, all)
 //   lua skills|webhooks|jobs|preprocessors|postprocessors deploy|publish   the same publish, older spelling
+//   lua skills production|prod|prd|live deploy|publish   the same skill publish (non-interactive since lua-cli 3.44.0)
 //   lua persona production deploy|publish  persona version goes live
 //   lua workflows deploy|publish <name> -v <ver>   workflow version goes live
 //   lua workflows activate|on|enable <name> [-v]   enables schedules/triggers (with -v: also a deploy)
@@ -174,6 +175,10 @@ const TEMPLATE = ['template', 'templates', 'agent-template', 'agent-templates'];
 export const PRODUCTION_COMMANDS = [
   rule('lua deploy', [['deploy']], '/lua-deploy'),
   rule('lua skills deploy', [['skills'], DEPLOY], '/lua-deploy'),
+  // lua-cli 3.44.0 (`commands/skills.ts`): `lua skills production deploy --skill-name x --skill-version y`
+  // runs the deploy non-interactively (before, it only opened the production menu). The env word takes
+  // the `prod`/`prd`/`live` aliases and the verb takes `publish` (`skills.actionOrEnv`, `skills.action`).
+  rule('lua skills production deploy', [['skills'], PROD_ENV, DEPLOY], '/lua-deploy'),
   rule('lua webhooks deploy', [['webhooks'], DEPLOY], '/lua-deploy'),
   rule('lua jobs deploy', [['jobs'], DEPLOY], '/lua-deploy'),
   rule('lua preprocessors deploy', [['preprocessors'], DEPLOY], '/lua-deploy'),
@@ -194,7 +199,7 @@ export const UNCLASSIFIABLE_LABEL = 'lua <unclassifiable command>';
 
 /** Labels whose success should trigger the post-deploy smoke check (something now runs live). */
 export const SMOKE_LABELS = new Set([
-  'lua deploy', 'lua skills deploy', 'lua webhooks deploy', 'lua jobs deploy', 'lua preprocessors deploy',
+  'lua deploy', 'lua skills deploy', 'lua skills production deploy', 'lua webhooks deploy', 'lua jobs deploy', 'lua preprocessors deploy',
   'lua postprocessors deploy', 'lua persona production deploy', 'lua workflows deploy', 'lua version promote',
   'lua mcp activate',
 ]);

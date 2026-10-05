@@ -39,7 +39,7 @@ lua integrations connect --integration <type> --auth-method oauth|token --scopes
 lua integrations update --connection-id <id> [--scopes all] [--scope user]
 ```
 
-`--scope user` makes a personal connection usable by every private agent the user owns (publishing the agent removes its access); triggers, account labels and `--hide-sensitive` are agent-scoped and rejected with `--scope user`. When the user reports back, run `mcp list` and `webhooks list` to confirm the MCP is Active and the subscriptions exist, then activate/subscribe with Step 2 if not. Tell the user to ignore the CLI's post-connect hint `lua triggers create --connection <id>` — that command is a tombstone that prints a redirect notice and creates nothing; subscribe with `webhooks create` instead.
+`--scope user` makes a personal connection usable by every private agent the user owns (publishing the agent removes its access); triggers, account labels and `--hide-sensitive` are agent-scoped and rejected with `--scope user`. ⏳ From lua-cli 3.44.0 `--hide-sensitive` defaults to **false** (it was true): include `--hide-sensitive true` in the printed line unless the user chose otherwise. When the user reports back, run `mcp list` and `webhooks list` to confirm the MCP is Active and the subscriptions exist, then activate/subscribe with Step 2 if not. Tell the user to ignore the CLI's post-connect hint `lua triggers create --connection <id>` — that command is a tombstone that prints a redirect notice and creates nothing; subscribe with `webhooks create` instead.
 
 ## Step 4 — present
 

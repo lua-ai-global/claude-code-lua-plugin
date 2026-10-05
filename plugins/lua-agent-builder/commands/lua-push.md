@@ -12,7 +12,7 @@ Run `Bash(lua models list --json --ci)` — a 1–2 s authenticated call (no pro
 
 If `$ARGUMENTS` includes a type, use it. Otherwise AskUserQuestion **once**:
 
-- "What to push?" (options: `all` (stage everything), `skill`, `webhook`, `trigger`, `job`, `preprocessor`, `postprocessor`, `workflow`, `mcp`, `device`, `device-trigger`, `voice`, `agent` (persona/model/settings), `backup`)
+- "What to push?" (options: `all` (stage everything), `skill`, `webhook`, `trigger`, `job`, `preprocessor`, `postprocessor`, `workflow`, `mcp`, `device` (⚠ live on the next turn), `device-trigger`, `voice`, `agent` (persona/model/settings), `backup`)
 - "Specific name? (leave blank for every one of that type)" (free-text, optional)
 - "Set version? (x.y.z; leave blank to bump the patch)" (free-text, optional — only with a name)
 
@@ -22,11 +22,13 @@ Always `--ci --force`. **NEVER** `--auto-deploy` (denied at the permission layer
 
 | Type | Name | Version | Command |
 |---|---|---|---|
-| `all` | — | — | `Bash(lua push all --ci --force)` — stage-all: bumps every versioned primitive (not workflows), upserts MCP servers, pushes the agent config (⚠ persona and model settings go live at once — see `agent`) and the source backup |
+| `all` | — | — | `Bash(lua push all --ci --force)` — stage-all: bumps every versioned primitive, upserts MCP servers, pushes the agent config (⚠ model settings go live at once — see `agent`), every registered `defineDevice` (⚠ live on the next turn — see `device`) and the source backup |
 | `backup` | — | — | `Bash(lua push backup --ci --force)` (add `--fresh` to build the manifest from disk) |
-| `agent` (alias `persona`) | — | — | `Bash(lua push agent --ci --force)` — ⚠ **everything in it is live at once**: the persona is persisted as a `published` persona version and served on the next turn (lua-agents `createPersonaVersion` → `updateAgentPersona`; there is no staged persona), and model/modelSettings/batching/browser apply immediately. Say so before running it — this push *is* the persona deploy (`lua deploy persona --set-version <n>` only rolls back to an earlier version) |
+| `agent` (alias `persona`) | — | — | `Bash(lua push agent --ci --force)` — ⚠ model/modelSettings/batching/browser apply **immediately**. The persona: ⏳ **lua-cli 3.44.0 or later** stages it (`Persona vN staged — NOT activated`, `push.ts` `writePersonaStagedHint`) and it goes live only through `/lua-deploy` persona; below 3.44.0 the pushed persona version is served on the next turn. Say which applies before running it |
 | `mcp` | set / blank | — | `Bash(lua push mcp --ci --force [--name <n>])` — non-versioned upsert |
-| versioned (`skill webhook trigger job preprocessor postprocessor workflow device device-trigger voice`) | set | set | `Bash(lua push <type> --ci --force --name <name> --set-version <x.y.z>)` |
+| `device` | set | blank | `Bash(lua push device --ci --force --name <name>)` — ⚠ a pushed `defineDevice` is **live on the agent's next turn**, published or not (devices are not part of agent versions — `lib/knowledge/devices.md` §5). This row is in the permission template's `ask` tier, so Claude Code shows the command and waits: that prompt is the confirmation, do not add one. Before running it, Grep `.claude/settings.json` / `.claude/settings.local.json` for `Bash(lua push device *)`; if it is missing the project's rules predate 1.7.0 and the push would go live unprompted — point at `/lua-doctor` and stop. `/lua-devices push` is the guided path |
+| `device-trigger` | set | blank | `Bash(lua push device-trigger --ci --force --name <name>)` (`ask` tier too) — creates a version that does **not** run until published; publishing needs `--auto-deploy`, which the plugin never runs: print `lua push device-trigger --name <name> --auto-deploy` for the user's own terminal |
+| versioned (`skill webhook trigger job preprocessor postprocessor workflow voice`) | set | set | `Bash(lua push <type> --ci --force --name <name> --set-version <x.y.z>)` |
 | versioned | set | blank | `Bash(lua push <type> --ci --force --name <name>)` (patch bump) |
 | versioned | blank | any | `Bash(lua push <type> --ci --force)` — pushes every primitive of that type with auto-bumps; ignore any version typed |
 
@@ -34,13 +36,13 @@ Always `--ci --force`. **NEVER** `--auto-deploy` (denied at the permission layer
 
 ⏳ **lua-cli 3.36.0 or later** (the plugin pins 3.37.0; the installed `lua --version` tells you which case applies):
 - `workflow` pushes accept `--apply-effort`: the pushed envelope is stamped `luaWorkflow: 2` and each agent step's `effort` is sent to the model from that version on — a plain push records effort and applies nothing. Add it only when `$ARGUMENTS` says `--apply-effort` or the user asks; say so in the report (`⚙️ --apply-effort: … per-step effort ENABLED` is the CLI's own notice).
-- ⚠ **`lua push all` also pushes every workflow and ACTIVATES the pushed version** (main `push.ts`, PR #3024 — stage-all queues workflows for deployment with or without `--auto-deploy`; below 3.36.0 workflows are simply excluded). On that CLI, before running `all` in a project whose `dist-v2/manifest.json` lists workflows, tell the user in your one line that the workflow versions go **live**; if that is not wanted, push per type instead (`skill`, `webhook`, …) and leave workflows to `/lua-deploy`.
+- `lua push all` and workflows, by CLI version: below 3.36.0 stage-all skips workflows; **3.36.0–3.43.x pushes every workflow and ACTIVATES the pushed version** (PR #3024) — on those CLIs, before running `all` in a project whose `dist-v2/manifest.json` lists workflows, say in your one line that the workflow versions go **live**, or push per type instead; ⏳ **3.44.0 or later stages them only** (PRO-2158: "nothing goes live on a push") and prints the `lua workflows deploy <n> -v <v>` line — the live path is `/lua-deploy`.
 
 ## Step 3 — report
 
-⚠ Exit 0 is not success for `all` (or for a type push of several primitives): lua-cli 3.33.0 prints `❌ Failed to push <name>: …` per item and `⚠️  N component(s) failed to push`, then `✅ Push All Complete!`, and still exits 0 (`push.ts` ~1300-1353; validated live 2026-09-13). Scan the output for `❌ Failed to push`; if present, report the failed items as a failure (the others were pushed) — never say "✓ Pushed".
+⚠ A failed item: below lua-cli 3.44.0, `all` (and a type push of several primitives) prints `❌ Failed to push <name>: …` per item and `⚠️  N component(s) failed to push`, then `✅ Push All Complete!`, and still **exits 0**; ⏳ from 3.44.0 it exits 1 when any item failed (`push.ts` `pushAllExitCode`). Either way scan the output for `❌ Failed to push`; if present, report the failed items as a failure (the others were pushed) — never say "✓ Pushed".
 
-On success: "✓ Pushed `<type>:<name>` v`<version>` (server version created; not live). Next: `/lua-deploy`." — for workflows note the live path is `lua workflows deploy <name> -v latest` (the deploy slash handles it); for `agent` say plainly "persona v`<n>` and the model settings are **already live**" (rollback: `/lua-deploy` persona with the previous version); for `all` say the same about the agent config and that the primitives still need `lua deploy` / an agent version promote.
+On success: "✓ Pushed `<type>:<name>` v`<version>` (server version created; not live). Next: `/lua-deploy`." — for workflows note the live path is `lua workflows deploy <name> -v latest` (the deploy slash handles it); for `agent` say plainly that the model settings are **already live** and, on 3.44.0 or later, that persona v`<n>` is **staged** (`/lua-deploy` persona makes it live) — below 3.44.0 that it is already live (rollback: `/lua-deploy` persona with the previous version); for `device` say it is **live on the next turn** (rollback = push the previous code); for `device-trigger` print the user-terminal `--auto-deploy` line; for `all` add that every `defineDevice` is live and the other primitives still need `lua deploy` / an agent version promote.
 
 If the output contains `Model configuration cleared`, `Model settings cleared`, `Batching config cleared` or `Voices cleared` (types `all` / `agent`), say so plainly: the agent push overwrites those server fields with whatever `src/index.ts` declares, so a model chosen in the dashboard is now gone. Point at the fix: set `model` (or `modelSettings` / `batching`) on the `LuaAgent` — `lua models set --model <code>` writes it for you — and push `agent` again.
 

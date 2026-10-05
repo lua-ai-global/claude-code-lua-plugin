@@ -2,6 +2,98 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.7.0 — 2026-10-05
+
+**Devices, and a re-check against lua-cli 3.44.0 and 3.45.0.**
+- lua-cli 3.44.0 is npm `latest`. 3.45.0 (the `lua devices` rework and `lua devices credential`) is in review: everything that needs it is marked ⏳ 3.45.0 and names its 3.44 fallback.
+- The pin stays 3.38.0. Every shape the plugin emits still runs there, and the ⏳ entries say what changes above it.
+
+### New: `/lua-devices` and `lib/knowledge/devices.md`
+
+`/lua-devices [setup | list | status | credential | client | push | test | test-trigger | logs | enable | disable | remove | troubleshoot]` connects hardware or a local machine to the agent. It follows the `/lua-drains` contract: one AskUserQuestion for missing inputs, the Bash `ask` prompt as the confirmation, no second prompt.
+- **Choosing a declaration style.** Self-describing (commands sent by the client) vs `defineDevice` (commands versioned in the project), with the trade-offs:
+  - tools disappear while a self-describing device is offline;
+  - the 24 h command-list expiry applies only to self-describing devices;
+  - group fan-out needs `defineDevice`;
+  - a same-name client list wins over a declaration.
+- **Credential, issued safely.** ⏳ 3.45.0 `lua devices credential --ci --device-name <n> --operations … --out .env.device`.
+  - The slash first makes sure the file is git-ignored. The `lua init` template ignores `.env` but not `.env.device`.
+  - It never reads the file back and never passes `--force` unasked.
+  - An API-key sign-in is routed to an email login in the user's own terminal.
+  - On 3.44 there is no self-service path; only a legacy `api_` + 32-hex key connects. A scoped personal key is refused with `AUTH_FAILED: Typed API keys require an explicitly scoped gateway policy`.
+- **Client scaffolds**, written with the Write tool:
+  - Node: `device/device.mjs` plus its own `package.json`. It is `.mjs` because the init template ignores `*.js`. It loads `../.env.device` with dotenv and handles `error` for server-side closes.
+  - Python: `device/device.py` plus `requirements.txt`. It uses `api_key`, because `lua-device-client` 1.3.0 has no `device_credential`.
+  - Pico W: `device/main.py` parses a copied `device.env`. The user fills in `wifi.py`; the plugin never asks for the Wi-Fi password. The `mpremote` steps are printed for the user's terminal.
+- **Going live**, which is *not* an agent version:
+  - `lua push device` is live on the agent's next turn, published or not.
+  - A standalone `defineDeviceTrigger` runs only once published. That needs `--auto-deploy`, which stays denied, so the slash prints `lua push device-trigger --name <n> --auto-deploy` for the user's own terminal.
+- **Testing**:
+  - `status`.
+  - ⏳ 3.45.0 `test --command` and `test-trigger --trigger`; the latter runs the live handler. On 3.44 both prompt and exit 1 under `--ci`, and `test-trigger` never ran a handler. The fallbacks are `/lua-chat` naming `device__<n>__<command>`, or firing the trigger from the client.
+  - Reading the results with `lua logs --type device` / `device-trigger`.
+- **Troubleshooting** for:
+  - `AUTH_FAILED` from a scoped key;
+  - `MQTT CONNACK rc=5` / `Not authorized`;
+  - `AGENT_FORBIDDEN`, `OPERATION_FORBIDDEN`;
+  - offline after `disable` → `enable`;
+  - `DEVICE_OFFLINE`, `TIMEOUT`, `TOO_MANY_REQUESTS`;
+  - the 24 h expiry and 3.44's `list` hiding self-describing devices;
+  - a trigger reply that never reaches WhatsApp, because the channel link talks to the live version;
+  - this plugin's own `confirm-deploy` hook blocking `lua` plus a verb inside `node -e` / `python -c` text.
+
+### Security
+
+- **New hook `block-device-secret`** (PreToolUse, `if: Bash(*devices*)`).
+  - It blocks `lua devices credential|credentials|key` without `--out <file>`: in any binary spelling, any action case, chained or inside `bash -c`. `--help` is exempt.
+  - Without `--out` the CLI prints the secret to stdout, which is the conversation.
+  - 100 % covered, including spawned-hook tests. `lint-cli-flags` now also fails on any shipped `lua devices credential …` shape without `--out`.
+- **Gate bypass closed: `lua skills production deploy`.**
+  - lua-cli 3.44.0 made `lua skills production deploy --skill-name x --skill-version y` (and `prod`/`prd`/`live` × `deploy`/`publish`) a non-interactive production deploy.
+  - Before, that spelling only opened a menu, and `lib/tokenizer.mjs` did not classify it, so `confirm-deploy` let it through.
+  - It is now a production verb with a smoke label. The prefixed form is allowed, and the mirror test covers canonical, alias and mixed-case spellings.
+- **Permission template:**
+  - `ask` now covers:
+    - `lua devices test|run|exec`, `test-trigger|test_trigger`, `credential*|key*`;
+    - the `on|off|activate|deactivate|rm|del` aliases;
+    - `lua push device|devices|device-trigger|device-triggers|device_trigger|devicetrigger|devicetriggers …`. These carve the go-live push out of the generic `lua push * --ci --force*` allow; a new mirror test asserts the carve-outs and that ordinary pushes stay allowed.
+    - 3.44.0's `lua logs export` in both spellings. `--ci` binds anywhere, so `lua logs --ci export` used to ride the `lua logs --ci*` allow rule.
+    - `lua drains confirm|replay`.
+  - `lua devices list|status` stay allowed.
+  - **Re-run `/lua-doctor` in existing projects.** Its Step 5 unions the template into `.claude/settings.json`; until then a project merged under 1.6.0 has none of the rows above, so `lua push device` and `lua logs --ci export` still ride the old allow rules. `/lua-devices` and `/lua-push` Grep for the `lua push device` row and stop, pointing at `/lua-doctor`, when it is missing.
+- **`block-device-secret` details.**
+  - An `--out` target under `/dev/` or `/proc/` (`/dev/stdout`, `/dev/fd/1`, `/dev/tty`) does not count, because it writes the secret back to the terminal.
+  - Headless (`LUA_PLUGIN_HEADLESS=1`), its message names no slash command; `headless.test.mjs` covers it.
+
+### Stale against lua-cli 3.44.0, fixed
+
+- **Devices were routed through an agent-version promote.** `/lua-deploy`, the deploy pilot, `cli-reference.md` §5 and `primitives.md` §9 sent `device` / `device-trigger` through `lua version create` → `lua version promote`. Devices are not part of agent versions, so that path shipped nothing. `/lua-deploy` no longer offers them and points at `/lua-devices`, and the knowledge files carry the real paths.
+- **Persona.** 3.44.0 `lua push agent` stages the persona (`Persona vN staged — NOT activated`), and `lua version promote` re-points it to the version's pin.
+  - The pilot now makes it live with `LUA_DEPLOY_CONFIRMED=1 lua deploy persona --ci --set-version <n> --force` on an unversioned agent.
+  - On a versioned agent it uses `lua version create --persona-version <n>` → promote, and aborts if the server cannot pin.
+  - Stage-all promotes carry `--persona-version` when a persona was staged.
+  - Below 3.44.0 the old behaviour, live on push, is kept and labelled.
+- **`lua push all` and workflows.** It activated workflows only on 3.36.0–3.43.x. 3.44.0 stages them again (PRO-2158). `/lua-push`, `/lua-deploy`, the pilot and `cli-reference.md` now say which version does what, and that stage-all makes every `defineDevice` live.
+- **Exit codes.**
+  - `lua push all` and `lua deploy all` exit 1 on a failed item from 3.44.0; a skip still exits 0.
+  - A throwing `lua test` exits non-zero from 3.44.0.
+  - Updated in `/lua-push`, `/lua-deploy`, `/lua-test`, the pilot, the skill-builder and `primitives.md` #32. Output scanning stays on every version.
+- **`lua devices` facts.**
+  - `cli-reference.md` §1/§4 said `lua devices test` needs only `--device-name` to avoid a prompt. On 3.44 it always prompts for the command.
+  - The skill-builder told the user to run an interactive `lua devices test`. It now hands off to `/lua-devices`.
+  - `lint-knowledge-commands` knows `credential`.
+  - `lint-cli-flags` denies the non-existent `lua device-triggers`, and its `lua deploy device` reason no longer says "promote an agent version".
+- **Integrations.** From 3.44.0 `--hide-sensitive` defaults to `false`, so `/lua-integrations` now prints `--hide-sensitive true`. `--interval` takes 1–2880 minutes and defaults to 1.
+- **`lua drains`.** 3.44.0 adds six destination types (`splunk loki axiom newrelic sumologic s3`) and `confirm` / `replay`. `/lua-drains` no longer claims "exactly eleven" verbs and hands the new types to the CLI's help.
+- **`lua evals`** has verbs from 3.44.0 (`push list run show cancel`); only bare `lua evals` or `lua evals open` still opens a browser.
+- `lua logs` gains `--channel`, `--execution-id`, `--run-id` and `export`. `lua deploy <type>` under `--ci` needs both `--set-version` and `--force` (exit 2). Both are noted in `cli-reference.md`.
+
+### Docs and release
+
+- The architect reads `devices.md` and offers `/lua-devices setup`; `decision-trees.md` routes hardware to both declaration styles.
+- Updated: `SECURITY.md` (two new contract rows, the gate list), both READMEs (22 slash commands, 11 hooks, 7 knowledge files), and the User Guide (the slash, the hook, the knowledge file, the `ask` list).
+- Bump 1.6.0 → 1.7.0 everywhere `lint-release-version` checks, plus both lockfiles. `dist/server.js` is rebuilt.
+
 ## 1.6.0 — 2026-09-26
 
 **Headless hardening and a standalone MCP server (EM-WS8).** Three findings from the Lua Job-tier audit, where the plugin runs unattended inside `claude -p`:

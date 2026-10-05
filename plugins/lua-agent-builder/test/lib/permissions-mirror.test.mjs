@@ -57,6 +57,8 @@ const CANONICAL = [
   ['lua deploy skill --ci --name x --set-version latest --force', 'lua deploy'],
   ['lua deploy all --force', 'lua deploy'],
   ['lua skills deploy --skill-name x --skill-version latest', 'lua skills deploy'],
+  // lua-cli 3.44.0: the production-env spelling deploys non-interactively.
+  ['lua skills production deploy --skill-name x --skill-version 1.2.0', 'lua skills production deploy'],
   ['lua webhooks deploy --webhook-name x', 'lua webhooks deploy'],
   ['lua jobs deploy -i x -v latest', 'lua jobs deploy'],
   ['lua preprocessors deploy --preprocessor-name x', 'lua preprocessors deploy'],
@@ -72,6 +74,10 @@ const CANONICAL = [
 
 const ALIASES = [
   ['lua skills publish --skill-name x --skill-version latest', 'lua skills deploy'],
+  ['lua skills prod deploy --skill-name x --skill-version 1.2.0', 'lua skills production deploy'],
+  ['lua skills prd publish --skill-name x --skill-version 1.2.0', 'lua skills production deploy'],
+  ['lua skills live deploy --skill-name x --skill-version 1.2.0', 'lua skills production deploy'],
+  ['lua skills PRODUCTION Deploy --skill-name x --skill-version 1.2.0', 'lua skills production deploy'],
   ['lua webhooks publish --webhook-name x', 'lua webhooks deploy'],
   ['lua jobs publish -i x -v latest', 'lua jobs deploy'],
   ['lua preprocessors publish --preprocessor-name x', 'lua preprocessors deploy'],
@@ -190,6 +196,12 @@ describe('permission layer (lib/permissions-template.json) under Claude Code sem
       'lua drains status drn_9f31a7c04b2e615d8a03cc71 --json',
       'lua drains deliveries drn_9f31a7c04b2e615d8a03cc71 --limit 20 --kind batch --json',
       'lua drains test drn_9f31a7c04b2e615d8a03cc71 --json',
+      // Devices (1.7.0): the read verbs /lua-devices emits, and the device log sources.
+      'lua devices list --ci',
+      'lua devices list --ci --group printers',
+      'lua devices status --ci --device-name pico-sensor',
+      'lua logs --ci --json --type device-trigger --limit 20',
+      'lua logs --ci --json --type device --limit 20 --since 15m',
       'lua workflows run outreach --input @in.json --agents fake --fast-retries --json',
       'lua workflows watch run_1 --wait-for-human --timeout 900',
       // lua-cli 3.36.0: the org policy READ verbs (`policy models|autonomy get`) are read-only.
@@ -240,10 +252,61 @@ describe('permission layer (lib/permissions-template.json) under Claude Code sem
       'lua drains resume drn_9f31a7c04b2e615d8a03cc71 --json',
       'lua drains rotate-secret drn_9f31a7c04b2e615d8a03cc71 --json',
       'lua drains rotate-secret drn_9f31a7c04b2e615d8a03cc71 --finalize --json',
+      // lua-cli 3.44.0: the bucket-ownership confirm and the batch replay change drain state too.
+      'lua drains confirm drn_9f31a7c04b2e615d8a03cc71 --token tok_1',
+      'lua drains replay drn_9f31a7c04b2e615d8a03cc71 01J0000000000000000000000',
+      // lua-cli 3.44.0 `lua logs export`: an org-wide export that can carry message bodies. `--ci`
+      // binds anywhere on the line, so the `lua logs --ci*` allow rule must not admit it.
+      'lua logs export --since 24h --out ./logs-export',
+      // Devices (1.7.0). Every verb that changes a device, sends a real command to hardware, fires a
+      // live handler or issues a credential — in every alias spelling of `devices.action`.
+      'lua devices disable --ci --device-name gate',
+      'lua devices on --ci --device-name gate',
+      'lua devices off --ci --device-name gate',
+      'lua devices activate --ci --device-name gate',
+      'lua devices deactivate --ci --device-name gate',
+      'lua devices remove --ci --device-name gate --force',
+      'lua devices rm --ci --device-name gate --force',
+      'lua devices delete --ci --device-name gate --force',
+      'lua devices del --ci --device-name gate --force',
+      'lua devices test --ci --device-name gate --command open --payload {}',
+      'lua devices run --ci --device-name gate --command open',
+      'lua devices exec --ci --device-name gate --command open',
+      'lua devices test-trigger --ci --device-name gate --trigger opened --payload {}',
+      'lua devices test_trigger --ci --device-name gate --trigger opened',
+      'lua devices credential --ci --device-name gate --out .env.device',
+      'lua devices credentials --ci --device-name gate --out .env.device',
+      'lua devices key --ci --device-name gate --out .env.device',
     ]) {
       expect({ cmd, asked: matchesRestrictive(ask, cmd), denied: matchesRestrictive(deny, cmd), allowed: matchesAllow(cmd) })
         .toEqual({ cmd, asked: true, denied: false, allowed: false });
       expect(classifyProductionCommand(cmd)).toBeNull();
+    }
+  });
+
+  // Claude Code evaluates deny → ask → allow, so an `ask` row carves a confirmation out of a
+  // broader `allow` row. These shapes rely on exactly that.
+  test('ask rows that carve a confirmation out of a broader allow row', () => {
+    for (const cmd of [
+      // A pushed defineDevice is live on the next turn with no publish: the push is a go-live, so it
+      // asks although `lua push * --ci --force*` is allowed. Every push-type alias of device(-trigger).
+      'lua push device --ci --force --name gate',
+      'lua push devices --ci --force --name gate',
+      'lua push device-trigger --ci --force --name opened',
+      'lua push device-triggers --ci --force --name opened',
+      'lua push device_trigger --ci --force --name opened',
+      'lua push devicetrigger --ci --force --name opened',
+      'lua push devicetriggers --ci --force --name opened',
+      // `--ci` binds anywhere on the line, so `lua logs --ci export` also matches `lua logs --ci*`.
+      'lua logs --ci export --since 31d --include-content --yes --out ./x',
+    ]) {
+      expect({ cmd, asked: matchesRestrictive(ask, cmd), denied: matchesRestrictive(deny, cmd) })
+        .toEqual({ cmd, asked: true, denied: false });
+      expect(classifyProductionCommand(cmd)).toBeNull();
+    }
+    // …and the carve-outs do not catch the ordinary pushes and log reads next to them.
+    for (const cmd of ['lua push skill --ci --force --name devices', 'lua push all --ci --force', 'lua logs --ci --json --type device --limit 5']) {
+      expect({ cmd, asked: matchesRestrictive(ask, cmd), allowed: matchesAllow(cmd) }).toEqual({ cmd, asked: false, allowed: true });
     }
   });
 });
