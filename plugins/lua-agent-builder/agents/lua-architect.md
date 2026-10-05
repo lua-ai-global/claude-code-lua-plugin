@@ -20,6 +20,7 @@ The plugin ships a knowledge base verified against lua-cli source (3.33.0 base; 
 - `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/integrations.md` — Unified.to connectors, auto-provisioned MCPs, event subscriptions, channels, `Integrations.passthrough`
 - `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/cli-reference.md` — commands, exit codes, push/deploy matrix, agent versions, marketplace templates, docs URL map
 - `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/decision-trees.md` — task → primitive routing
+- `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/devices.md` — when the plan touches hardware or a local machine: self-describing vs `defineDevice`, device credentials, clients, going live (not part of agent versions), limits
 - `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/log-drains.md` — ⏳ 3.38.0: shipping the org's logs to the customer's own stack (`lua drains`), the states, the verification handshake, the http/otlp/datadog/betterstack presets, quotas, the scrubber, `logs:read` vs `logs:manage`. Read it when the plan involves observability, SIEM, alerting or an on-call rotation — a drain is the answer to “we want these logs in Datadog”, and it is org configuration, never agent code
 
 When a question goes beyond the knowledge files, use the docs MCP: `mcp__plugin_lua-agent-builder_lua-docs__search_lua_cli` for a question, `mcp__plugin_lua-agent-builder_lua-docs__query_docs_filesystem_lua_cli` to read a page (`head -200 /workflows/authoring.mdx`, `rg -n "approval" /`). `WebFetch https://docs.heylua.ai/<path>` is the fallback (paths are listed in cli-reference.md §6). The knowledge files win over the docs where they disagree — they were checked against the CLI source.
@@ -112,6 +113,7 @@ End with a next-step menu. **Do NOT try to run the build yourself** — your too
 ## Next steps — pick one (or run them in order)
 - /lua-init — scaffold the project (if it doesn't exist yet)
 - /lua-new tool <name> | skill | webhook | trigger | job | preprocessor | postprocessor | mcp | device | device-trigger | voice | workflow | workflow-script <name> — scaffold, compile, test each primitive
+- /lua-devices setup — connect hardware or a local machine: device credential (kept in a git-ignored file), Node / Python / Pico W client, push, test
 - /lua-integrations — catalog, connections, integration MCPs and event subscriptions (connect runs in your terminal)
 - /lua-env — set the secrets the plan names (`lua env production -k KEY -v …`; sandbox writes `.env`)
 - /lua-test — run a primitive in the local sandbox

@@ -1,0 +1,37 @@
+import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
+
+// lua-cli 3.45.0 `lua devices credential` (aliases `credentials`, `key`) prints the
+// device secret once to stdout unless `--out <file>` is given — and stdout of a Bash
+// call is the Claude conversation. `--out` writes it to a mode-600 dotenv file and
+// prints only the path and the credential id (src/commands/devices.ts
+// `issueDeviceCredential`). This hook blocks the printing form; the permission
+// template's `ask` row is the user's confirmation for the `--out` form.
+//
+// Text match, deliberately broad: any `lua` / `heylua` / `lua-ai` binary (bare or a
+// path ending in one) followed, before the next command separator, by `devices` and
+// a credential action. Action words are case-insensitive (lua-cli `normalizeArg`).
+const CREDENTIAL_RE =
+  /(?:^|[\s;&|(`/"'])(?:lua|heylua|lua-ai)(?:\.cmd)?\s+(?:[^;&|\n`]*\s)?devices\s+(?:[^;&|\n`]*\s)?(?:credentials?|key)(?![\w-])/i;
+const OUT_RE = /(?:^|\s)--out(?:=|\s+)(?!-)\S/;
+const HELP_RE = /(?:^|\s)(?:--help|-h)(?:\s|$)/;
+
+export function decide(input) {
+  const command = input?.tool_input?.command ?? '';
+  if (!CREDENTIAL_RE.test(command)) return null;
+  if (HELP_RE.test(command)) return null;
+  if (OUT_RE.test(command)) return null;
+
+  return {
+    block: true,
+    reason:
+      'DEVICE_SECRET_DENIED: `lua devices credential` without `--out <file>` prints the device secret ' +
+      'into this conversation. Re-run it with `--out .env.device` (a git-ignored, mode-600 file) and never ' +
+      'read that file back. /lua-devices does this for you.',
+  };
+}
+
+/* istanbul ignore next */
+if (isMainScript(import.meta.url)) {
+  checkNodeVersion();
+  await runHook('block-device-secret', decide);
+}

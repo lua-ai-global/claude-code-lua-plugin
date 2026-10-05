@@ -26,16 +26,16 @@ lua integrations convert --connection-id <id> --force                # re-home a
 lua integrations disconnect --connection-id <id> [--scope user]      # no prompt
 lua integrations mcp list | activate --connection <id> | deactivate --connection <id>
 lua integrations webhooks list [--json] | events (--integration <type> | --connection <id>) [--json]
-                         | create --connection <id> --object <type> --event created|updated|deleted --hook-url <url> [--interval 60|120|240|480|720|1440|2880]
+                         | create --connection <id> --object <type> --event created|updated|deleted --hook-url <url> [--interval <minutes>]
                          | delete --webhook-id <id> | pause --webhook-id <id> [--reason <t>] | resume --webhook-id <id>
                          | pause --connection-id <id> | resume --connection-id <id>       # all triggers of a connection
 ```
 
 - ⚠ `--json` is honoured only by `info`, `webhooks list` and `webhooks events` (`src/commands/integrations.ts`); `available`, `list` and `mcp list` accept the flag and print text anyway.
-- `webhooks create` is non-interactive **only when `--connection`, `--object`, `--event` and `--hook-url` are all given** (`src/commands/integrations.ts` ~2959-2984: without `--hook-url` it prompts "Where should events be sent?" → exit 1 under `--ci`); `--interval 60|120|240|480|720|1440|2880` is likewise required for an event `webhooks events` marks `virtual` (polling; ~3028-3042). There is **no `--hook-url` default** — the prompt's "Wake up my Lua agent" choice resolves to `AGENT_WEBHOOK_URL` = `<LUA_API_URL>/webhook/unifiedto/data`, i.e. `https://api.heylua.ai/webhook/unifiedto/data` by default — pass that explicitly to wake the agent. Without `--connection` it prompts (exit 1 under `--ci`). `disconnect`, `webhooks delete|pause|resume`, `mcp activate|deactivate` never prompt. Slash: `/lua-integrations`.
+- `webhooks create` is non-interactive **only when `--connection`, `--object`, `--event` and `--hook-url` are all given** (`src/commands/integrations.ts` ~2959-2984: without `--hook-url` it prompts "Where should events be sent?" → exit 1 under `--ci`); `--interval` applies to an event `webhooks events` marks `virtual` (polling; ~3028-3042): on lua-cli 3.33.0–3.43.x it is required and must be one of `60 120 240 480 720 1440 2880`; ⏳ from 3.44.0 it takes any whole number of minutes from 1 to 2880 and defaults to 1. There is **no `--hook-url` default** — the prompt's "Wake up my Lua agent" choice resolves to `AGENT_WEBHOOK_URL` = `<LUA_API_URL>/webhook/unifiedto/data`, i.e. `https://api.heylua.ai/webhook/unifiedto/data` by default — pass that explicitly to wake the agent. Without `--connection` it prompts (exit 1 under `--ci`). `disconnect`, `webhooks delete|pause|resume`, `mcp activate|deactivate` never prompt. Slash: `/lua-integrations`.
 - ⚠ **Ignore the post-connect hint.** A successful `connect` ends with `⚡ Triggers: none (add later with: lua triggers create --connection <id>)` (`integrations.ts` ~1459). That command is a tombstone: `lua triggers` treats `--connection` as a moved flag, prints "Integration triggers now live at `lua integrations webhooks <action>`" and returns exit 0 without creating anything (`src/commands/triggers.ts` ~76-86). The working follow-up is `lua integrations webhooks create --connection <id> --object <object> --event <event> --hook-url https://api.heylua.ai/webhook/unifiedto/data [--interval <min>]`.
 
-- `--scope user` makes a **personal** connection usable by every private agent you own (publishing the agent removes its access). Triggers, account labels and `--hide-sensitive` are agent-scoped only.
+- `--scope user` makes a **personal** connection usable by every private agent you own (publishing the agent removes its access). Triggers, account labels and `--hide-sensitive` are agent-scoped only. ⏳ lua-cli 3.44.0 flips the `--hide-sensitive` default from `true` to **`false`** — pass `--hide-sensitive true` explicitly whenever the MCP tools should not see sensitive fields.
 - Multiple accounts of one integration are supported; use `--connection-id` to target one.
 - **`lua triggers` is NOT for integrations any more.** Since 3.18 `lua triggers <list|create|logs|activate|deactivate|rotate-token|delete>` manages *platform* triggers (paste-anywhere URLs and `defineTrigger` records). Passing the old integration flags (`--webhook-id`, `--connection-id`) to it only prints a redirect. Integration subscriptions are `lua integrations webhooks …`.
 - Don't confuse either with `lua webhooks subscribe --webhook-name x --event message.delivered`, which subscribes one of **your** `LuaWebhook` primitives to *platform* events (delivery receipts etc.).
@@ -128,7 +128,7 @@ Role shortcuts the architect can lead with: executive → crm, accounting, calen
 - **Subscriptions** (`lua integrations webhooks create`, or `--triggers ev1,ev2` at connect time) are real-time and always preferred. Each fires an agent turn (credits) — subscribe only to events the agent has work for.
 - **Polling** with a `LuaJob` that calls the MCP / `Integrations.passthrough` is the last resort (a daily snapshot, or a connector without the event).
 - Object/event names follow Unified.to's `<object>.<created|updated|deleted>` grammar (`task_task.created`, `calendar_event.updated`, `crm_deal.updated`). `lua integrations webhooks events --integration <type> --json` is the truth per connector.
-- Virtual webhooks (connectors without push) poll on `--interval 60|120|240|480|720|1440|2880` minutes.
+- Virtual webhooks (connectors without push) poll on `--interval` minutes: `60|120|240|480|720|1440|2880` below lua-cli 3.44.0, ⏳ any of 1–2880 (default 1) from 3.44.0.
 
 ### Handling a subscribed event
 

@@ -34,7 +34,8 @@ const DENY = [
   { pattern: '--type mastra', reason: '`mastra` is not a `lua logs --type` value (rejected, exit 2) — use runtime/agent_error' },
   { pattern: 'lua deploy workflow', reason: 'workflows go live with `lua workflows deploy <name> -v <ver>`' },
   { pattern: 'lua deploy mcp', reason: 'MCP servers are not versioned; enable with `lua mcp activate <name>`' },
-  { pattern: 'lua deploy device', reason: 'devices are not a `lua deploy` type — promote an agent version' },
+  { pattern: 'lua deploy device', reason: 'devices are not a `lua deploy` type and not part of agent versions — a pushed defineDevice is live on the next turn; a device-trigger is published with `lua push device-trigger --name <n> --auto-deploy` in the user\'s own terminal' },
+  { pattern: 'lua device-triggers', reason: 'there is no `lua device-triggers` command (lua-cli 3.45.0) — manage device triggers through `lua push device-trigger` and `lua devices test-trigger`' },
   { pattern: 'lua deploy voice', reason: 'voices are not a `lua deploy` type — promote an agent version' },
   { pattern: 'lua skills list', reason: 'the action is `lua skills view`' },
   { pattern: 'lua webhooks list ', reason: 'the action is `lua webhooks view` (`list-events` is separate)' },
@@ -100,6 +101,10 @@ async function* walk(dir) {
 // must carry a negation marker so the quote is unambiguous.
 const EXPLANATORY_LINE_RE = /\b(NOT|not|never|no|none|does not|do not|doesn't|don't|isn't|aren't|is not|are not|wrong|invalid|moved|rejected|instead|legacy|retired)\b/;
 
+// A runnable `lua devices credential|credentials|key …` shape: the action followed by at least one
+// flag, up to the end of the inline-code span or the line.
+const DEVICE_CREDENTIAL_SHAPE_RE = /\blua\s+devices\s+(?:credentials?|key)\s+--[^`\n]*/g;
+
 let scanned = 0;
 async function scan(path, { authOnly = false } = {}) {
   const content = await readFile(path, 'utf8');
@@ -110,6 +115,18 @@ async function scan(path, { authOnly = false } = {}) {
       if (!line.includes(pattern)) return;
       if (!authFlow && EXPLANATORY_LINE_RE.test(line)) return;
       fail(`${path}:${i + 1}: contains denylisted CLI reference \`${pattern}\` — ${reason}`);
+    });
+  }
+  // lua-cli 3.45.0 `lua devices credential` prints the device secret to stdout — into the
+  // conversation — unless `--out <file>` is given. Every runnable shape the plugin ships must carry
+  // `--out` (hooks/block-device-secret.mjs blocks the other form at run time).
+  if (!authOnly) {
+    lines.forEach((line, i) => {
+      for (const m of line.matchAll(DEVICE_CREDENTIAL_SHAPE_RE)) {
+        if (!/\s--out[\s=]/.test(m[0])) {
+          fail(`${path}:${i + 1}: \`${m[0].trim()}\` has no \`--out <file>\` — without it the device secret is printed into the conversation`);
+        }
+      }
     });
   }
   scanned++;

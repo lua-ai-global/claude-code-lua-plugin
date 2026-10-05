@@ -55,6 +55,12 @@
           },
           {
             "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/block-device-secret.mjs",
+            "if": "Bash(*devices*)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/warn-version-zero.mjs",
             "if": "Bash(*push*--set-version 0.*)",
             "timeout": 5

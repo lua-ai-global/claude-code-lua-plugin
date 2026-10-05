@@ -13,7 +13,7 @@ What's the agent's primary job?
 ├── Run on a schedule with no chat                → LuaJob(s) for simple recurring work; a workflow with `schedule` when the job is multi-step
 ├── Orchestrate multi-step / long-running work    → createWorkflow (approvals, fan-out, retries, budgets, Job-tier code)
 ├── Talk on the phone                             → LuaVoice (+ the persona's `voice` variant, fast tools)
-├── Control hardware / a local machine            → defineDevice + defineDeviceTrigger
+├── Control hardware / a local machine            → a device: self-describing client, or defineDevice + defineDeviceTrigger (devices.md §2; /lua-devices)
 └── Several of the above                          → one agent, built in stages: persona → tools → integrations → webhooks/triggers → jobs → workflows → QA → deploy
 ```
 
