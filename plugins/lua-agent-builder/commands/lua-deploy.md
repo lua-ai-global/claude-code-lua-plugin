@@ -1,5 +1,5 @@
 ---
-description: Make something live in production — a primitive version, the persona, a workflow version, an MCP activation, or an agent-version promote (also the rollback path). Single permission per §3.7; spawns the lua-deploy-pilot subagent for the gated ship sequence.
+description: Make something live in production — a primitive version, the persona, a workflow version, a web app, an MCP activation, or an agent-version promote (also the rollback path). Single permission per §3.7; spawns the lua-deploy-pilot subagent for the gated ship sequence.
 ---
 
 You are `/lua-deploy`. The user wants to change what runs in production.
@@ -12,9 +12,9 @@ Run `Bash(lua models list --json --ci)` — a 1–2 s authenticated call (no pro
 
 If `$ARGUMENTS` already names a target and name/version, pre-fill them. AskUserQuestion **once** with all of:
 
-- "What goes live?" (options: `skill`, `webhook`, `trigger`, `job`, `preprocessor`, `postprocessor`, `persona`, `workflow`, `mcp`, `voice`, `agent-version` (promote a whole-agent snapshot — also how you roll back), `all` (latest version of every deployable primitive))
+- "What goes live?" (options: `skill`, `webhook`, `trigger`, `job`, `preprocessor`, `postprocessor`, `persona`, `workflow`, `webapp` (goes live through a new agent version — only the web app may change), `mcp`, `voice`, `agent-version` (promote a whole-agent snapshot — also how you roll back), `all` (latest version of every deployable primitive))
 
-Devices and device-triggers are **not** deployed here: they are not part of agent versions, a pushed `defineDevice` is live on the next turn, and a device-trigger is published only by `--auto-deploy`, which this plugin never runs. If the user names one, say so and point at `/lua-devices push` (`lib/knowledge/devices.md` §5) instead of asking.
+A web app has no `lua deploy` type: `webapp` pushes it and promotes a new agent version that differs from the live one only in its web apps (`lib/knowledge/web-apps.md` §7). Devices and device-triggers are **not** deployed here: they are not part of agent versions, a pushed `defineDevice` is live on the next turn, and a device-trigger is published only by `--auto-deploy`, which this plugin never runs. If the user names one, say so and point at `/lua-devices push` (`lib/knowledge/devices.md` §5) instead of asking.
 - "Name?" (free-text; hidden for `persona`, `all`, `agent-version`). If `dist-v2/manifest.json` exists, pre-offer names of the matching kind.
 - "Version?" (options: `latest`, or free-text `x.y.z` — an integer for `persona`, an agent version number for `agent-version`; hidden for `mcp` and `all`)
 - "Notes? (optional — e.g. 'activate the workflow schedule', a version message)" (free-text)
@@ -29,7 +29,7 @@ Use the **Agent tool** with `subagent_type: "lua-deploy-pilot"` and a prompt con
 1. `git status --short` — abort if dirty
 2. `lua compile --ci` — abort on error (the user runs `/lua-test`, which routes the failure to the debug subagent)
 3. `lua version list --json --ci` — is the agent versioned? — then `lua status --json --ci` — abort if any primitive is `behind` the server or a critical orphan exists (→ `/lua-sync`)
-4. Push the version: `lua push <type> --ci --force --name <n> [--set-version <v>]` / `lua push agent` / `lua push all` / `lua push workflow …`
+4. Push the version: `lua push <type> --ci --force --name <n> [--set-version <v>]` / `lua push agent` / `lua push all` / `lua push workflow …` / `lua push webapp …`
 5. Go live with the prefixed verb the permission rules and the `confirm-deploy` hook accept:
    - `webhook trigger job preprocessor postprocessor` → `LUA_DEPLOY_CONFIRMED=1 lua deploy <type> --ci --name <n> --set-version <v|latest> --force` (the server does a scoped promote — immediate and consistent with the agent-version history)
    - `skill` / `all` on an agent **without** agent versions → `LUA_DEPLOY_CONFIRMED=1 lua deploy skill --ci --name <n> --set-version <v|latest> --force` / `… lua deploy all --ci --force`
@@ -38,9 +38,10 @@ Use the **Agent tool** with `subagent_type: "lua-deploy-pilot"` and a prompt con
    - `workflow` → `LUA_DEPLOY_CONFIRMED=1 lua workflows deploy <n> -v <v|latest>` (+ `… lua workflows activate <n>` when asked to enable its schedule/triggers). The deploy may print `  ⚠` **advisory** lines under the success line and still succeed — `job-tier-not-enabled` (an administrator must switch the Job tier on, or `start` is refused) and ⏳ lua-cli 3.37.0 or later `job-model-default` (a Job step names no `model`: it runs on the platform or org default and every model reply is billed at that model's multiplier). Report them; never treat one as a failed deploy
    - `mcp` → `LUA_DEPLOY_CONFIRMED=1 lua mcp activate <n>`
    - `voice agent-version` → `lua version create --ci -m "<notes>"` then `LUA_DEPLOY_CONFIRMED=1 lua version promote <N>`
+   - `webapp` → `lua version create --ci -m "<notes>"`, then — when the agent already has an active version — `lua version diff <active> <N> --json`: a web-app push has no deploy of its own and the snapshot pins the **latest pushed** version of every primitive, so if anything other than web apps differs the pilot **stops before promoting** and names those primitives (ship them together with `agent-version`, or deploy them first). Otherwise `LUA_DEPLOY_CONFIRMED=1 lua version promote <N>`
 6. Smoke check: `lua logs --ci --type all --limit 30 --json` scanned for `subType === 'error'`, plus `mcp__plugin_lua-agent-builder_lua-platform__get_deployment_status`; the `post-deploy-smoke` hook also pings production.
 
-The pilot reports what was pushed, what went live, the smoke result and the exact rollback command.
+The pilot reports what was pushed, what went live, the smoke result and the exact rollback command. Whenever the promoted version carries web apps (`webapp`, `agent-version`, `all` on a versioned agent) it also prints where each one opens: `https://workspace.heylua.ai/apps/<agentId>/<app name>` (browser only — the desktop app does not show web apps yet).
 
 ## Notes
 

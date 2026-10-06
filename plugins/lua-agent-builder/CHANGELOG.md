@@ -2,6 +2,38 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.8.0 — 2026-10-06
+
+**Web apps (Lua Apps): build, test and ship pages with typed routes on an agent.** Needs lua-cli 3.42.0 or later; read against 3.45.0. The plugin pin stays 3.38.0 — every web-app step checks `lua --version` first and points at `/lua-update` below 3.42.0.
+
+### New: `lib/knowledge/web-apps.md`
+
+What a web app is (routes in `src/apps/<name>/app.ts`, a Vite + React page project in `web/`), read from lua-cli `src/types/web-app.ts`, `commands/apps.ts`, `commands/test.ts`, `commands/push.ts`, `utils/web-app-build.ts`, `@lua/shared-types` `web-route-contract.ts` and the gateway's page policy:
+- the route contract: `ctx`, `auth` (always a signed-in person; `roles`/`scopes` empty locally), Zod validation (400 `VALIDATION`), the allow-listed request/response headers (`set-cookie` refused), the platform error codes;
+- the pages: `@lua-ai-global/ui`, the `@lua-ai-global/app-client` package (`lua.api`, `lua.start()`), and the strict per-request CSP (no CDN scripts, stylesheets or fonts; `pages.csp` to widen per directive);
+- switching a lua-cli 3.42–3.45 scaffold from the copied `web/src/lua/client.ts` to the package;
+- shipping: a push is staged only, an agent version makes it live, the URL it opens at;
+- limits and a troubleshooting table.
+
+Three traps from the source the docs do not stress:
+- `lua test webapp --input` wraps the body: `{"body": {...}}`. A raw body sends nothing.
+- An app missing from `webApps` prints `❌ No web apps found` and exits **0**.
+- Routes run against **live** `Data` and `env()` in `lua test webapp` and `lua apps dev` alike.
+
+### Changed
+
+- **`/lua-new webapp <name>`** — the builder runs `lua apps new` (never hand-writes the scaffold), `npm install` in `web/`, switches the client to the package, writes routes over the project's existing `Data` collections and pages with the UI package, then checks `lua compile`, `npm run typecheck` and `npm run build`, and tests **GET routes only**. Write routes are listed with a ready `/lua-test webapp` line. `lua apps dev` is printed for the user's own terminal, never started.
+- **`/lua-test webapp`** — `lua test --ci webapp --name … --route '…' --json`. GET runs at once; a POST/PUT/PATCH/DELETE route writes live Data, so it runs only after the slash's one question (picking a route labelled `writes live Data`, or "Run it" when the route was given).
+- **`/lua-push webapp`** — `lua push webapp --ci --force --name …`, after `npm install` when `web/node_modules` is missing; reported as staged, with the page-build refusals explained. `lua push all` notes that it builds every web app.
+- **`/lua-deploy webapp`** (new target) — push, `lua version create`, then `lua version diff <active> <new>`: an agent version pins the **latest pushed** version of every primitive, so if anything other than web apps differs the pilot stops before promoting and names it. On an unversioned agent the promote creates the first version and the report lists everything it pins. Every promote that carries web apps prints `https://workspace.heylua.ai/apps/<agentId>/<name>`.
+- **`decision-trees.md`** — "Give people a screen of their own" and "Chat, or a web app?" (and when not to use one: anonymous visitors, unbundleable third-party scripts, unattended work); web apps join the build order.
+
+### Permissions
+
+- Allowed: `lua apps new *` and exactly `npm --prefix src/apps/*/web install`, `install @lua-ai-global/app-client`, `run typecheck`, `run build`. `lua push webapp` and `lua test --ci webapp` ride the existing push/test rules.
+- `lua apps dev` is in no list (long-running; its routes write live Data).
+- `test/lib/web-apps-permissions.test.mjs` pins every emitted shape to the template and checks the npm rules admit no other package, script or directory. `scripts/lint-knowledge-commands.mjs` knows `test webapp`, `push webapp` and `apps new|dev`.
+
 ## 1.7.0 — 2026-10-05
 
 **Devices, and a re-check against lua-cli 3.44.0 and 3.45.0.**

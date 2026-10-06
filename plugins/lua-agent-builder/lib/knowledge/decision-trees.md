@@ -1,6 +1,6 @@
 # Decision trees
 
-Quick-reference flowcharts the architect uses when mapping a user's task to primitives. Each tree is opinionated — the *recommended* path, with deviations called out. Shapes referenced here are defined in `primitives.md`, `workflows.md`, `integrations.md`, `cli-reference.md`.
+Quick-reference flowcharts the architect uses when mapping a user's task to primitives. Each tree is opinionated — the *recommended* path, with deviations called out. Shapes referenced here are defined in `primitives.md`, `workflows.md`, `integrations.md`, `web-apps.md`, `cli-reference.md`.
 
 ---
 
@@ -14,7 +14,8 @@ What's the agent's primary job?
 ├── Orchestrate multi-step / long-running work    → createWorkflow (approvals, fan-out, retries, budgets, Job-tier code)
 ├── Talk on the phone                             → LuaVoice (+ the persona's `voice` variant, fast tools)
 ├── Control hardware / a local machine            → a device: self-describing client, or defineDevice + defineDeviceTrigger (devices.md §2; /lua-devices)
-└── Several of the above                          → one agent, built in stages: persona → tools → integrations → webhooks/triggers → jobs → workflows → QA → deploy
+├── Give people a screen of their own             → a web app: defineWebApp (Vite + React pages, typed routes on Data) (web-apps.md; /lua-new webapp)
+└── Several of the above                          → one agent, built in stages: persona → tools → integrations → webhooks/triggers → jobs → workflows → web apps → QA → deploy
 ```
 
 Package the finished agent for other orgs? → a marketplace **agent template** (`lua marketplace template create|draft|publish`).
@@ -35,9 +36,10 @@ Package the finished agent for other orgs? → a marketplace **agent template** 
 8. One-shot LLM call inside code?                                 → AI.generate
 9. Proactive outbound (WhatsApp template, email, SMS, Teams)?     → Channels.* (or User.get(id).send for "their last chat channel" — it never reaches email)
 10. Phone call out?                                               → Voice.call
+11. People need a page — a board, review queue, dashboard, form, admin screen over the agent's data? → defineWebApp (web-apps.md)
 ```
 
-If several apply, the agent usually needs all of them. Stage: tools → integrations → webhooks/triggers → jobs → workflows → processors. Test each stage before the next.
+If several apply, the agent usually needs all of them. Stage: tools → integrations → webhooks/triggers → jobs → workflows → processors → web apps. Test each stage before the next.
 
 ---
 
@@ -62,6 +64,19 @@ Do you need to shape the HTTP response, run arbitrary code, or update state with
 └── No — the event should become an agent turn / a direct tool call / a workflow run
         → defineTrigger({ verify?, filter?, transform?, tool? }); `lua triggers create` gives you the paste-anywhere URL
 ```
+
+---
+
+## "Chat, or a web app?"
+
+```
+Does the person need to SEE many records at once, compare, sort, filter, or act on a list (approve, close, assign)?
+├── Yes → web app (defineWebApp): a page over the same Data the tools write; routes run as the signed-in person (auth.userId)
+│         A chat on top too? Keep the tools — the app and the agent share Data collections.
+└── No — one question, one answer, one action at a time → tools + persona (chat); add a web app later if a list view is asked for
+```
+
+Not a web app: a public site for anonymous visitors (every route needs a signed-in Lua user — use a LuaWebhook or your own site + the web widget), a page that must embed third-party scripts it cannot bundle (strict CSP, web-apps.md §4), or work that runs with nobody watching (job / workflow). A web-app push is staged only: it goes live with an agent version (`/lua-deploy` → `agent-version`).
 
 ---
 
@@ -114,7 +129,8 @@ Anti-patterns:
 4. **Webhooks / triggers** after the read path works (they usually mutate what tools read).
 5. **Jobs.** Cron feedback is slow; add them once the rest is stable. Test with `lua test job --name <n>`.
 6. **Workflows.** Compile → `lua test workflow --name <n> --input @in.json --step-output … --approve …` (offline, both predicate branches) → `lua push workflow` → `lua workflows deploy <n> -v latest` → `lua workflows start … --follow`.
-7. **QA** (`/lua-qa`) against sandbox; **deploy** (`/lua-deploy`) — per primitive, or `lua version create` → `promote` for the whole agent.
+7. **Web apps** once the Data they show is written by tools/webhooks: `/lua-new webapp <name>` → `npm run typecheck && npm run build` in `web/` → `lua test webapp --name <n> --route 'GET /…'` → `lua push webapp` → an agent version.
+8. **QA** (`/lua-qa`) against sandbox; **deploy** (`/lua-deploy`) — per primitive, or `lua version create` → `promote` for the whole agent.
 
 ---
 
