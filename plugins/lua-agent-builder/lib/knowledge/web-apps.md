@@ -22,13 +22,13 @@ A **web app** is a primitive of one agent with two halves. **Pages**: a Vite + R
 - Writes `src/apps/<name>/app.ts` (one route, `GET /hello`) and `web/` (`index.html`, `package.json`, `tsconfig.json`, `vite.config.ts`, `src/main.tsx`, `src/App.tsx`, `src/index.css`, `src/lua/client.ts`).
 - Edits `src/index.ts` with an AST edit: imports the app as the camelCased name (`ops-dashboard` → `opsDashboard`) and appends it to `webApps`. When it cannot find the agent or `webApps` is not an array it prints the two lines instead (`⚠️ …add:`) — then add them yourself.
 - Adds `src/apps/*/web` to `tsconfig.json` `exclude` so the agent build never loads the pages. A tsconfig with comments / trailing commas is left alone and the line is printed — add it yourself, or `lua compile` type-checks React code with the agent's settings and fails.
-- Then, always: `npm install` **in `web/`** (`cd src/apps/<name>/web && npm install`). Without it `lua push webapp` and `lua apps dev` fail: `No Vite installation found for <dir>. Install the page dependencies first`.
+- Then, always: install the page dependencies — `npm --prefix src/apps/<name>/web install --ignore-scripts` (the plugin's hook approves exactly this form; the template builds without install scripts). Without it `lua push webapp` and `lua apps dev` fail: `No Vite installation found for <dir>. Install the page dependencies first`.
 
 ### Switch the page client to the package
 
 lua-cli 3.42–3.45 scaffold a **copy** of the client at `web/src/lua/client.ts`. The supported form is the package (`@lua-ai-global/app-client`, 0.0.2 on 2026-10-06, same API). Right after scaffolding:
 
-1. `npm install @lua-ai-global/app-client` in `web/`
+1. `npm --prefix src/apps/<name>/web install --ignore-scripts @lua-ai-global/app-client`
 2. In `web/src/main.tsx` and `web/src/App.tsx`: `from './lua/client'` → `from '@lua-ai-global/app-client'`
 3. Delete `web/src/lua/client.ts`
 
@@ -76,7 +76,7 @@ export default defineWebApp({
 - `pages.spa` defaults to `true`: client-side routing (React Router etc.) works; `pages.nav` entries should name the client routes.
 - **The page CSP is strict and per request** (gateway `web-app-html.ts`): scripts and styles only from the app itself with a nonce (no CDN `<script>`, no remote stylesheet, no Google Fonts link), `connect-src` = the app + Lua auth only, `frame-src 'none'`, images from self/`data:`/`blob:`/Lua CDN. Bundle dependencies with npm instead of linking them. When an external origin is truly needed, add it per directive in `pages.csp` — keys `scriptSrc styleSrc imgSrc connectSrc fontSrc frameSrc workerSrc`, values are source lists (`{ connectSrc: ['https://api.example.com'] }`); `frame-ancestors`, `base-uri`, `object-src` cannot be widened. Prefer calling third-party APIs **from a route** (server side, secrets in `env()`) over widening `connectSrc`.
 - `vite.config.ts`: keep `react()` and `tailwindcss()`. `lua push webapp` overrides `base: '/'`, `build.outDir`, `assetsDir: 'assets'` and the CSP nonce — don't fight them (no custom `base`, no assets outside `assets/`).
-- **Check after every page change** (in `web/`): `npm run typecheck && npm run build`. That is the same Vite build the push runs; it catches type errors and missing imports. Visual check: the **user** runs `lua apps dev <name>` in their own terminal (§6).
+- **Check after every page change**: `npm --prefix src/apps/<name>/web run typecheck`, then `npm --prefix src/apps/<name>/web run build`. That is the same Vite build the push runs; it catches type errors and missing imports. Visual check: the **user** runs `lua apps dev <name>` in their own terminal (§6).
 
 ## 5. Testing routes — `lua test webapp`
 
@@ -114,7 +114,7 @@ Wall clock 30 s by default (60 s cap) → `WALL_TIMEOUT` · request body **1 MB*
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `No Vite installation found for …` | `npm install` never ran in `web/` | `cd src/apps/<name>/web && npm install` |
+| `No Vite installation found for …` | `npm install` never ran in `web/` | `npm --prefix src/apps/<name>/web install --ignore-scripts` |
 | `lua compile` fails on JSX / React types | `src/apps/*/web` missing from `tsconfig.json` `exclude` (tsconfig had comments, `apps new` skipped it) | add `"src/apps/*/web"` to `exclude` |
 | `❌ No web apps found` / `No web app named …` | app not in `webApps` on the `LuaAgent` | import it in `src/index.ts`, add to `webApps` |
 | `defineWebApp(<n>): route key … must look like 'GET /path'` | key typo (`'get /x'`, two spaces, no leading `/`) | `'<METHOD> /<path>'` |

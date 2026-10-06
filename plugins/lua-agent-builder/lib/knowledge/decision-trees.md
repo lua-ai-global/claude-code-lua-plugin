@@ -129,7 +129,7 @@ Anti-patterns:
 4. **Webhooks / triggers** after the read path works (they usually mutate what tools read).
 5. **Jobs.** Cron feedback is slow; add them once the rest is stable. Test with `lua test job --name <n>`.
 6. **Workflows.** Compile → `lua test workflow --name <n> --input @in.json --step-output … --approve …` (offline, both predicate branches) → `lua push workflow` → `lua workflows deploy <n> -v latest` → `lua workflows start … --follow`.
-7. **Web apps** once the Data they show is written by tools/webhooks: `/lua-new webapp <name>` → `npm run typecheck && npm run build` in `web/` → `lua test webapp --name <n> --route 'GET /…'` → `lua push webapp` → an agent version.
+7. **Web apps** once the Data they show is written by tools/webhooks: `/lua-new webapp <name>` → `npm --prefix src/apps/<name>/web run typecheck` and `run build` → `lua test webapp --name <n> --route 'GET /…'` → `lua push webapp` → an agent version.
 8. **QA** (`/lua-qa`) against sandbox; **deploy** (`/lua-deploy`) — per primitive, or `lua version create` → `promote` for the whole agent.
 
 ---

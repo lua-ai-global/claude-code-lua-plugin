@@ -61,6 +61,12 @@
           },
           {
             "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/approve-web-app-npm.mjs",
+            "if": "Bash(npm --prefix src/apps/*)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/warn-version-zero.mjs",
             "if": "Bash(*push*--set-version 0.*)",
             "timeout": 5

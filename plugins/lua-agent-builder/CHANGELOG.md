@@ -22,17 +22,18 @@ Three traps from the source the docs do not stress:
 
 ### Changed
 
-- **`/lua-new webapp <name>`** — the builder runs `lua apps new` (never hand-writes the scaffold), `npm install` in `web/`, switches the client to the package, writes routes over the project's existing `Data` collections and pages with the UI package, then checks `lua compile`, `npm run typecheck` and `npm run build`, and tests **GET routes only**. Write routes are listed with a ready `/lua-test webapp` line. `lua apps dev` is printed for the user's own terminal, never started.
+- **`/lua-new webapp <name>`** — the builder runs `lua apps new` (never hand-writes the scaffold), `npm install --ignore-scripts` in `web/`, switches the client to the package, writes routes over the project's existing `Data` collections and pages with the UI package, then checks `lua compile`, `npm run typecheck` and `npm run build`, and tests **GET routes only**. Write routes are listed with a ready `/lua-test webapp` line. `lua apps dev` is printed for the user's own terminal, never started.
 - **`/lua-test webapp`** — `lua test --ci webapp --name … --route '…' --json`. GET runs at once; a POST/PUT/PATCH/DELETE route writes live Data, so it runs only after the slash's one question (picking a route labelled `writes live Data`, or "Run it" when the route was given).
-- **`/lua-push webapp`** — `lua push webapp --ci --force --name …`, after `npm install` when `web/node_modules` is missing; reported as staged, with the page-build refusals explained. `lua push all` notes that it builds every web app.
+- **`/lua-push webapp`** — `lua push webapp --ci --force --name …`, after `npm install --ignore-scripts` when `web/node_modules` is missing; reported as staged, with the page-build refusals explained. `lua push all` notes that it builds every web app.
 - **`/lua-deploy webapp`** (new target) — push, `lua version create`, then `lua version diff <active> <new>`: an agent version pins the **latest pushed** version of every primitive, so if anything other than web apps differs the pilot stops before promoting and names it. On an unversioned agent the promote creates the first version and the report lists everything it pins. Every promote that carries web apps prints `https://workspace.heylua.ai/apps/<agentId>/<name>`.
 - **`decision-trees.md`** — "Give people a screen of their own" and "Chat, or a web app?" (and when not to use one: anonymous visitors, unbundleable third-party scripts, unattended work); web apps join the build order.
 
 ### Permissions
 
-- Allowed: `lua apps new *` and exactly `npm --prefix src/apps/*/web install`, `install @lua-ai-global/app-client`, `run typecheck`, `run build`. `lua push webapp` and `lua test --ci webapp` ride the existing push/test rules.
+- Allowed: `lua apps new *`. `lua push webapp` and `lua test --ci webapp` ride the existing push/test rules.
+- **New hook `approve-web-app-npm`** approves, without a prompt, exactly `npm --prefix src/apps/<name>/web install --ignore-scripts [@lua-ai-global/app-client]`, `run typecheck` and `run build` (anchored regex; `<name>` is the web-app name pattern). These are deliberately **not** permission globs: a glob's `*` matches spaces, so `Bash(npm --prefix src/apps/*/web install)` also admitted an extra package, a second `--prefix` and `../` paths (caught by a security review before merge). `--ignore-scripts` keeps dependency install scripts from running unprompted. `lib/hook-runtime.mjs` gained the documented PreToolUse `permissionDecision: "allow"` envelope; a deny/ask rule still wins over it.
 - `lua apps dev` is in no list (long-running; its routes write live Data).
-- `test/lib/web-apps-permissions.test.mjs` pins every emitted shape to the template and checks the npm rules admit no other package, script or directory. `scripts/lint-knowledge-commands.mjs` knows `test webapp`, `push webapp` and `apps new|dev`.
+- `test/lib/web-apps-permissions.test.mjs` pins every emitted shape to the template; `test/hooks/approve-web-app-npm.test.mjs` checks the hook approves the four forms and nothing else (extra packages, a second `--prefix`, `../`, chains, substitutions, newlines, other scripts). `scripts/lint-agent-bash-allowlist.mjs` accepts hook-approved commands. `scripts/lint-knowledge-commands.mjs` knows `test webapp`, `push webapp` and `apps new|dev`.
 
 ## 1.7.0 — 2026-10-05
 

@@ -4,8 +4,10 @@
 //   * every shape /lua-new, /lua-test, /lua-push and the deploy pilot run for a
 //     web app is admitted by an allow rule and caught by no ask/deny rule —
 //     otherwise the single-permission contract (§3.7) gains a second prompt;
-//   * the npm rules stay pinned to the page project and to the four commands
-//     the builder runs — a broader rule would admit any package or script;
+//   * no npm command is in any list: a glob's `*` matches spaces, so an npm
+//     allow rule admitted extra packages and a second `--prefix` (security
+//     review, 1.8.0). hooks/approve-web-app-npm.mjs approves the four exact
+//     page-project forms instead (test/hooks/approve-web-app-npm.test.mjs);
 //   * `lua apps dev` stays out of every list: a long-running server whose
 //     routes write live Data, which the plugin never starts.
 //
@@ -34,10 +36,6 @@ const matches = (rules, cmd) => rules.some((r) => globToPredicate(r)(cmd));
 
 const EMITTED = [
   'lua apps new ops-dashboard',
-  'npm --prefix src/apps/ops-dashboard/web install',
-  'npm --prefix src/apps/ops-dashboard/web install @lua-ai-global/app-client',
-  'npm --prefix src/apps/ops-dashboard/web run typecheck',
-  'npm --prefix src/apps/ops-dashboard/web run build',
   "lua test --ci webapp --name ops-dashboard --route 'GET /tickets?status=open' --json",
   `lua test --ci webapp --name ops-dashboard --route 'POST /tickets/42/close' --input '{"body":{"note":"done"}}' --json`,
   'lua push webapp --ci --force --name ops-dashboard',
@@ -60,7 +58,14 @@ describe('web-app commands the plugin emits', () => {
 });
 
 describe('what the web-app rules must not admit', () => {
+  test('no npm command is approved by a permission rule (the hook does it, exactly)', () => {
+    expect([...allow, ...ask].filter((r) => /^Bash\(npm --prefix/.test(r))).toEqual([]);
+  });
+
   test.each([
+    'npm --prefix src/apps/ops-dashboard/web run build',
+    'npm --prefix src/apps/x/web install evil --prefix src/apps/x/web install',
+    'npm --prefix src/apps/../../../tmp/web install',
     'npm install',
     'npm --prefix src/apps/ops-dashboard/web install left-pad',
     'npm --prefix src/apps/ops-dashboard/web run dev',

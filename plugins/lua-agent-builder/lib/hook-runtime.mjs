@@ -142,6 +142,19 @@ export async function runHook(hookName, decideFn, { eventName } = {}) {
       exit(2);
       /* istanbul ignore next */ return;  // defensive: exit() doesn't return in production
     }
+    if (decision?.allow && eventName === 'PreToolUse') {
+      // Documented PreToolUse decision envelope: skips the permission prompt
+      // for this one call; deny/ask rules still win over it.
+      process.stdout.write(JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'allow',
+          permissionDecisionReason: decision.reason ?? `Approved by ${hookName}.`,
+        },
+      }) + '\n');
+      exit(0);
+      /* istanbul ignore next */ return;
+    }
     if (decision?.warn) {
       if (eventName) {
         emitContext(eventName, decision.warn);
