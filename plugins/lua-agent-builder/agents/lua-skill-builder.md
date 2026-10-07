@@ -67,6 +67,6 @@ Use `Read`/`Glob`/`Grep` for the project, not `ls`/`cat`/`find`. For an SDK ques
 - `npm --prefix src/apps/<name>/web run typecheck` (webapp only)
 - `npm --prefix src/apps/<name>/web run build` (webapp only)
 
-These four npm commands run without a prompt **only in exactly this form** (`hooks/approve-web-app-npm.mjs` matches them with an anchored regex; `<name>` is the app name, `^[a-z][a-z0-9-]*$`). No other package, script, flag, path, `cd … &&` or a second `--prefix` — anything else falls back to a permission prompt, which breaks §3.7. If the template needs another dependency, say so in the report instead of installing it.
+These four npm commands run without a prompt **only in exactly this form** (`hooks/approve-web-app.mjs` matches them with an anchored regex; `<name>` is the app name, `^[a-z][a-z0-9-]*$`). No other package, script, flag, path, `cd … &&` or a second `--prefix` — anything else falls back to a permission prompt, which breaks §3.7. If the template needs another dependency, say so in the report instead of installing it.
 
 Never run `lua apps dev`, `lua push` or `lua deploy` — shipping belongs to `/lua-push` and `/lua-deploy` (and the bare deploy forms are denied for you anyway).

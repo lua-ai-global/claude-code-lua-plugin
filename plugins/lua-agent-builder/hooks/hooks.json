@@ -61,8 +61,14 @@
           },
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/approve-web-app-npm.mjs",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/approve-web-app.mjs",
             "if": "Bash(npm --prefix src/apps/*)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/approve-web-app.mjs",
+            "if": "Bash(lua apps new *)",
             "timeout": 5
           },
           {

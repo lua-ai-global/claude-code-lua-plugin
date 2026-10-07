@@ -30,10 +30,10 @@ Three traps from the source the docs do not stress:
 
 ### Permissions
 
-- Allowed: `lua apps new *`. `lua push webapp` and `lua test --ci webapp` ride the existing push/test rules.
-- **New hook `approve-web-app-npm`** approves, without a prompt, exactly `npm --prefix src/apps/<name>/web install --ignore-scripts [@lua-ai-global/app-client]`, `run typecheck` and `run build` (anchored regex; `<name>` is the web-app name pattern). These are deliberately **not** permission globs: a glob's `*` matches spaces, so `Bash(npm --prefix src/apps/*/web install)` also admitted an extra package, a second `--prefix` and `../` paths (caught by a security review before merge). `--ignore-scripts` keeps dependency install scripts from running unprompted. `lib/hook-runtime.mjs` gained the documented PreToolUse `permissionDecision: "allow"` envelope; a deny/ask rule still wins over it.
+- `lua push webapp` and `lua test --ci webapp` ride the existing push/test rules; no new permission rule is added.
+- **New hook `approve-web-app`** approves, without a prompt, exactly `lua apps new <name>` and `npm --prefix src/apps/<name>/web install --ignore-scripts [@lua-ai-global/app-client]`, `run typecheck` and `run build` (anchored regex; `<name>` is the web-app name pattern). These are deliberately **not** permission globs: a glob's `*` matches spaces, so `Bash(npm --prefix src/apps/*/web install)` also admitted an extra package, a second `--prefix` and `../` paths, and a trailing `lua apps new *` admitted any text after the name (both caught by reviews before merge). `--ignore-scripts` keeps dependency install scripts from running unprompted. `lib/hook-runtime.mjs` gained the documented PreToolUse `permissionDecision: "allow"` envelope; a deny/ask rule still wins over it.
 - `lua apps dev` is in no list (long-running; its routes write live Data).
-- `test/lib/web-apps-permissions.test.mjs` pins every emitted shape to the template; `test/hooks/approve-web-app-npm.test.mjs` checks the hook approves the four forms and nothing else (extra packages, a second `--prefix`, `../`, chains, substitutions, newlines, other scripts). `scripts/lint-agent-bash-allowlist.mjs` accepts hook-approved commands. `scripts/lint-knowledge-commands.mjs` knows `test webapp`, `push webapp` and `apps new|dev`.
+- `test/lib/web-apps-permissions.test.mjs` pins every emitted shape to the template; `test/hooks/approve-web-app.test.mjs` checks the hook approves the four forms and nothing else (extra packages, a second `--prefix`, `../`, chains, substitutions, newlines, other scripts). `scripts/lint-agent-bash-allowlist.mjs` accepts hook-approved commands. `scripts/lint-knowledge-commands.mjs` knows `test webapp`, `push webapp` and `apps new|dev`.
 
 ## 1.7.0 — 2026-10-05
 

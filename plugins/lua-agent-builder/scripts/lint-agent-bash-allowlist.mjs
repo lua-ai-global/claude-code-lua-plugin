@@ -55,10 +55,10 @@ for (const p of [...allow, ...ask]) {
 
 // Commands a PreToolUse hook approves by exact regex instead of a permission
 // glob (a glob's `*` matches spaces, which made the web-app npm rules
-// escapable). Documented placeholders (`<name>`, or `X` from a `*`) are
+// and `lua apps new *` rules escapable). Documented placeholders (`<name>`, or `X` from a `*`) are
 // spelled as a valid web-app name for this check only.
-const { WEB_APP_NPM_RE } = await import('../hooks/approve-web-app-npm.mjs');
-const HOOK_APPROVED = [WEB_APP_NPM_RE];
+const { WEB_APP_COMMAND_RES } = await import('../hooks/approve-web-app.mjs');
+const HOOK_APPROVED = WEB_APP_COMMAND_RES;
 
 function isAllowed(command) {
   return matchers.some(({ re }) => re.test(command))

@@ -6,8 +6,10 @@
 //     otherwise the single-permission contract (§3.7) gains a second prompt;
 //   * no npm command is in any list: a glob's `*` matches spaces, so an npm
 //     allow rule admitted extra packages and a second `--prefix` (security
-//     review, 1.8.0). hooks/approve-web-app-npm.mjs approves the four exact
-//     page-project forms instead (test/hooks/approve-web-app-npm.test.mjs);
+//     review, 1.8.0). hooks/approve-web-app.mjs approves the four exact
+//     page-project forms instead (test/hooks/approve-web-app.test.mjs);
+//   * `lua apps new` is in no list either (a trailing `*` admitted any text
+//     after the name); the same hook approves exactly `lua apps new <name>`;
 //   * `lua apps dev` stays out of every list: a long-running server whose
 //     routes write live Data, which the plugin never starts.
 //
@@ -35,7 +37,6 @@ function globToPredicate(rule) {
 const matches = (rules, cmd) => rules.some((r) => globToPredicate(r)(cmd));
 
 const EMITTED = [
-  'lua apps new ops-dashboard',
   "lua test --ci webapp --name ops-dashboard --route 'GET /tickets?status=open' --json",
   `lua test --ci webapp --name ops-dashboard --route 'POST /tickets/42/close' --input '{"body":{"note":"done"}}' --json`,
   'lua push webapp --ci --force --name ops-dashboard',
@@ -74,6 +75,11 @@ describe('what the web-app rules must not admit', () => {
     'npm --prefix src/apps/ops-dashboard/web exec vite',
   ])('%s is not allowed', (cmd) => {
     expect(matches(allow, cmd)).toBe(false);
+  });
+
+  test('no lua apps rule exists (the hook approves `lua apps new <name>` exactly)', () => {
+    expect([...allow, ...ask].filter((r) => /^Bash\(lua apps/.test(r))).toEqual([]);
+    expect(matches(allow, 'lua apps new x; rm -rf ~')).toBe(false);
   });
 
   test('lua apps dev is in no list (Claude Code prompts by default)', () => {
