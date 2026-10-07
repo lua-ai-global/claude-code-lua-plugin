@@ -119,6 +119,42 @@ describe('confirm-deploy decide()', () => {
     expect(decide({ tool_input: { command } })).toBeNull();
   });
 
+  // 1.7.1: false positives reported against 1.6.0/1.7.0 — data is not a command.
+  test.each([
+    'grep -rn "lua deploy" docs | head',
+    'echo "the lua workflows on flag" | cat',
+    "git commit -m \"$(cat <<'EOF'\nfix: never run lua deploy all or lua version promote bare\nEOF\n)\"",
+    'git commit -m "never use --auto-deploy"',
+    'ls /Users/me/lua deploy | head',
+    'bash -c "echo lua deploy"',
+    'bash scripts/x.sh "lua deploy notes"',
+    "find . -name '*.md' | xargs grep -l 'lua deploy'",
+    'npx jest -t "lua deploy all"',
+    'node -e "console.log(\'lua deploy\')"',
+    "cat > notes.md <<'EOF'\nlua deploy all\nEOF\nbash scripts/build.sh",
+    'cd /Users/me/lua/repo && node "$SCRATCH/check.mjs" "$PWD" fp',
+  ])('allows a command that only mentions a verb: %s', (command) => {
+    expect(decide({ tool_input: { command } }, {})).toBeNull();
+  });
+
+  // 1.7.1: a verb anywhere in the command is gated; the prefix confirms only its own simple command.
+  test.each([
+    ['cd x && lua deploy skill', 'lua deploy'],
+    ['foo; lua version promote 3', 'lua version promote'],
+    ['(lua deploy)', 'lua deploy'],
+    ['$(lua deploy)', 'lua deploy'],
+    ["bash -euxo pipefail -c 'lua deploy all'", 'lua deploy'],
+  ])('blocks the chained/nested verb in %s', (command, label) => {
+    const result = decide({ tool_input: { command } }, {});
+    expect(result?.reason).toContain('DEPLOY_DENIED_BARE');
+    expect(result.reason).toContain(`\`${label}\``);
+  });
+
+  test('a chained verb is allowed only with the prefix on its own simple command', () => {
+    expect(decide({ tool_input: { command: 'cd x && LUA_DEPLOY_CONFIRMED=1 lua deploy skill' } }, {})).toBeNull();
+    expect(decide({ tool_input: { command: 'LUA_DEPLOY_CONFIRMED=1 cd x && lua deploy skill' } }, {})?.block).toBe(true);
+  });
+
   test('allows an empty or missing command (nothing to gate)', () => {
     expect(decide({})).toBeNull();
     expect(decide(null)).toBeNull();

@@ -2,8 +2,11 @@ import { describe, test, expect } from '@jest/globals';
 import {
   isPrefixedDeploy,
   hasAutoDeploy,
+  hasAuthConfigure,
   classifyProductionCommand,
   PRODUCTION_COMMANDS,
+  MAX_COMMAND_LENGTH,
+  TIME_BUDGET_MS,
 } from '../../lib/tokenizer.mjs';
 
 describe('isPrefixedDeploy', () => {
@@ -171,9 +174,220 @@ describe('hasAutoDeploy', () => {
     expect(hasAutoDeploy(cmd)).toBe(expected);
   });
 
+  test.each([
+    'git commit -m "never use --auto-deploy"',
+    'echo "x --auto-deploy" | grep auto',
+    "grep -rn -- '--auto-deploy' plugins | head -3",
+    "git commit -m \"$(cat <<'EOF'\nfix: block lua push --auto-deploy\nEOF\n)\"",
+    'npm run release -- --auto-deploy',
+    'lua push all --ci --force # never --auto-deploy',
+  ])('text that only mentions the flag is not a lua argument: %j', (cmd) => {
+    expect(hasAutoDeploy(cmd)).toBe(false);
+  });
+
+  test.each([
+    'cd x && lua push skill --name y --auto-deploy=true',
+    "bash -c 'lua push all --auto-deploy'",
+    'echo $(lua push all --auto-deploy)',
+    'npx lua-cli push skill --name x --auto-deploy',
+    'lua${IFS}push${IFS}--auto-deploy',
+    'heylua push all --AUTO-DEPLOY',
+    'ssh host lua push all --auto-deploy',
+    'lua push all --ci ' + '--force '.repeat(80) + '--auto-deploy',
+    'lua push all "--auto-deploy',
+    '$(which lua) push skill --auto-deploy',
+    'L=lua; $L push all --auto-deploy',
+    '"$LUA_BIN" push all --auto-deploy',
+  ])('the flag as an argument of a lua invocation is found: %j', (cmd) => {
+    expect(hasAutoDeploy(cmd)).toBe(true);
+  });
+
+  test('fails closed when the command cannot be analysed', () => {
+    const boom = () => { throw new Error('classifier bug'); };
+    expect(hasAutoDeploy('lua push all --auto-deploy', { analyze: boom })).toBe(true);
+    expect(hasAutoDeploy('git commit -m "x --auto-deploy"', { analyze: boom })).toBe(false);
+    expect(hasAutoDeploy('lua push all --auto-deploy', { budgetMs: -1 })).toBe(true);
+    expect(hasAutoDeploy('lua push all --auto-deploy ' + 'x'.repeat(MAX_COMMAND_LENGTH))).toBe(true);
+  });
+
   test('returns false for non-string', () => {
     expect(hasAutoDeploy(null)).toBe(false);
     expect(hasAutoDeploy(undefined)).toBe(false);
     expect(hasAutoDeploy(42)).toBe(false);
+  });
+});
+
+// ── 1.7.1: the hook classifies what a command RUNS, never text it mentions ──
+
+describe('false positives from 1.6.0: commands that deploy nothing are not classified', () => {
+  test.each([
+    // pipes, heredocs and commit messages
+    'grep -rn "lua deploy" docs | head',
+    'echo "set the lua workflows on flag later" | cat',
+    "git log --oneline | grep 'lua version promote'",
+    "git commit -m \"$(cat <<'EOF'\nfix: document lua deploy skill and lua version promote 3\nEOF\n)\"",
+    "cat <<'EOF' | tee notes.md\nlua deploy all\nEOF",
+    'ls /Users/me/lua deploy | head',
+    'ls ~/lua/deploy | wc -l',
+    // a shell's -c script is parsed; what it runs is grep/echo/git
+    'bash -c "echo lua deploy"',
+    'sh -c \'grep "lua deploy" notes.md\'',
+    'bash -lc \'cd x && git commit -m "docs: lua deploy all"\'',
+    'zsh -c \'echo "$(date)"; echo lua version promote 3\'',
+    'bash -c \'npm test 2>&1 | grep "lua version promote"\'',
+    "cat notes.md | sh -c 'grep lua deploy'",
+    // a shell's script-file operand and its arguments are data
+    'bash scripts/x.sh "lua deploy notes"',
+    'sh ./release.sh --notes "run lua deploy all after merge"',
+    // xargs and package runners pass argv to a program, not to a shell
+    "find . -name '*.md' | xargs grep -l 'lua deploy'",
+    'npx jest -t "lua deploy all"',
+    'npm test -- -t "lua deploy" 2>&1 | tail',
+    "npm test 2>&1 | grep 'lua deploy'",
+    // runners that join argv: the joined string is parsed, not text-searched
+    'ssh box \'grep "lua deploy" /var/log/agent.log\'',
+    'watch -n 5 \'grep -c "lua deploy" deploy.log\'',
+    // inline code that cannot start a process
+    'node -e "console.log(\'lua deploy\')"',
+    "python3 <<'EOF'\nprint('lua deploy all')\nEOF",
+    // stdin that is data
+    "node scripts/p.mjs <<'EOF'\nlua deploy all\nEOF",
+    "cat > notes.md <<'EOF'\nlua deploy all\nEOF\nbash scripts/build.sh",
+    "cat > notes.md <<'EOF'\nlua deploy all\nEOF\ncp notes.md docs/ && bash scripts/build.sh",
+    'ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no box \'grep "lua deploy" log\'',
+    // a shell name that is only a word
+    "grep -rn 'lua deploy' docs | grep -v bash | head",
+    // a computed path whose script name is literal
+    'cd /Users/me/lua/repo && node "$SCRATCH/check.mjs" "$PWD" bypass',
+    'node $S/check.mjs $P fp',
+  ])('%j', (cmd) => {
+    expect(classifyProductionCommand(cmd)).toBeNull();
+  });
+});
+
+describe('false negatives: a verb anywhere in the command is classified and blocked unless prefixed', () => {
+  test.each([
+    ['cd x && lua deploy skill', 'lua deploy'],
+    ['foo; lua version promote 3', 'lua version promote'],
+    ['(lua deploy)', 'lua deploy'],
+    ['$(lua deploy)', 'lua deploy'],
+    ['echo $(lua deploy all)', 'lua deploy'],
+    ['true || lua workflows on outreach', 'lua workflows activate'],
+    ['echo `lua mcp activate fs`', 'lua mcp activate'],
+  ])('%j → %s', (cmd, label) => {
+    expect(classifyProductionCommand(cmd)).toEqual({ label, slash: '/lua-deploy', prefixed: false });
+  });
+
+  test('the prefix counts only on the simple command it precedes', () => {
+    expect(isPrefixedDeploy('cd x && LUA_DEPLOY_CONFIRMED=1 lua deploy skill')).toBe(true);
+    expect(isPrefixedDeploy('foo; LUA_DEPLOY_CONFIRMED=1 lua version promote 3')).toBe(true);
+    expect(isPrefixedDeploy('LUA_DEPLOY_CONFIRMED=1 cd x && lua deploy skill')).toBe(false);
+    expect(isPrefixedDeploy('(LUA_DEPLOY_CONFIRMED=1 lua deploy)')).toBe(false);
+    expect(isPrefixedDeploy('$(LUA_DEPLOY_CONFIRMED=1 lua deploy)')).toBe(false);
+  });
+});
+
+describe('strings a command really runs are still parsed (no new bypass)', () => {
+  test.each([
+    "bash -euxo pipefail -c 'lua deploy all'",
+    "bash -o pipefail -c 'lua deploy all'",
+    "bash -c -- 'lua deploy all'",
+    "bash --login -c 'lua deploy all'",
+    "bash --rcfile x.rc -c 'lua deploy all'",
+    "fish --command='lua deploy all'",
+    "fish -C 'lua deploy all'",
+    'sh -c "$(echo lua deploy all)"',
+    'sh -c \'"$@"\' _ lua deploy all',
+    'echo lua deploy all | sudo bash',
+    'echo lua deploy all | sudo -s',
+    'echo lua deploy all | docker exec -i c sh',
+    "echo 'lua deploy all' | xargs -I{} sh -c '{}'",
+    "echo lua deploy all | bash -c 'bash'",
+    'echo lua deploy all | sh -c "$(cat)"',
+    "node <<EOF\nrequire('child_process').execSync('lua deploy all')\nEOF",
+    "python3 - <<EOF\nimport os; os.system('lua deploy all')\nEOF",
+    "node -p \"require('child_process').execSync('lua deploy all')+''\"",
+    "perl -e 'qx(lua deploy all)'",
+    "ruby -e '%x(lua deploy all)'",
+    'ssh -i key host lua deploy all',
+    'ssh host "$(echo lua deploy all)"',
+    'watch "$(echo lua deploy all)"',
+    'eval "$(echo lua deploy all)"',
+    "su - me -c 'lua deploy all'",
+    "script -q -c 'lua deploy all' /dev/null",
+    "npm exec --call='lua deploy all'",
+    "npm exec -c 'lua deploy all'",
+    "npx -c \"$(echo lua deploy all)\"",
+    "cat > /tmp/x.sh <<'EOF'\nlua deploy all\nEOF\nbash /tmp/x.sh",
+    "cat >x.sh <<'EOF'\nlua deploy all\nEOF\nchmod +x x.sh && ./x.sh",
+    "tee x.sh <<'EOF'\nlua deploy all\nEOF\nsource x.sh",
+    "cat > \"$F\" <<'EOF'\nlua deploy all\nEOF\nbash \"$F\"",
+    "cat > \"$F\" <<'EOF'\nlua deploy all\nEOF\nsh x.sh",
+    "kubectl exec -i p -- sh <<EOF\nlua deploy all\nEOF",
+    "env bash -c 'lua deploy all'",
+    "time sh -c 'cd x; lua version promote 3'",
+    'pwsh -Command "lua deploy all"',
+    "cat > x.sh <<'EOF'\nlua deploy all\nEOF\ncp x.sh y.sh && bash y.sh",
+    "cat > x.sh <<'EOF'\nlua deploy all\nEOF\nmv x.sh y.sh; sh y.sh",
+    "ssh -o ProxyCommand='lua deploy all' host",
+    "ssh -oLocalCommand='lua version promote 3' -o PermitLocalCommand=yes host",
+    'ssh -o "RemoteCommand lua deploy all" host',
+    '"$DIR/lua" deploy all',
+    '$X/dist/index.js deploy all',
+  ])('%j', (cmd) => {
+    const c = classifyProductionCommand(cmd);
+    expect(c).not.toBeNull();
+    expect(c.prefixed).toBe(false);
+  });
+
+  test('`eval eval eval …` is parsed once per distinct string, inside the budget', () => {
+    const t0 = performance.now();
+    expect(classifyProductionCommand('eval ' + 'eval '.repeat(5000) + 'lua deploy all')?.prefixed).toBe(false);
+    expect(performance.now() - t0).toBeLessThan(TIME_BUDGET_MS + 250);
+  });
+});
+
+describe('hasAuthConfigure', () => {
+  test.each([
+    'lua auth configure',
+    'lua auth configure --email person@example.com',
+    'cd x && lua auth configure',
+    'npx lua auth configure',
+    "bash -c 'lua auth configure'",
+    'X=1 lua auth configure',
+    'lua --ci auth configure',
+    'heylua AUTH Configure',
+    '(lua auth configure)',
+    'echo `lua auth configure`',
+    "bash -c \"lua auth 'configure' --api-key k\"",
+    'lua auth  configure',
+    '$(which lua) auth configure',
+  ])('detects %j', (cmd) => {
+    expect(hasAuthConfigure(cmd)).toBe(true);
+  });
+
+  test.each([
+    'echo "lua auth configure" | cat',
+    'grep "lua auth configure" README.md',
+    'git commit -m "docs: run lua auth configure in a private terminal"',
+    'lua auth configuration',
+    'lua auth logout',
+    'lua configure',
+    'git config --global user.name x',
+    '',
+  ])('ignores %j', (cmd) => {
+    expect(hasAuthConfigure(cmd)).toBe(false);
+  });
+
+  test('fails closed when the command cannot be analysed', () => {
+    const boom = () => { throw new Error('classifier bug'); };
+    expect(hasAuthConfigure('lua auth configure', { analyze: boom })).toBe(true);
+    expect(hasAuthConfigure('echo auth configure', { analyze: boom })).toBe(false);
+    expect(hasAuthConfigure('lua auth configure', { budgetMs: -1 })).toBe(true);
+  });
+
+  test('returns false for non-string', () => {
+    expect(hasAuthConfigure(null)).toBe(false);
+    expect(hasAuthConfigure(42)).toBe(false);
   });
 });
