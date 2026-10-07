@@ -2,6 +2,53 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.7.1 — 2026-10-07
+
+**The production gate reads what a command runs, not the text it mentions.** A fix to `confirm-deploy`, `block-auto-deploy` and `block-auth-configure` (all classified by `lib/tokenizer.mjs`).
+
+### False positives fixed (blocked in 1.6.0/1.7.0, deploy nothing, now allowed)
+
+- **Strings given to a runner were searched as text.** 1.6.0 text-searched the whole argv of any command that could run a string, and of any command with `sh`/`bash`/`zsh` anywhere in it. Each of these was blocked with `DEPLOY_DENIED_BARE`:
+  - `bash -c "echo lua deploy"`, `sh -c 'grep "lua deploy" notes.md'`, `bash -lc 'cd x && git commit -m "docs: lua deploy all"'`
+  - `bash scripts/x.sh "lua deploy notes"`
+  - `find . | xargs grep -l 'lua deploy'`, `npx jest -t "lua deploy all"`, `npm test 2>&1 | grep 'lua deploy'`
+  - `ssh box 'grep "lua deploy" log'`, `watch -n 5 'grep -c "lua deploy" log'`
+  - `cat notes.md | sh -c 'grep lua deploy'`
+
+  Now only the string a command actually runs is parsed, as a command line of its own:
+  - a shell's `-c` script (option clusters such as `-euxo pipefail` and `--rcfile` are understood). A script-file operand and its arguments are data.
+  - the joined argv of `eval`, `ssh`, `watch`, `tmux`/`screen`, `parallel`, `su -c`, `script`, `at`;
+  - the value of `npx -c` / `npm exec --call`;
+  - stdin, but only for a stage that reads its program from stdin: `… | sh`, `bash -s`, `sudo -s`, `docker exec -i c sh`, `xargs sh -c`;
+  - ssh `-o ProxyCommand=…` / `LocalCommand` / `RemoteCommand` / `KnownHostsCommand` values.
+- **Heredocs and inline code.**
+  - A heredoc is code only when it feeds something that reads its program from stdin, or when it is written to a script file (`*.sh`, or the file that is run) in a command that runs a file. `cat > x.sh <<EOF … EOF; cp x.sh y.sh && bash y.sh` is still blocked. `cat > notes.md <<EOF … EOF; bash build.sh` writes notes and is allowed.
+  - Inline interpreter code (`node -e`, `python3 -c`, a heredoc fed to `python3`) is searched only when it can start a process (`child_process`, `system`, `popen`, `subprocess`, backticks, …). `node -e "console.log('lua deploy')"` prints a string.
+- **The `--auto-deploy` flag was matched anywhere in the text.** `git commit -m "never use --auto-deploy"` and `grep -- '--auto-deploy' docs` were blocked with `DEPLOY_DENIED_AUTO`. The flag now counts only as an argument of a lua invocation:
+  - the invocation may be `lua`/`heylua`/`lua-ai` or a computed binary (`$(which lua) push … --auto-deploy`);
+  - it may sit in a chain, `$(…)`, `bash -c`, or after `npx`;
+  - the flag is found even past the first 64 words.
+- **`auth configure` was matched by an unanchored regex.** `grep "lua auth configure" README.md` and `echo "… lua auth configure …"` were blocked with `AUTH_INPUT_DENIED`. Only the actual command blocks now.
+  - The command is also caught with options before the words (`lua --ci auth configure`, a 1.7.0 miss) and through any binary or launcher.
+  - The hook's `if: Bash(*auth configure*)` glob in `hooks/hooks.json` is removed. The hook now classifies every Bash call, so `lua auth 'configure'`, `lua auth  configure` and `lua AUTH CONFIGURE` reach it.
+- **A computed path with a literal script name is that script.** `node "$SCRATCH/check.mjs" "$X" …` in a command where some path contains `/lua/` is no longer read as an unresolvable lua binary. `$X/dist/index.js` (possibly lua-cli's entry point) stays unresolved and blocked.
+
+### Unchanged, now pinned by tests
+
+- A verb anywhere in a command is gated: `cd x && lua deploy skill`, `foo; lua version promote 3`, `(lua deploy)`, `$(lua deploy)`. 1.6.0's lexer already did this; 1.7.1 adds regression tests for each shape.
+- `LUA_DEPLOY_CONFIRMED=1` counts only on the simple command it precedes.
+- Input that cannot be analysed (too long, over the time budget, an internal error, an unterminated quote) still fails closed. For the auto-deploy flag and auth configure, the fallback is a textual match when the command mentions lua.
+
+### Tests
+
+- `test/lib/tokenizer.test.mjs` adds:
+  - every false positive above;
+  - the chained and nested false negatives;
+  - 40 runner shapes that must still block (`bash -euxo pipefail -c`, `fish -C`, `sh -c '"$@"' _ lua deploy all`, `… | sh -c "$(cat)"`, `node <<EOF … execSync`, a heredoc written to `$F` then `bash "$F"`, …);
+  - `hasAutoDeploy` and the new `hasAuthConfigure`.
+- The three hook test files cover the same shapes end to end.
+- `confirm-deploy.timeout.test.mjs`: `bash "lua x" … "lua deploy all"` (a script-file operand and its arguments) is now expected to pass. The under-the-cap timing case moves to an `eval` chain and a `bash -c` chain that end in a real verb.
+
 ## 1.7.0 — 2026-10-05
 
 **Devices, and a re-check against lua-cli 3.44.0 and 3.45.0.**

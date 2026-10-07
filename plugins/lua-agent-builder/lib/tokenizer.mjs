@@ -75,6 +75,23 @@
 //     mentions lua — the hook must decide inside its timeout, because a hook
 //     that times out fails open.
 //
+// ── 1.7.1: text that is data stays data ───────────────────────────────────
+// 1.6.0 searched the WHOLE argv of anything that could run a string as text,
+// so `bash -c "echo lua deploy"`, `bash scripts/x.sh "lua deploy notes"`,
+// `find … | xargs grep 'lua deploy'`, `npx jest -t "lua deploy all"`,
+// `ssh box 'grep "lua deploy" log'`, `node -e "console.log('lua deploy')"` and
+// `cat > notes.md <<EOF …lua deploy… EOF; bash build.sh` were all blocked.
+// Now only the string a command actually RUNS is parsed as code — a shell's
+// `-c` script (not its script-file operand or arguments), the joined argv of
+// `eval`/`ssh`/`watch`/`tmux`/…, `npx -c`'s value, stdin of a shell that reads
+// its program from stdin, a heredoc written to the script file that is run —
+// and inline interpreter code is searched only when it can spawn a process.
+// `--auto-deploy` and `auth configure` are matched the same way: as arguments
+// of a lua invocation (hasAutoDeploy, hasAuthConfigure), never as text. And a
+// computed command word whose last path segment is literal (`node
+// "$SCRATCH/check.mjs" "$X" …`) names that command, so it is no longer read as
+// an unresolvable lua binary when some path in the command contains `/lua/`.
+//
 // The LUA_DEPLOY_CONFIRMED=1 allowance survives ONLY in its canonical shape:
 // `[env ]LUA_DEPLOY_CONFIRMED=1 lua|heylua|lua-ai <verb> …` as ONE simple
 // command — the assignment is the first word of the very simple command that
@@ -116,18 +133,77 @@ const WRAPPERS = new Set([
 /** `find … -exec CMD …`: the word after one of these is in command position. */
 const EXEC_FLAGS = new Set(['-exec', '-execdir', '-ok', '-okdir']);
 
-/** Commands that run a STRING as shell code (their string arguments are parsed, and searched, as code). */
-const SCRIPT_RUNNERS = new Set([
-  'sh', 'bash', 'zsh', 'dash', 'ksh', 'mksh', 'ash', 'fish', 'busybox', 'pwsh', 'powershell', 'cmd',
-  'eval', 'ssh', 'su', 'runuser', 'script', 'flock', 'watch', 'parallel', 'npx', 'npm', 'concurrently',
-  'nodemon', 'entr', 'trap', 'at', 'batch', 'source', '.', 'tmux', 'screen', 'xargs',
+/**
+ * POSIX-style shells. Only the string they are told to run is code: the
+ * `-c` / `-lc` / `--command` value (fish `-C` too), or — with no script and no
+ * script-file operand (`bash`, `bash -s`, `bash -`, `bash /dev/stdin`) — what
+ * arrives on stdin: a pipe, a heredoc, a here-string, `< <(…)`. A script-file
+ * operand and its arguments (`bash scripts/x.sh "lua deploy notes"`) are data.
+ */
+const POSIX_SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'mksh', 'ash', 'fish']);
+
+/**
+ * Commands that join their remaining argv into a shell string (`eval x y`,
+ * `ssh host x y`, `watch -n 5 'x'`, `tmux new 'x'`, `parallel ::: 'x'`,
+ * `su - me -c 'x'`): each suffix of that argv is parsed as a script — the
+ * runner's own options and operands (an ssh host, a tmux subcommand) cannot
+ * be told apart from the command without knowing every option, so every
+ * starting point is tried. Parsed, not text-searched: `ssh box 'grep "lua
+ * deploy" log'` runs grep.
+ */
+const JOIN_RUNNERS = new Set([
+  'eval', 'ssh', 'su', 'runuser', 'script', 'flock', 'watch', 'parallel', 'concurrently', 'nodemon',
+  'entr', 'at', 'batch', 'tmux', 'screen',
+]);
+/** Starting points tried per JOIN_RUNNERS command (each is a linear parse). */
+const MAX_SUFFIXES = 16;
+
+/** ssh options whose value is a local or remote command line (`-o ProxyCommand=…`, `-oLocalCommand …`). */
+const SSH_COMMAND_OPT = /^(?:-o)?\s*(?:Proxy|Local|Remote|KnownHosts)Command\s*[=\s]\s*(.+)$/is;
+
+/** Package runners whose `-c` / `--call` value is a shell string (`npx -c 'x'`, `npm exec -c 'x'`); other argv is data. */
+const CALL_RUNNERS = new Set(['npx', 'npm', 'pnpm', 'pnpx', 'yarn', 'bunx']);
+const CALL_FLAG = /^(?:-c|--call|--command)$/;
+const CALL_FLAG_EQ = /^(?:--call|--command)=/;
+
+/** Shells whose argv is still searched as text (their quoting rules are not POSIX). */
+const TEXT_RUNNERS = new Set(['pwsh', 'powershell', 'cmd', 'busybox']);
+
+/**
+ * Commands that, in a pipeline, read their stdin as code (`… | sh`, `… | ssh
+ * host`, `… | at now`). A POSIX shell joins this set only when it has no `-c`
+ * script and no script file (see shellCall). `xargs` joins it only when what
+ * it runs is a shell or a runner (`xargs sh -c '{}'`); `xargs grep` is data.
+ */
+const STDIN_RUNNERS = new Set([
+  'source', '.', 'eval', 'ssh', 'su', 'runuser', 'at', 'batch', 'parallel', ...TEXT_RUNNERS,
 ]);
 
-/** Shell interpreters: their name counts as a runner at any word position. */
-const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'mksh', 'ash', 'fish', 'pwsh', 'powershell']);
+/**
+ * Commands that run a shell or a container shell (`docker exec -i c sh`,
+ * `kubectl exec -it p -- bash`): a POSIX shell named in THEIR argv counts as a
+ * shell even out of command position. Anywhere else (`… | grep bash`) the word
+ * `bash` is data, unless a `-c` follows it.
+ */
+const REMOTE_EXEC = new Set([
+  'docker', 'podman', 'nerdctl', 'kubectl', 'oc', 'lxc', 'incus', 'vagrant', 'multipass', 'limactl',
+  'distrobox', 'toolbox', 'flatpak', 'wsl', 'machinectl', 'systemd-run', 'busybox', 'su', 'runuser',
+  'ssh', 'sudo', 'doas',
+]);
+
+/** Commands that run a FILE: the heredoc written to that file earlier in the command is code. */
+const SCRIPT_FILE = /\.(?:sh|bash|zsh|command)$/i;
 
 /** Shells, and `source`/`.` — running one of these on a FILE executes whatever was written to it. */
 const FILE_RUNNERS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'mksh', 'ash', 'fish', 'source', '.']);
+
+/**
+ * Inline interpreter code (`node -e`, `python3 -c`, a heredoc fed to `python3`)
+ * is searched as text only when it can start a process: `node -e
+ * "console.log('lua deploy')"` prints a string; `node -e
+ * "require('child_process').execSync('lua deploy all')"` runs it.
+ */
+const SPAWNS = /exec|spawn|system|popen|subprocess|shell|`|%x|\bqx\b|Command|\$\(|\bopen\s*\(|\brun\s*\(|\bfork\b/i;
 
 /** Interpreters whose inline code (after `-e`, `-c`, `-p`, `-r`, …) is searched textually. */
 const INLINE_CODE = new Set([
@@ -239,11 +315,11 @@ function checkBudget() {
 /**
  * @typedef {{text: string, quoted: boolean, dynamic: boolean}} Word
  * @typedef {{words: Word[], sep: string|null, grouped: boolean, pipeline: boolean, pipeId: number,
- *            heredocs: string[], herestrings: string[]}} Segment
+ *            heredocs: string[], herestrings: string[], subs: string[], redirects: string[]}} Segment
  */
 
 const newSegment = () => ({
-  words: [], sep: null, grouped: false, pipeline: false, pipeId: 0, heredocs: [], herestrings: [], subs: [],
+  words: [], sep: null, grouped: false, pipeline: false, pipeId: 0, heredocs: [], herestrings: [], subs: [], redirects: [],
 });
 
 /**
@@ -387,6 +463,7 @@ export function lex(src) {
     delete w.brace;
     if (redirTarget) {
       if (redirTarget === 'herestring') seg.herestrings.push(w.text);
+      else seg.redirects.push(w.text);
       redirTarget = null;
       return;
     }
@@ -724,16 +801,25 @@ function invocationAt(words, j, afterLauncher) {
   const w = words[j];
   const rest = words.slice(j + 1, j + 1 + 64);
   if (w.dynamic) {
-    // `lua${IFS}deploy`, `"$DIR/lua"`: the literal part can still name lua.
+    // `"$SCRATCH/check.mjs"`, `"$DIR/lua"`: a literal last path segment names
+    // the command whatever the directory is — unless it is a generic node
+    // entry point (`$X/dist/index.js` may be lua-cli's), which stays unresolved.
+    const slash = w.text.lastIndexOf('/');
+    const tail = slash >= 0 ? w.text.slice(slash + 1) : '';
+    if (tail && !EXPANSION.test(tail) && !/^(?:index|cli|main)\.[mc]?js$/i.test(tail)) {
+      if (!isLuaBinaryText(w.text, true)) return null;
+      return { args: rest, allArgs: words.slice(j + 1), dynamicHead: false };
+    }
+    // `lua${IFS}deploy`: the literal part can still name lua.
     const pieces = w.text.split(new RegExp(EXPANSION.source, 'g')).filter(Boolean);
     if (pieces.length && isLuaBinaryText(pieces[0], true)) {
       const extra = pieces.slice(1).flatMap((p) => p.split(/\s+/)).filter(Boolean)
         .map((text) => ({ text, quoted: false, dynamic: false }));
-      return { args: [...extra, ...rest], dynamicHead: false };
+      return { args: [...extra, ...rest], allArgs: [...extra, ...words.slice(j + 1)], dynamicHead: false };
     }
-    return { args: rest, dynamicHead: true };
+    return { args: rest, allArgs: words.slice(j + 1), dynamicHead: true };
   }
-  if (isLuaBinaryText(w.text, afterLauncher)) return { args: rest, dynamicHead: false };
+  if (isLuaBinaryText(w.text, afterLauncher)) return { args: rest, allArgs: words.slice(j + 1), dynamicHead: false };
   return null;
 }
 
@@ -781,6 +867,25 @@ function matchArgs(args, allowDynamic) {
   return dynamicHit;
 }
 
+// ── Other lua-cli arguments the plugin forbids ─────────────────────────────
+
+/** `--auto-deploy` / `--auto-deploy=<v>` (not `--auto-deployment`). */
+const AUTO_DEPLOY_ARG = /^--auto-deploy(?:=|$)/i;
+
+/**
+ * Record the non-verb findings for one lua invocation's arguments: the
+ * `--auto-deploy` flag anywhere in them, and `auth configure` as the command
+ * (options before either word are skipped, case-insensitive like lua-cli).
+ *
+ * @param {Word[]} args
+ * @param {Array<object>} hits
+ */
+function checkInvocation(args, hits) {
+  if (args.some((a) => AUTO_DEPLOY_ARG.test(a.text))) hits.push({ kind: 'auto-deploy' });
+  const positional = args.filter((a) => !isFlag(a)).slice(0, 2).map((a) => a.text.toLowerCase());
+  if (positional[0] === 'auth' && positional[1] === 'configure') hits.push({ kind: 'auth-configure' });
+}
+
 /** Unanchored textual search, for text the lexer cannot structure. Linear: a bounded window per lua token. */
 function rawSearch(text, hits) {
   checkBudget();
@@ -796,6 +901,7 @@ function rawSearch(text, hits) {
     }
     const m = matchArgs(args, false);
     if (m) hits.push({ label: m.label, slash: m.slash, prefixed: false });
+    checkInvocation(args, hits);
   }
 }
 
@@ -808,38 +914,199 @@ function sedExecutes(script) {
   return parts.length >= 4 && /e/.test(parts[parts.length - 1]);
 }
 
+/** A `-c` script that runs what arrives on stdin (`sh -c 'sh'`, `bash -c "$(cat)"`, `sh -c 'xargs …'`). */
+const SCRIPT_READS_STDIN =
+  /(?<![\w./-])(?:sh|bash|zsh|dash|ksh|mksh|ash|fish|eval|source|xargs|parallel)(?![\w-])|\/dev\/stdin|(?:^|[\s;&|(])\.\s|\$\(\s*cat\s*\)|`\s*cat\s*`/;
+/** A `-c` script that hands its positional parameters back to a shell (`sh -c '"$@"' _ lua deploy all`). */
+const USES_POSITIONALS = /\$(?:[@*1-9]|\{[@*1-9#])/;
+/** A word whose text starts with a substitution: its OUTPUT becomes the script (`bash -c "$(curl …)"`). */
+const STARTS_WITH_SUB = /(?:^|[\s;&|(])(?:\$\(…\)|`…`|[<>]\(…\))/;
+
 /**
- * @typedef {{nested: boolean, depth: number, mentionsLua: boolean}} Ctx
+ * How the POSIX shell named at words[s] gets its code.
+ * @returns {{scripts: Word[], extra: Word[], stdin: boolean}}
+ */
+function shellCall(words, s) {
+  const scripts = [];
+  let dashC = false;
+  let dashS = false;
+  // fish: `-C`/`--init-command` runs code too (in bash `-C` is noclobber).
+  const fish = nameOf(words[s]) === 'fish';
+  let k = s + 1;
+  for (; k < words.length; k++) {
+    checkBudget();
+    const t = words[k].text;
+    if (t === '--') { k++; break; }
+    if (t === '--command' || t === '--init-command' || (t === '-C' && fish)) {
+      if (words[k + 1]) scripts.push(words[k + 1]);
+      k++;
+      continue;
+    }
+    if (/^[-+][A-Za-z]+$/.test(t)) {
+      // An option cluster: `-c` anywhere in it takes the script, `-s` reads
+      // stdin, and a trailing `o`/`O` (`-euxo pipefail`) takes a value.
+      if (t[0] === '-' && t.includes('c')) dashC = true;
+      if (t[0] === '-' && t.includes('s')) dashS = true;
+      if (/[oO]$/.test(t)) k++;
+      continue;
+    }
+    const eq = /^--(?:command|init-command)=(.*)$/s.exec(t);
+    if (eq) { scripts.push({ text: eq[1], quoted: true, dynamic: words[k].dynamic }); continue; }
+    if (t === '--rcfile' || t === '--init-file') { k++; continue; }
+    if (t.length > 1 && (t[0] === '-' || t[0] === '+')) continue;
+    break;
+  }
+  const operand = words[k];
+  let extra = [];
+  if (dashC && operand) {
+    scripts.push(operand);
+    extra = words.slice(k + 1);
+  }
+  const stdin =
+    scripts.length === 0 &&
+    (dashS || !operand || operand.text === '-' || operand.text === '/dev/stdin');
+  return { scripts, extra, stdin };
+}
+
+/**
+ * What one simple command does with strings, computed once per segment.
+ *
+ * @param {Segment} seg
+ */
+function segmentInfo(seg) {
+  if (seg.info) return seg.info;
+  const words = seg.words;
+  const names = words.map(nameOf);
+  const positions = commandPositions(words);
+  const atPosition = (set) => positions.some((j) => set.has(names[j]));
+  const remote = atPosition(REMOTE_EXEC);
+  const posSet = new Set(positions);
+
+  // A shell in command position, or anywhere when followed by `-c`, or in the
+  // argv of something that runs a shell (`docker exec -i c sh`).
+  const shells = [];
+  names.forEach((nm, s) => {
+    if (!POSIX_SHELLS.has(nm)) return;
+    const call = shellCall(words, s);
+    if (posSet.has(s) || remote || call.scripts.length) shells.push(call);
+  });
+
+  const xargsAt = names.indexOf('xargs');
+  const xargsRunsCode =
+    xargsAt >= 0 &&
+    names.slice(xargsAt + 1).some((nm) => POSIX_SHELLS.has(nm) || JOIN_RUNNERS.has(nm) || STDIN_RUNNERS.has(nm));
+  const sourceStdin = positions.some((j) =>
+    (names[j] === 'source' || names[j] === '.') &&
+    (!words[j + 1] || ['-', '/dev/stdin'].includes(words[j + 1].text) || words[j + 1].dynamic));
+
+  // An interpreter with no script file and no inline code reads its program
+  // from stdin (`python3 <<EOF`, `node - <<EOF`); with a file, stdin is data.
+  const interpreterStdin = positions.some((j) => {
+    if (!INLINE_CODE.has(names[j])) return false;
+    for (let q = j + 1; q < words.length; q++) {
+      const w = words[q];
+      if (INLINE_FLAG.test(w.text)) return false;
+      if (w.text === '-') return true;
+      if (!isFlag(w)) return false;
+    }
+    return true;
+  });
+
+  // `sudo -s` / `sudo -i` with no command start a shell that reads stdin.
+  const sudoShell = positions.length === 1 && (names[0] === 'sudo' || names[0] === 'doas') &&
+    words.slice(1).some((w) => /^-[A-Za-z]*[si][A-Za-z]*$|^--(?:shell|login)$/.test(w.text));
+
+  const stdinCode =
+    sudoShell ||
+    // A script computed by a substitution (`sh -c "$(cat)"`) may read stdin: fail closed.
+    shells.some((c) => c.stdin ||
+      c.scripts.some((w) => SCRIPT_READS_STDIN.test(w.text) || (w.dynamic && STARTS_WITH_SUB.test(w.text)))) ||
+    atPosition(STDIN_RUNNERS) ||
+    names.some((nm) => TEXT_RUNNERS.has(nm) && nm !== 'cmd' && nm !== 'busybox') ||
+    xargsRunsCode ||
+    sourceStdin;
+
+  seg.info = { names, positions, shells, stdinCode, interpreterStdin };
+  return seg.info;
+}
+
+/**
+ * @typedef {{nested: boolean, depth: number, mentionsLua: boolean, seen: Set<string>}} Ctx
  * @param {Segment} seg
  * @param {Ctx} ctx
  * @param {boolean} pipedIntoRunner  another stage of this pipeline runs its input as code
- * @param {Array<{label: string, slash: string, prefixed: boolean}>} hits
+ * @param {Array<object>} hits
  */
 function analyzeSegment(seg, ctx, pipedIntoRunner, hits) {
   checkBudget();
   const words = seg.words;
-  const names = words.map(nameOf);
-  const positions = commandPositions(words);
-  // A runner counts in command position (`sudo bash -c`, `xargs sh -c`); a
-  // shell's name counts anywhere (`docker exec c sh -c …`). `rg x .` is not `source`.
-  const hasRunner =
-    positions.some((j) => SCRIPT_RUNNERS.has(names[j])) || names.some((nm) => SHELLS.has(nm));
-  const runsStrings = pipedIntoRunner || hasRunner;
+  const { names, positions, shells, stdinCode, interpreterStdin } = segmentInfo(seg);
   const inline = names.some((nm) => INLINE_CODE.has(nm));
   const awk = names.some((nm) => AWK.has(nm));
   const editor = names.some((nm) => EDITORS.has(nm));
   const sed = names.some((nm) => nm === 'sed' || nm === 'gsed');
   const hasEnv = names.includes('env');
   const nested = { ...ctx, nested: true, depth: ctx.depth + 1 };
+  const textRunner = positions.some((j) => TEXT_RUNNERS.has(names[j])) ||
+    names.some((nm) => nm === 'pwsh' || nm === 'powershell');
 
-  // Whatever feeds a shell (`… | sh`) or a runner's argv (`ssh host lua …`,
-  // `eval lua …`) is searched as text as well as parsed.
-  if (runsStrings) rawSearch(words.map((w) => w.text).join(' '), hits);
+  // Data that a shell will read as code (`echo lua deploy all | sh`), and the
+  // argv of a shell whose quoting rules are not POSIX (`pwsh -c …`), are
+  // searched as text as well as parsed.
+  if (pipedIntoRunner || textRunner) {
+    rawSearch(words.map((w) => w.text).join(' '), hits);
+    for (const w of words) if (/[\s;&|`$()]/.test(w.text)) analyzeScript(w.text, nested, hits);
+  }
+
+  // `bash -c '<script>'`: the script is parsed as a command line of its own.
+  for (const call of shells) {
+    for (const script of call.scripts) {
+      analyzeScript(script.text, nested, hits);
+      if (script.dynamic && STARTS_WITH_SUB.test(script.text)) for (const sub of seg.subs) rawSearch(sub, hits);
+      // The first word after the script is $0; the rest are $1….
+      if (call.extra.length > 1 && USES_POSITIONALS.test(script.text)) {
+        analyzeScript(call.extra.slice(1).map((w) => w.text).join(' '), nested, hits);
+      }
+    }
+  }
+
+  // `eval x y`, `ssh host x y`, `watch -n 5 'x'`: the joined argv is a script.
+  for (const j of positions) {
+    if (!JOIN_RUNNERS.has(names[j])) continue;
+    let tried = 0;
+    for (let q = j + 1; q < words.length && tried < MAX_SUFFIXES; q++) {
+      if (isFlag(words[q])) continue;
+      tried++;
+      analyzeScript(words.slice(q).map((w) => w.text).join(' '), nested, hits);
+      if (words[q].dynamic && STARTS_WITH_SUB.test(words[q].text)) for (const sub of seg.subs) rawSearch(sub, hits);
+    }
+  }
+
+  // `ssh -o ProxyCommand='x'` (also scp/sftp, LocalCommand, RemoteCommand,
+  // KnownHostsCommand): the option value is a command line.
+  if (names.some((nm) => nm === 'ssh' || nm === 'scp' || nm === 'sftp')) {
+    for (const w of words) {
+      const m = SSH_COMMAND_OPT.exec(w.text);
+      if (m) analyzeScript(m[1], nested, hits);
+    }
+  }
+
+  // `npx -c 'x'`, `npm exec --call 'x'`: only that value is a script.
+  if (positions.some((j) => CALL_RUNNERS.has(names[j]))) {
+    words.forEach((w, k) => {
+      if (CALL_FLAG.test(w.text) && words[k + 1]) {
+        analyzeScript(words[k + 1].text, nested, hits);
+        if (words[k + 1].dynamic && STARTS_WITH_SUB.test(words[k + 1].text)) for (const sub of seg.subs) rawSearch(sub, hits);
+      }
+      if (CALL_FLAG_EQ.test(w.text)) analyzeScript(w.text.replace(CALL_FLAG_EQ, ''), nested, hits);
+    });
+  }
+
   words.forEach((w, k) => {
     if (k === 0) return;
     const prev = words[k - 1].text;
-    if (runsStrings && /[\s;&|`$()]/.test(w.text)) analyzeScript(w.text, nested, hits);
-    if (inline && (INLINE_FLAG.test(prev) || (prev === 'eval' && names.includes('deno')))) rawSearch(w.text, hits);
+    const spawns = SPAWNS.test(w.text);
+    if (inline && spawns && (INLINE_FLAG.test(prev) || (prev === 'eval' && names.includes('deno')))) rawSearch(w.text, hits);
     if (awk && AWK_EXEC.test(w.text)) rawSearch(w.text, hits);
     if (editor && (/^[-+]c$|^--cmd$/.test(prev) || /^[+:]/.test(w.text) || w.text.includes('!'))) rawSearch(w.text, hits);
     if (sed && !isFlag(w) && sedExecutes(w.text)) rawSearch(w.text, hits);
@@ -853,19 +1120,28 @@ function analyzeSegment(seg, ctx, pipedIntoRunner, hits) {
       analyzeScript(eq > 0 ? w.text.slice(eq + 1) : w.text, nested, hits);
     }
   });
+
+  // Heredocs and here-strings are stdin. They are code only for something
+  // that reads its program from stdin (`bash <<EOF`, `python3 <<EOF`), and
+  // for awk; for `cat`, `git commit -F -`, `node script.mjs` they are data.
   for (const body of [...seg.heredocs, ...seg.herestrings]) {
-    if (runsStrings || inline || awk) {
+    if (stdinCode || pipedIntoRunner) {
       analyzeScript(body, nested, hits);
+      rawSearch(body, hits);
+    } else if ((interpreterStdin && SPAWNS.test(body)) || (awk && AWK_EXEC.test(body))) {
       rawSearch(body, hits);
     }
   }
   // `bash < <(echo lua …)`, `source <(…)`: the substitution's OUTPUT is code.
-  if (runsStrings) for (const sub of seg.subs) rawSearch(sub, hits);
+  if (stdinCode || pipedIntoRunner || textRunner) for (const sub of seg.subs) rawSearch(sub, hits);
 
   for (const j of positions) {
     const afterLauncher = j > 0;
     const inv = invocationAt(words, j, afterLauncher);
     if (!inv) continue;
+    // A computed binary (`$(which lua) push … --auto-deploy`) is checked too:
+    // the flag and `auth configure` are specific enough to need no lua name.
+    checkInvocation(inv.allArgs, hits);
     // `… | xargs lua`: the verb arrives on stdin and cannot be classified.
     const fedByXargs = names.slice(0, j).includes('xargs');
     // A computed binary with a computed verb (`$(printf lua) $(printf deploy)`)
@@ -887,38 +1163,79 @@ function analyzeSegment(seg, ctx, pipedIntoRunner, hits) {
   }
 }
 
+/** `./x.sh` and `x.sh` name the same file. */
+const normPath = (t) => t.replace(/^(?:\.\/)+/, '');
+
 /**
  * @param {string} src
  * @param {Ctx} ctx
- * @param {Array<{label: string, slash: string, prefixed: boolean}>} hits
+ * @param {Array<object>} hits
  */
 function analyzeScript(src, ctx, hits) {
   checkBudget();
+  // The same string reached twice (`eval eval eval …` suffixes) is parsed once.
+  const key = `${ctx.nested ? 1 : 0}\0${src}`;
+  if (ctx.seen.has(key)) return;
+  ctx.seen.add(key);
   if (ctx.depth > MAX_DEPTH) { rawSearch(src, hits); return; }
   const { segments, subs, opaque } = lex(src);
   if (opaque) rawSearch(src, hits);
 
   // A pipeline stage that runs its stdin as code (`… | sh`, `… | xargs sh -c`)
   // turns every string in the pipeline into code.
-  const runnerPipes = new Set(
-    segments
-      .filter((s) => s.pipeline && commandPositions(s.words).some((j) => SCRIPT_RUNNERS.has(nameOf(s.words[j]))))
-      .map((s) => s.pipeId),
-  );
+  const runnerPipes = new Set(segments.filter((s) => s.pipeline && segmentInfo(s).stdinCode).map((s) => s.pipeId));
   for (const seg of segments) analyzeSegment(seg, ctx, runnerPipes.has(seg.pipeId), hits);
   for (const sub of subs) analyzeScript(sub, { ...ctx, nested: true, depth: ctx.depth + 1 }, hits);
 
   // `cat > x.sh <<EOF … EOF; sh x.sh` — a script written here and run here.
-  const runsAFile = segments.some((s) => {
-    const first = commandPositions(s.words)[0];
-    if (first === undefined) return false;
+  // Only a heredoc written to the file that is run counts; `cat > notes.md
+  // <<EOF … EOF; bash build.sh` writes notes.
+  const runFiles = new Set();
+  let runsUnknownFile = false;
+  for (const s of segments) {
+    const { names, positions } = segmentInfo(s);
+    const first = positions[0];
+    if (first === undefined) continue;
     const w = s.words[first];
-    if (/\.(?:sh|bash|zsh|command)$/i.test(w.text)) return true;
-    return FILE_RUNNERS.has(nameOf(w)) && s.words.slice(first + 1).some((a) => !isFlag(a));
-  });
-  if (runsAFile) {
-    for (const s of segments) for (const body of [...s.heredocs, ...s.herestrings]) rawSearch(body, hits);
+    if (SCRIPT_FILE.test(w.text)) runFiles.add(normPath(w.text));
+    if (FILE_RUNNERS.has(names[first])) {
+      const operand = s.words.slice(first + 1).find((a) => !isFlag(a));
+      if (operand?.dynamic) runsUnknownFile = true;
+      else if (operand) runFiles.add(normPath(operand.text));
+    }
   }
+  if (runFiles.size || runsUnknownFile) {
+    for (const s of segments) {
+      const bodies = [...s.heredocs, ...s.herestrings];
+      if (!bodies.length) continue;
+      const targets = [...s.redirects, ...s.words.slice(1).map((w) => w.text)].map(normPath);
+      // The file that runs may be a copy (`cp x.sh y.sh && bash y.sh`): any
+      // heredoc written to a script-named file counts once a file is run.
+      if (runsUnknownFile || s.redirects.some((t) => /[$`]/.test(t)) ||
+        targets.some((t) => runFiles.has(t) || SCRIPT_FILE.test(t))) {
+        for (const body of bodies) rawSearch(body, hits);
+      }
+    }
+  }
+}
+
+/**
+ * Run the analysis once, under the time budget.
+ * @returns {{hits: Array<object>, failed: boolean}} failed: too long, over budget, or an internal error
+ */
+function inspect(command, analyze, budgetMs) {
+  if (command.length > MAX_COMMAND_LENGTH) return { hits: [], failed: true };
+  const hits = [];
+  deadline = performance.now() + budgetMs;
+  ticks = 0;
+  try {
+    analyze(command, { nested: false, depth: 0, mentionsLua: MENTIONS_LUA.test(command), seen: new Set() }, hits);
+  } catch {
+    return { hits: [], failed: true };
+  } finally {
+    deadline = Infinity;
+  }
+  return { hits, failed: false };
 }
 
 const unclassifiable = () => ({ label: UNCLASSIFIABLE_LABEL, slash: '/lua-deploy', prefixed: false });
@@ -940,21 +1257,12 @@ const unclassifiable = () => ({ label: UNCLASSIFIABLE_LABEL, slash: '/lua-deploy
  */
 export function classifyProductionCommand(command, { analyze = analyzeScript, budgetMs = TIME_BUDGET_MS } = {}) {
   if (typeof command !== 'string') return null;
-  const mentionsLua = MENTIONS_LUA.test(command);
-  if (command.length > MAX_COMMAND_LENGTH) return mentionsLua ? unclassifiable() : null;
-  const hits = [];
-  deadline = performance.now() + budgetMs;
-  ticks = 0;
-  try {
-    analyze(command, { nested: false, depth: 0, mentionsLua }, hits);
-  } catch {
-    // A classifier bug or a spent budget must not wave a lua command through.
-    return mentionsLua ? unclassifiable() : null;
-  } finally {
-    deadline = Infinity;
-  }
-  if (hits.length === 0) return null;
-  const { label, slash, prefixed } = hits.find((h) => !h.prefixed) ?? hits[0];
+  const { hits, failed } = inspect(command, analyze, budgetMs);
+  // A classifier bug or a spent budget must not wave a lua command through.
+  if (failed) return MENTIONS_LUA.test(command) ? unclassifiable() : null;
+  const verbs = hits.filter((h) => !h.kind);
+  if (verbs.length === 0) return null;
+  const { label, slash, prefixed } = verbs.find((h) => !h.prefixed) ?? verbs[0];
   return { label, slash, prefixed };
 }
 
@@ -970,11 +1278,40 @@ export function isPrefixedDeploy(command) {
   return !!c && c.prefixed;
 }
 
+/** Textual fallbacks, used only when the analysis fails (fail closed). */
+const AUTO_DEPLOY_TEXT = /(?:^|[\s"'=])--auto-deploy(?![\w-])/i;
+const AUTH_CONFIGURE_TEXT = /\bauth\s+configure(?![\w-])/i;
+
 /**
+ * True iff the command passes `--auto-deploy` to a lua-cli invocation — the
+ * flag as an argument of `lua`/`heylua`/`lua-ai` (in a chain, a substitution,
+ * a `bash -c` string, after `npx`, …), not the words in a commit message, an
+ * echo or a grep pattern. Fails closed: if the command cannot be analysed and
+ * mentions both lua and the flag, it counts.
+ *
  * @param {unknown} command
+ * @param {{analyze?: Function, budgetMs?: number}} [opts] — test seams
  * @returns {boolean}
  */
-export function hasAutoDeploy(command) {
-  if (typeof command !== 'string') return false;
-  return /\s--auto-deploy\b/.test(command);
+export function hasAutoDeploy(command, { analyze = analyzeScript, budgetMs = TIME_BUDGET_MS } = {}) {
+  if (typeof command !== 'string' || !/--auto-deploy/i.test(command)) return false;
+  const { hits, failed } = inspect(command, analyze, budgetMs);
+  if (failed) return MENTIONS_LUA.test(command) && AUTO_DEPLOY_TEXT.test(command);
+  return hits.some((h) => h.kind === 'auto-deploy');
+}
+
+/**
+ * True iff the command runs `lua auth configure` (any binary, options before
+ * the words, inside a chain or a shell string) — not text that mentions it.
+ * Fails closed like hasAutoDeploy.
+ *
+ * @param {unknown} command
+ * @param {{analyze?: Function, budgetMs?: number}} [opts] — test seams
+ * @returns {boolean}
+ */
+export function hasAuthConfigure(command, { analyze = analyzeScript, budgetMs = TIME_BUDGET_MS } = {}) {
+  if (typeof command !== 'string' || !/configure/i.test(command)) return false;
+  const { hits, failed } = inspect(command, analyze, budgetMs);
+  if (failed) return MENTIONS_LUA.test(command) && AUTH_CONFIGURE_TEXT.test(command);
+  return hits.some((h) => h.kind === 'auth-configure');
 }

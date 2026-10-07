@@ -29,7 +29,11 @@ const CASES = [
   ['under the cap: inline lua/', 'node -e "' + fill('lua/', MAX_COMMAND_LENGTH - 64) + '"; lua deploy all', 2],
   ['under the cap: opaque lua/', 'lua deploy all; echo ' + fill('lua/', MAX_COMMAND_LENGTH - 64) + " '", 2],
   ['under the cap: runner words, no verb', 'bash ' + fill('"lua x" ', MAX_COMMAND_LENGTH - 64), 0],
-  ['under the cap: runner words, then a verb', 'bash ' + fill('"lua x" ', MAX_COMMAND_LENGTH - 128) + '"lua deploy all"', 2],
+  // 1.7.1: a shell's script-file operand and its arguments are data (`bash x.sh "lua deploy notes"`);
+  // a string the shell RUNS is parsed: eval's joined argv, here a long chain ending in a verb.
+  ['under the cap: script-file arguments, then a verb', 'bash ' + fill('"lua x" ', MAX_COMMAND_LENGTH - 128) + '"lua deploy all"', 0],
+  ['under the cap: eval words, then a verb', 'eval ' + fill('"lua x;" ', MAX_COMMAND_LENGTH - 128) + '"lua deploy all"', 2],
+  ['under the cap: bash -c chain, then a verb', 'bash -c "' + fill('lua x; ', MAX_COMMAND_LENGTH - 128) + 'lua deploy all"', 2],
   ['under the cap: sudo options', 'sudo ' + fill('-a b ', MAX_COMMAND_LENGTH - 64) + 'lua deploy all', 2],
   // Large but harmless, and not mentioning lua: must pass, fast.
   ['100 KB without lua', 'echo ' + fill('hello world ', 100 * KB), 0],
