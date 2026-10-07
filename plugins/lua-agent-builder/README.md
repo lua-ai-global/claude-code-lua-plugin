@@ -45,8 +45,8 @@ plugins/lua-agent-builder/
 | `/lua-status` | `lua status --json` — auth, project, per-primitive local-vs-deployed sync |
 | `/lua-init` | `lua init --ci` — new agent, existing agent, or duplicate; model from the live catalog |
 | `/lua-architect <goal>` | Plan an agent end-to-end (subagent) |
-| `/lua-new <type> [name]` | Scaffold + register + compile + test a tool, skill, webhook, trigger, job, preprocessor, postprocessor, mcp, device, device-trigger, voice, workflow or workflow-script (subagent) |
-| `/lua-test [type]` | `lua test --ci skill\|webhook\|job\|preprocessor\|postprocessor\|workflow`; failures go to the debug subagent |
+| `/lua-new <type> [name]` | Scaffold + register + compile + test a tool, skill, webhook, trigger, job, preprocessor, postprocessor, mcp, device, device-trigger, voice, workflow, workflow-script or web app (subagent) |
+| `/lua-test [type]` | `lua test --ci skill\|webhook\|job\|preprocessor\|postprocessor\|workflow\|webapp`; a web-app route that writes (POST/PUT/PATCH/DELETE) runs against live Data only after your one confirmation; failures go to the debug subagent |
 | `/lua-workflow <verb>` | Offline workflow runs with scripted approvals/signals; list/status/watch; start/approve/signal/resume/cancel with one confirmation |
 | `/lua-chat` | One-shot `lua chat --ci -e <env> -m … -t` on an isolated thread |
 | `/lua-logs` | `lua logs --ci --json` with the real 18-source `--type` list and ⏳ the 3.38.0 read window (`--since` / `--until` / `--environment` / `--follow`) |
@@ -55,8 +55,8 @@ plugins/lua-agent-builder/
 | `/lua-env` | `lua env <sandbox\|production> --list \| -k KEY -v VALUE \| -k KEY --delete`; the Bash prompt is the confirmation, values never echoed |
 | `/lua-integrations` | `lua integrations available\|list\|info\|webhooks …\|mcp …`; read-only verbs run at once, mutations confirm once, OAuth connects go to your terminal |
 | `/lua-sync` | Drift report from `lua status --json` + `lua sync --check`; `--pull` / `--push` |
-| `/lua-push` | `lua push <type> --ci --force` for every push type incl. trigger/device/voice/workflow; never `--auto-deploy` |
-| `/lua-deploy` | Gated ship sequence for any production change — primitive versions, persona, workflow versions, MCP activation, agent-version promote/rollback (subagent) |
+| `/lua-push` | `lua push <type> --ci --force` for every push type incl. trigger/device/voice/workflow/webapp; never `--auto-deploy` |
+| `/lua-deploy` | Gated ship sequence for any production change — primitive versions, persona, workflow versions, web apps, MCP activation, agent-version promote/rollback (subagent) |
 | `/lua-version` | Agent versions: list/show/diff/status/create; promote routes to `/lua-deploy` |
 | `/lua-template` | Marketplace agent templates: view/versions/status/health/installed/create/draft/install; publish and apply are prefixed production verbs |
 | `/lua-qa` | Conversational QA + offline workflow scenarios + log scan → triage report (subagent) |
@@ -68,6 +68,7 @@ plugins/lua-agent-builder/
 - **`--auto-deploy`** is denied and blocked unconditionally.
 - **Log drains** (⏳ lua-cli 3.38.0) are ORGANIZATION configuration, not a deploy: `lua drains list|status|deliveries|test` are allowed, and `create|update|delete|verify|pause|resume|rotate-secret` sit in the `ask` tier — that prompt is `/lua-drains`'s single confirmation. They are deliberately **not** in `lib/tokenizer.mjs`: none of them changes what runs in production, and `LUA_DEPLOY_CONFIRMED=1` would be the wrong sentence for a log-shipping change. No secret ever reaches a command line — a header value is prompted or read from an environment variable (`--header-from-env NAME=ENV_VAR`), and the HMAC signing secret is minted server-side and printed exactly once.
 - **Devices** are not part of agent versions and are not deploy verbs: a pushed `defineDevice` is live on the next turn, so `lua push device` / `device-trigger` sit in the `ask` tier (above the generic push allow rule), as do `lua devices enable|disable|remove|test|test-trigger|credential` and their aliases; `list` / `status` are allowed. A device-trigger is published only by `--auto-deploy`, which stays denied — `/lua-devices` prints that line for your own terminal.
+- **Web apps** (lua-cli 3.42.0+) run their routes as you against the agent's live `Data`, locally too — there is no test database. The plugin runs `GET` routes freely and asks once before any route that writes; it never starts `lua apps dev` (it prints that for your own terminal). Only `lua apps new <name>` and four npm commands run without a prompt — `npm --prefix src/apps/<name>/web install --ignore-scripts [@lua-ai-global/app-client]`, `run typecheck`, `run build` — and only in that exact form: the `approve-web-app` hook matches them with anchored regexes rather than permission globs (a glob's `*` would also match an extra package, a second `--prefix`, or anything after the app name). A web-app push is staged only; `/lua-deploy webapp` promotes a new agent version and stops before promoting if that version would also make other staged primitives live.
 - **Credential isolation** — `lua auth configure|key|logout` are denied for the model; login happens in your terminal. A device credential is only ever issued with `--out <file>` (the `block-device-secret` hook blocks the printing form), into a git-ignored mode-600 file the plugin never reads back.
 - **Single permission per slash** — each slash asks at most one question (`x-lua-multi-step: true` marks the diagnostic exceptions).
 

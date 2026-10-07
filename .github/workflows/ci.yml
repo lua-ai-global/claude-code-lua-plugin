@@ -69,5 +69,10 @@ jobs:
       - name: Build MCP bundle
         working-directory: plugins/lua-agent-builder/mcp/lua-platform
         run: npm run build
+      - name: Verify committed MCP bundle matches the source
+        # dist/ is committed (a marketplace install runs it as-is), so a stale
+        # or hand-edited bundle must fail here, not ship.
+        working-directory: plugins/lua-agent-builder/mcp/lua-platform
+        run: git diff --exit-code --stat -- dist/ || { echo "::error::mcp/lua-platform/dist differs from a fresh build — run npm run build there and commit dist/"; exit 1; }
       - name: Verify bundle size
         run: node scripts/check-bundle-size.mjs

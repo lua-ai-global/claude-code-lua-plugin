@@ -95,9 +95,13 @@ setSub('workflows',    ['list', 'view', 'versions', 'deploy', 'activate', 'deact
                         // policy (`policy models|autonomy get|set`), the `model_policy` gate, and the
                         // deterministic rewrite of a chat-composed definition.
                         'policy', 'clear-gate', 'recompose']);
-setSub('test',         ['skill', 'webhook', 'job', 'preprocessor', 'postprocessor', 'workflow']);
+setSub('test',         ['skill', 'webhook', 'job', 'preprocessor', 'postprocessor', 'workflow',
+                        // lua-cli 3.42.0 (Lua Apps): one route of a web app.
+                        'webapp']);
 setSub('push',         ['skill', 'agent', 'persona', 'webhook', 'trigger', 'job', 'preprocessor', 'postprocessor', 'mcp',
-                        'device', 'device-trigger', 'voice', 'workflow', 'backup', 'all']);
+                        'device', 'device-trigger', 'voice', 'workflow', 'webapp', 'backup', 'all']);
+// lua-cli 3.42.0 (Lua Apps): scaffold and run a web app.
+setSub('apps',         ['new', 'dev']);
 setSub('deploy',       ['skill', 'webhook', 'trigger', 'job', 'preprocessor', 'postprocessor', 'persona', 'all']);
 setSub('env',          ['sandbox', 'staging', 'production']);
 setSub('persona',      ['sandbox', 'staging', 'production']);
