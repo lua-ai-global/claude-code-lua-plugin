@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>$title$</title>
+$for(css)$<link rel="stylesheet" href="$css$">$endfor$
+</head>
+<body>
+<div class="cover">
+  <div class="cover-logo" style="background-image:url('LOGO_URI')"></div>
+  <div class="kicker">Lua · Agent QA report</div>
+  <div class="cover-tier">@@TIER_HTML@@</div>
+  <h1>@@TITLE_HTML@@</h1>
+  <p class="sub">@@SUB@@</p>
+  <div class="meta">
+    <div><b>Prepared for</b> @@PREPARED_FOR@@</div>
+    <div><b>Date</b> @@DATE@@</div>
+    <div><b>Tier</b> @@TIER_HTML@@</div>
+    <div><b>Verdict</b> @@VERDICT@@</div>
+    <div><b>Environment</b> @@ENVIRONMENT@@</div>
+    <div><b>From</b> Claude Code /lua-qa (lua-agent-builder @@PLUGIN_VERSION@@)</div>
+    <div><b>How to read it</b> every persona and test is marked <span class="tag pass">Pass</span>, <span class="tag partial">Partial</span> or <span class="tag fail">Fail</span>.</div>
+  </div>
+</div>
+<nav id="TOC" class="toc-page">
+<h1 class="toc-title">Contents</h1>
+$table-of-contents$
+</nav>
+$body$
+</body>
+</html>

@@ -299,13 +299,16 @@ describe('permission layer (lib/permissions-template.json) under Claude Code sem
       'lua push devicetriggers --ci --force --name opened',
       // `--ci` binds anywhere on the line, so `lua logs --ci export` also matches `lua logs --ci*`.
       'lua logs --ci export --since 31d --include-content --yes --out ./x',
+      // /lua-qa full: the production consent stamp is confirmed by Claude Code itself, although every other
+      // helper call rides `node *lua-agent-builder*/lib/qa/cli.mjs *`.
+      'node /h/.claude/plugins/cache/m/lua-agent-builder/1.8.0/lib/qa/cli.mjs gate --run-dir r --stamp environment --env production --metrics-file m --production-consent-text "I consent to running this against production"',
     ]) {
       expect({ cmd, asked: matchesRestrictive(ask, cmd), denied: matchesRestrictive(deny, cmd) })
         .toEqual({ cmd, asked: true, denied: false });
       expect(classifyProductionCommand(cmd)).toBeNull();
     }
     // …and the carve-outs do not catch the ordinary pushes and log reads next to them.
-    for (const cmd of ['lua push skill --ci --force --name devices', 'lua push all --ci --force', 'lua logs --ci --json --type device --limit 5']) {
+    for (const cmd of ['lua push skill --ci --force --name devices', 'lua push all --ci --force', 'lua logs --ci --json --type device --limit 5', 'node /h/.claude/plugins/cache/m/lua-agent-builder/1.8.0/lib/qa/cli.mjs record --run-dir r --production-consent abc']) {
       expect({ cmd, asked: matchesRestrictive(ask, cmd), allowed: matchesAllow(cmd) }).toEqual({ cmd, asked: false, allowed: true });
     }
   });

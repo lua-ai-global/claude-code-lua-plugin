@@ -1,0 +1,18 @@
+{
+  "versions": [
+    {
+      "version": 3,
+      "status": "active",
+      "createdAt": "2026-01-02T00:00:00Z"
+    },
+    {
+      "version": 4,
+      "status": "staged",
+      "createdAt": "2026-01-03T00:00:00Z"
+    },
+    {
+      "versionNumber": 2,
+      "status": "superseded"
+    }
+  ]
+}

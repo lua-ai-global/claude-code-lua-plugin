@@ -1,0 +1,44 @@
+{
+  "environment": "sandbox",
+  "project": {
+    "inProject": true,
+    "agentId": "agent-test-1"
+  },
+  "primitives": [
+    {
+      "kind": "skill",
+      "local": [
+        "orders"
+      ],
+      "server": [
+        "orders"
+      ],
+      "diffs": [
+        {
+          "name": "orders",
+          "status": "synced"
+        },
+        {
+          "name": "faq",
+          "status": "ahead"
+        }
+      ],
+      "orphans": []
+    },
+    {
+      "kind": "workflow",
+      "diffs": [
+        {
+          "name": "refund-review",
+          "status": "not deployed"
+        }
+      ]
+    },
+    {
+      "kind": "job"
+    }
+  ],
+  "persona": {
+    "status": "synced"
+  }
+}

@@ -22,10 +22,12 @@ plugins/lua-agent-builder/
 ├── .claude-plugin/plugin.json   # plugin manifest
 ├── .mcp.json                    # lua-platform (local stdio) + lua-docs (https://docs.heylua.ai/mcp)
 ├── commands/                    # 22 slash commands
-├── agents/                      # 5 subagents (architect, skill-builder, debug, deploy-pilot, qa)
-├── hooks/                       # 11 Node ESM hooks + hooks.json
+├── agents/                      # 10 subagents (architect, skill-builder, debug, deploy-pilot, qa, qa-cartographer, qa-player, qa-grader, qa-analyst, qa-reporter)
+├── hooks/                       # 12 Node ESM hooks + hooks.json
 ├── lib/
 │   ├── knowledge/               # primitives, workflows, cli-reference, integrations, decision-trees, log-drains, devices
+│   │   └── qa/                  # /lua-qa full prompts: rubric, ICP cards, player, red team, graders, analyst, fix-locus, mechanics, qualifying questions
+│   ├── qa/                      # /lua-qa full helpers behind one entry, lib/qa/cli.mjs (recorder, checks, discovery + SVG, report, Workflow script)
 │   ├── permissions-template.json# allow/ask/deny rules /lua-doctor merges into .claude/settings.json
 │   ├── tokenizer.mjs            # production-verb classifier for the deploy gate
 │   └── credentials.mjs, hook-runtime.mjs, lua-cli.mjs, platform.mjs
@@ -59,7 +61,7 @@ plugins/lua-agent-builder/
 | `/lua-deploy` | Gated ship sequence for any production change — primitive versions, persona, workflow versions, web apps, MCP activation, agent-version promote/rollback (subagent) |
 | `/lua-version` | Agent versions: list/show/diff/status/create; promote routes to `/lua-deploy` |
 | `/lua-template` | Marketplace agent templates: view/versions/status/health/installed/create/draft/install; publish and apply are prefixed production verbs |
-| `/lua-qa` | Conversational QA + offline workflow scenarios + log scan → triage report (subagent) |
+| `/lua-qa [quick\|full]` | **Quick:** conversational QA + offline workflow scenarios + log scan → triage report (subagent), as before. **Full:** a tier (`smoke` 30-min cap from plan approval, grader A only, no stress test; `medium` default 1–2 h, `production-ready` 3–5 h with a release gate) and four gates (discovery diagrams, qualifying answers and metrics inferred from the code unless `--interview`, environment, the plan), then personas × runs sized to the tier (medium: ≥10 × 3; production-ready: ≥12 × 5, 4 must pass), a red team, offline workflow flow tests, direct tool tests and (outside smoke) a stress test run in parallel, graded by two independent Opus graders (one in smoke), clustered by root cause → PDF + HTML + `results.json` report |
 
 ## Safety model
 

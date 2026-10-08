@@ -156,14 +156,18 @@ const RESERVED_TOKENS = new Set([
 // slipped through. Now scans all three user-shipped surfaces.
 const SCAN_DIRS = ['lib/knowledge', 'agents', 'commands'];
 
-async function* allMd() {
-  for (const dir of SCAN_DIRS) {
-    let files = [];
-    try { files = await readdir(dir); } catch { continue; }
-    for (const f of files) {
-      if (f.endsWith('.md')) yield join(dir, f);
-    }
+// 1.9.0: walks recursively, so `lib/knowledge/qa/*.md` (the /lua-qa full-suite prompts) is checked too.
+async function* walkMd(dir) {
+  let entries = [];
+  try { entries = await readdir(dir, { withFileTypes: true }); } catch { return; }
+  for (const e of entries) {
+    if (e.isDirectory()) yield* walkMd(join(dir, e.name));
+    else if (e.name.endsWith('.md')) yield join(dir, e.name);
   }
+}
+
+async function* allMd() {
+  for (const dir of SCAN_DIRS) yield* walkMd(dir);
 }
 
 let scanned = 0;

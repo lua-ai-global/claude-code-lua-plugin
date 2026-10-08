@@ -67,7 +67,7 @@ The subagent files are plain Markdown playbooks. Point the step prompt at them a
 |---|---|
 | Scaffold, register, compile and test one primitive | `${CLAUDE_PLUGIN_ROOT}/agents/lua-skill-builder.md` |
 | Diagnose a failing `lua compile --ci` / `lua test --ci` / `lua push` | `${CLAUDE_PLUGIN_ROOT}/agents/lua-debug.md` |
-| A conversational QA pass with a triage report | `${CLAUDE_PLUGIN_ROOT}/agents/lua-qa.md`. Its sandbox chats run real tools against the agent's live Data and connections, so use read-only cases only. |
+| A conversational QA pass with a triage report | `${CLAUDE_PLUGIN_ROOT}/agents/lua-qa.md`, its quick-mode body only: `/lua-qa full` cannot run headless, because its four gates need AskUserQuestion. Its sandbox chats run real tools against the agent's live Data and connections, so use read-only cases only. |
 
 `lua-deploy-pilot.md` has no headless use, because nothing goes live from a headless run.
 
