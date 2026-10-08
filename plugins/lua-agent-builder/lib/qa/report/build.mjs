@@ -26,9 +26,13 @@ export const INSTALL_HINTS = Object.freeze({
 // tool discovery
 // ---------------------------------------------------------------------------
 
-async function defaultWhich(bin, env = process.env, platform = process.platform) {
+/**
+ * The first executable `bin` on PATH, or null. On Windows only PATHEXT names run (`pandoc.EXE`, not a bare
+ * `pandoc` file, which the X_OK check cannot tell apart there because Windows has no execute bit).
+ */
+export async function defaultWhich(bin, env = process.env, platform = process.platform) {
   const dirs = String(env.PATH ?? env.Path ?? '').split(delimiter).filter(Boolean);
-  const exts = platform === 'win32' ? ['', ...String(env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';').filter(Boolean)] : [''];
+  const exts = platform === 'win32' ? String(env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';').filter(Boolean) : [''];
   for (const dir of dirs) {
     for (const ext of exts) {
       const full = join(dir, bin + ext);

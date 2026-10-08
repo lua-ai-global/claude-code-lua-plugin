@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   GATE_ORDER, PRODUCTION_CONSENT_TEXT, assertGates, cliGate, cliInitRun, computePlanHash, isConsentText, loadRun, loadState, needsConsent,
   pushHistory, readAgentIdFromYaml, sha256, withSandboxLock,
@@ -326,7 +327,7 @@ describe('withSandboxLock', () => {
 
 describe('consent text drift', () => {
   test('commands/lua-qa.md offers exactly the option the gate accepts', async () => {
-    const md = await readFile(join(new URL('../../..', import.meta.url).pathname, 'commands', 'lua-qa.md'), 'utf8');
+    const md = await readFile(fileURLToPath(new URL('../../../commands/lua-qa.md', import.meta.url)), 'utf8');
     expect(md).toContain(`\`${PRODUCTION_CONSENT_TEXT}\``);
   });
 });

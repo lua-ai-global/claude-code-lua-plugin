@@ -4,7 +4,7 @@
 // fenced code, a paste-ready note set off by `---` rules, and lines copied word for word from a tool's own
 // `terms` / `scorecard` / `numbered` / `options` fields. Hits are CANDIDATES: a grader confirms or dismisses each.
 
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { QaError, emit, fail, parseArgs, readJson, readJsonOr, readJsonl, resolveRunDir, writeJson } from './io.mjs';
 import { loadRecord } from './recorder.mjs';
 import { loadRun } from './state.mjs';
@@ -354,7 +354,8 @@ export async function cliReadability(argv, io) {
     const { values: v } = parseArgs(argv, flags);
     let result;
     if (v['turns-file']) {
-      const path = io.cwd && !v['turns-file'].startsWith('/') ? join(io.cwd, v['turns-file']) : v['turns-file'];
+      // isAbsolute, not startsWith('/'): a Windows path (D:\…) is absolute too.
+      const path = io.cwd && !isAbsolute(v['turns-file']) ? join(io.cwd, v['turns-file']) : v['turns-file'];
       let rows = null;
       try {
         const parsed = await readJson(path);
@@ -363,7 +364,10 @@ export async function cliReadability(argv, io) {
       } catch { /* not a single JSON document: try JSONL */ }
       if (!rows) rows = await readJsonl(path);
       let vocabulary = [];
-      if (v['vocabulary-file']) vocabulary = (await readJsonOr(join(io.cwd, v['vocabulary-file']), [])) ?? [];
+      if (v['vocabulary-file']) {
+        const vocab = v['vocabulary-file'];
+        vocabulary = (await readJsonOr(io.cwd && !isAbsolute(vocab) ? join(io.cwd, vocab) : vocab, [])) ?? [];
+      }
       const { rows: graded, fails } = gradeTurns(rows, { technical: !!v.technical, vocabulary });
       result = summarise(graded, fails, !!v.technical);
     } else {

@@ -1,6 +1,6 @@
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import {
   QaError, appendJsonl, appendText, emit, fail, hex, newRunId, parseArgs, playerId, readJson, readJsonOr, readJsonl,
   resolveRunDir, runFolder, runFolderRel, threadId, writeJson, writeText,
@@ -122,7 +122,8 @@ describe('ids and paths', () => {
     expect(runFolderRel('icp-01', 1)).toBe(join('runs', 'icp-01', 'r1'));
   });
   test('resolveRunDir', () => {
-    expect(resolveRunDir({ cwd: '/work' }, 'x/y')).toBe(join('/work', 'x', 'y'));
+    // resolve, not join: on Windows a rooted cwd gains the drive letter.
+    expect(resolveRunDir({ cwd: '/work' }, 'x/y')).toBe(resolve('/work', 'x', 'y'));
     expect(resolveRunDir({ cwd: '/work' }, '/abs')).toBe('/abs');
     expect(() => resolveRunDir({ cwd: '/work' }, '')).toThrow(/--run-dir/);
   });

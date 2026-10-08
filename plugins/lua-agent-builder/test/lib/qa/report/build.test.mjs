@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { validate } from '../../../../lib/qa/schemas.mjs';
-import { buildCss, buildReport, buildTemplate, checkReportTools, cliReport, INSTALL_HINTS, pandocArgs, replaceChips } from '../../../../lib/qa/report/build.mjs';
+import { buildCss, buildReport, buildTemplate, checkReportTools, cliReport, defaultWhich, INSTALL_HINTS, pandocArgs, replaceChips } from '../../../../lib/qa/report/build.mjs';
 import { makeIo, tmpRun } from './helpers.mjs';
 
 const NOW = () => new Date('2026-10-07T16:00:00.000Z');
@@ -44,7 +44,8 @@ describe('checkReportTools', () => {
   });
   it('scans PATH for executables by default', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'qa-which-'));
-    const bin = join(dir, 'pandoc');
+    // Windows runs only PATHEXT names, and has no execute bit to tell a bare file apart.
+    const bin = join(dir, process.platform === 'win32' ? 'pandoc.EXE' : 'pandoc');
     await writeFile(bin, '#!/bin/sh\n');
     await chmod(bin, 0o755);
     await writeFile(join(dir, 'weasyprint'), 'not executable');
@@ -59,6 +60,22 @@ describe('checkReportTools', () => {
       expect(t.pdf).toBe(false);
     } finally {
       process.env.PATH = saved;
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+  it('on Windows only PATHEXT names count, and a bare file without one does not', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'qa-which-win-'));
+    try {
+      await writeFile(join(dir, 'weasyprint'), 'no extension');
+      await chmod(join(dir, 'weasyprint'), 0o755);
+      await writeFile(join(dir, 'pandoc.EXE'), 'exe');
+      await chmod(join(dir, 'pandoc.EXE'), 0o755);
+      const env = { Path: dir, PATHEXT: '.COM;.EXE' };
+      expect(await defaultWhich('pandoc', env, 'win32')).toBe(join(dir, 'pandoc.EXE'));
+      expect(await defaultWhich('weasyprint', env, 'win32')).toBeNull();
+      expect(await defaultWhich('pandoc', { Path: dir }, 'win32')).toBe(join(dir, 'pandoc.EXE'));
+      expect(await defaultWhich('weasyprint', { PATH: dir }, 'linux')).toBe(join(dir, 'weasyprint'));
+    } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });
