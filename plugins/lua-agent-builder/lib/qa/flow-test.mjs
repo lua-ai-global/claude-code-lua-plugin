@@ -51,6 +51,14 @@ export function reachedSteps(stdout) {
 }
 
 /**
+ * Whether step `id` ran. A step inside `foreach` runs once per item and the offline ledger keys each run by
+ * index (`checkOne[0]`, `checkOne[1]`, …), so any indexed run of it counts.
+ */
+export function stepReached(reached, id) {
+  return reached.some((s) => s === id || (s.startsWith(`${id}[`) && /^\[\d+\]$/.test(s.slice(id.length))));
+}
+
+/**
  * @returns {{status:'pass'|'fail'|'error', reasons:string[], reached:string[]|null}}
  */
 export function judgeFlowTest(test, result) {
@@ -64,8 +72,8 @@ export function judgeFlowTest(test, result) {
   if ((expect.reachNodes?.length || expect.notReachNodes?.length) && reached === null) {
     notes.push('note: step list not in output; reachNodes check skipped');
   } else if (reached) {
-    for (const id of expect.reachNodes ?? []) if (!reached.includes(id)) reasons.push(`step ${id} was not reached`);
-    for (const id of expect.notReachNodes ?? []) if (reached.includes(id)) reasons.push(`step ${id} was reached but should not have been`);
+    for (const id of expect.reachNodes ?? []) if (!stepReached(reached, id)) reasons.push(`step ${id} was not reached`);
+    for (const id of expect.notReachNodes ?? []) if (stepReached(reached, id)) reasons.push(`step ${id} was reached but should not have been`);
   }
   for (const needle of expect.outputIncludes ?? []) {
     if (!String(result.stdout).includes(needle)) reasons.push(`output does not include "${needle}"`);

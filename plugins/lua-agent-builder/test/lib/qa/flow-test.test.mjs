@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { cliFlowTest, flowTestArgv, judgeFlowTest, reachedSteps } from '../../../lib/qa/flow-test.mjs';
+import { cliFlowTest, flowTestArgv, judgeFlowTest, reachedSteps, stepReached } from '../../../lib/qa/flow-test.mjs';
 import { assertAllowedLuaArgv } from '../../../lib/qa/safety.mjs';
 import { readJson } from '../../../lib/qa/io.mjs';
 import { validate } from '../../../lib/qa/schemas.mjs';
@@ -70,6 +70,30 @@ describe('judgeFlowTest', () => {
     expect(r.status).toBe('fail');
     expect(r.reasons).toEqual(['step refund was not reached', 'step escalate was reached but should not have been']);
     expect(r.reached).toEqual(['classify', 'escalate']);
+  });
+  test('a foreach step counts as reached through its indexed runs (lua-cli 3.45.0 ledger keys checkOne[0], checkOne[1])', () => {
+    // The ledger of a real restock-check run: the foreach body never appears under its bare id.
+    const steps = {
+      items: { stepId: 'items', status: 'completed' },
+      'foreach@1': { stepId: 'foreach@1', status: 'completed' },
+      summarise: { stepId: 'summarise', status: 'completed' },
+      'checkOne[0]': { stepId: 'checkOne[0]', status: 'completed' },
+      'checkOne[1]': { stepId: 'checkOne[1]', status: 'completed' },
+      'foreach@1.join': { stepId: 'foreach@1.join', status: 'completed' },
+    };
+    const out = JSON.stringify({ success: true, data: { status: 'completed', ledger: { steps } } });
+    expect(judgeFlowTest(FT('a', { expect: { reachNodes: ['items', 'checkOne', 'summarise'] } }), { exitCode: 0, stdout: out })).toMatchObject({ status: 'pass', reasons: [] });
+    const r = judgeFlowTest(FT('a', { expect: { notReachNodes: ['checkOne'] } }), { exitCode: 0, stdout: out });
+    expect(r.reasons).toEqual(['step checkOne was reached but should not have been']);
+  });
+  test('stepReached matches an id or its numeric foreach index, never a prefix or another suffix', () => {
+    const reached = ['checkOne[0]', 'checkOne[12]', 'assess', 'foreach@1.join'];
+    expect(stepReached(reached, 'checkOne')).toBe(true);
+    expect(stepReached(reached, 'assess')).toBe(true);
+    expect(stepReached(reached, 'check')).toBe(false);
+    expect(stepReached(reached, 'foreach@1')).toBe(false);
+    expect(stepReached(['checkOne[x]', 'checkOne[0]x'], 'checkOne')).toBe(false);
+    expect(stepReached([], 'checkOne')).toBe(false);
   });
   test('without a step list the node check is skipped with a note and the test still passes', () => {
     const t = FT('a', { expect: { reachNodes: ['classify'] } });
