@@ -76,6 +76,19 @@ const DENY = [
   { pattern: 'lua auth configure --api-key', reason: 'credentials must stay out of the model conversation', authFlow: true },
 ];
 
+// Scoped entries: spellings that are right elsewhere but wrong inside the /lua-qa full suite
+// (1.9.0). `lua sync --check` is the legitimate read of /lua-sync, and `lua chat -e sandbox -m` is
+// what /lua-chat and quick-mode QA run — but a full-suite player or helper prompt must never shell
+// out to them directly: chats go through the recorder (scrubbed env, sandbox lock, player stamp).
+const QA_SCOPE = (path) => {
+  const p = path.replace(/\\/g, '/');
+  return p.startsWith('lib/knowledge/qa/') || /^agents\/lua-qa-[^/]+\.md$/.test(p);
+};
+const SCOPED_DENY = [
+  { pattern: 'lua sync --check', reason: 'the QA suite reads drift from `lua status --json` via `lib/qa/cli.mjs discover`; it never runs `lua sync`', applies: QA_SCOPE },
+  { pattern: 'lua chat -e sandbox -m', reason: 'QA chats go through lib/qa/cli.mjs record (scrubbed env, lock, recorder)', applies: QA_SCOPE },
+];
+
 // `scripts/` is deliberately NOT scanned: lint scripts quote the wrong
 // spellings they guard against.
 const SCAN_DIRS = ['commands', 'agents', 'hooks', 'lib', 'mcp'];
@@ -109,7 +122,8 @@ let scanned = 0;
 async function scan(path, { authOnly = false } = {}) {
   const content = await readFile(path, 'utf8');
   const lines = content.split('\n');
-  for (const { pattern, reason, authFlow } of DENY) {
+  const rules = authOnly ? DENY : [...DENY, ...SCOPED_DENY.filter((r) => r.applies(path))];
+  for (const { pattern, reason, authFlow } of rules) {
     if (authOnly && !authFlow) continue;
     lines.forEach((line, i) => {
       if (!line.includes(pattern)) return;

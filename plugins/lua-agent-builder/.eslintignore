@@ -10,3 +10,6 @@ coverage/
 
 # Plugin node_modules (default, but explicit)
 node_modules/
+
+# Workflow tool scripts (top-level return; run by the Workflow tool, tested via test/lib/qa/workflow/template.test.mjs)
+lib/qa/workflow/*.js

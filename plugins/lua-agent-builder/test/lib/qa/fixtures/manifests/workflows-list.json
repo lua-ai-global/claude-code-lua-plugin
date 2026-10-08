@@ -1,0 +1,9 @@
+{
+  "workflows": [
+    {
+      "name": "view-only",
+      "description": "from list",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}

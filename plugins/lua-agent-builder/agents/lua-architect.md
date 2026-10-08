@@ -118,7 +118,7 @@ End with a next-step menu. **Do NOT try to run the build yourself** — your too
 - /lua-env — set the secrets the plan names (`lua env production -k KEY -v …`; sandbox writes `.env`)
 - /lua-test — run a primitive in the local sandbox
 - /lua-workflow run <name> — offline workflow run with scripted approvals/signals
-- /lua-qa — conversational QA pass against sandbox
+- /lua-qa — quick pass (conversations + workflows + logs) or full suite (diagrams, ≥10 personas × 3 runs, red team, flow/tool/stress tests, PDF report)
 - /lua-deploy — ship (per primitive, a workflow, or promote an agent version)
 - /lua-template — package the agent as a marketplace template
 

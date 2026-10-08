@@ -1,4 +1,5 @@
-node_modules/
+# No trailing slash: it must also match a node_modules symlink (a worktree sharing its dependencies).
+node_modules
 coverage/
 *.log
 .DS_Store

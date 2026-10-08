@@ -23,7 +23,7 @@ Then `/lua-auth`: an existing credential is kept; a new login runs `lua auth con
 
 | Plugin | Description |
 |---|---|
-| [`lua-agent-builder`](./plugins/lua-agent-builder/) | 22 slash commands, 5 subagents, 11 hooks, a 7-file knowledge base verified against lua-cli source (3.33.0 base; 1.3.0 added per-step model classes and the workflow autonomy envelope from lua-cli 3.36.0, 1.4.0 the Job-tier billing rules and the lua-cli 3.37.0 cost read-outs, 1.5.0 log drains and the `lua logs` read window from lua-cli 3.38.0, read from `main`; 1.6.0 headless mode and a hardened production-gate parser; 1.7.0 `/lua-devices`, device credentials that never reach the conversation, and a re-check against lua-cli 3.44.0 / 3.45.0), a local read-only platform MCP server and the public docs MCP |
+| [`lua-agent-builder`](./plugins/lua-agent-builder/) | 22 slash commands, 10 subagents, 13 hooks, a 7-file knowledge base verified against lua-cli source (3.33.0 base; 1.3.0 added per-step model classes and the workflow autonomy envelope from lua-cli 3.36.0, 1.4.0 the Job-tier billing rules and the lua-cli 3.37.0 cost read-outs, 1.5.0 log drains and the `lua logs` read window from lua-cli 3.38.0, read from `main`; 1.6.0 headless mode and a hardened production-gate parser; 1.7.0 `/lua-devices`, device credentials that never reach the conversation, and a re-check against lua-cli 3.44.0 / 3.45.0; 1.8.0 web apps (Lua Apps); 1.9.0 the full QA suite, `/lua-qa full`), a local read-only platform MCP server and the public docs MCP |
 
 ## Quick walkthrough
 
@@ -34,7 +34,8 @@ Then `/lua-auth`: an existing credential is kept; a new login runs `lua auth con
 /lua-new skill ticket-triage     → scaffold + register + compile + test
 /lua-new workflow reply-approval → workflow file, offline test with --approve
 /lua-workflow run reply-approval → more offline scenarios
-/lua-qa                          → conversational + workflow QA against sandbox
+/lua-qa                          → quick: conversational + workflow QA against sandbox
+/lua-qa full [smoke|medium|production-ready] [--interview] → diagrams, persona suite, red team, stress (not in smoke), PDF report (medium by default)
 /lua-deploy                      → one confirmation, then the gated ship sequence
 ```
 

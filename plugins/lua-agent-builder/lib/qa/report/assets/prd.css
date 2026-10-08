@@ -1,0 +1,76 @@
+/* Lua brand: dark cover with the orange→pink→violet gradient, light body for print. */
+@page { size: A4; margin: 22mm 18mm 20mm 18mm;
+  @bottom-left { content: "@@FOOTER@@"; font: 8.5pt -apple-system, "Helvetica Neue", Arial, sans-serif; color: #62626f; }
+  @bottom-right { content: counter(page) " / " counter(pages); font: 8.5pt -apple-system, "Helvetica Neue", Arial, sans-serif; color: #62626f; } }
+@page :first { margin: 0; background: #0a0a0b; @bottom-left { content: none; } @bottom-right { content: none; } }
+:root { --orange: #ff8a00; --pink: #f633a2; --violet: #995ff8; --blue: #0097ff; --ink: #0a0a0b; --panel: #131318; --line: #232330; --dim: #62626f; --muted: #9a9aab;
+  --grad: linear-gradient(92deg, #ff8a00, #f633a2 55%, #995ff8); }
+html { font-size: 10.5pt; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif; color: #111114; line-height: 1.45; }
+h1 { font-size: 22pt; margin: 0 0 6pt; color: #0a0a0b; page-break-before: always; letter-spacing: -0.01em; }
+h1:first-of-type, header h1 { page-break-before: avoid; }
+h2 { font-size: 15pt; margin: 18pt 0 6pt; color: #0a0a0b; border-bottom: 1px solid #e6e6ea; padding-bottom: 3pt; }
+h3 { font-size: 12pt; margin: 14pt 0 4pt; color: #1f1f26; }
+h4 { font-size: 9.5pt; margin: 10pt 0 3pt; color: var(--dim); text-transform: uppercase; letter-spacing: .14em; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+p, li { orphans: 3; widows: 3; }
+ul, ol { padding-left: 1.3em; }
+table { border-collapse: collapse; width: 100%; margin: 8pt 0 12pt; font-size: 9pt; page-break-inside: auto; }
+th, td { border: 1px solid #d9d9df; padding: 4pt 6pt; vertical-align: top; text-align: left; }
+th { background: #f3f3f6; font-weight: 600; }
+tr { page-break-inside: avoid; }
+code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 8.8pt; background: #f3f3f6; padding: 0 3px; border-radius: 3px; }
+pre { background: var(--ink); color: #f4f4f6; padding: 9pt 11pt; border-radius: 8px; font-size: 7.8pt; line-height: 1.38; white-space: pre-wrap; word-break: break-word; page-break-inside: avoid; border-left: 3px solid var(--orange); }
+pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+pre { page-break-inside: auto; }
+pre.text, pre.text code { white-space: pre; font-size: 6.6pt; line-height: 1.3; border-left-color: var(--violet); }
+blockquote { border-left: 3px solid var(--pink); margin: 8pt 0; padding: 4pt 10pt; color: #2b2b33; background: #faf7fc; }
+/* cover */
+.cover { page-break-after: always; background: var(--ink); color: #f4f4f6; padding: 120pt 60pt 60pt; min-height: 297mm; box-sizing: border-box; margin: 0; }
+.cover-logo { width: 140pt; height: 42pt; background-repeat: no-repeat; background-size: contain; background-position: left center; margin-bottom: 60pt; }
+.cover .kicker { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 9pt; letter-spacing: .24em; text-transform: uppercase; color: var(--muted); margin-bottom: 16pt; }
+.cover h1 { font-size: 34pt; line-height: 1.08; page-break-before: avoid; border: 0; color: #f4f4f6; margin: 0 0 14pt; }
+.cover .sub { font-size: 13pt; color: var(--muted); margin-top: 6pt; max-width: 34em; line-height: 1.45; }
+.cover .meta { margin-top: 48pt; font-size: 9.5pt; color: var(--muted); border-top: 1px solid var(--line); padding-top: 14pt; }
+.cover .meta div { margin: 4pt 0; }
+.cover .meta b { color: #f4f4f6; font-weight: 600; margin-right: 4pt; }
+.cover .tag { font-size: 7.5pt; }
+/* tags */
+.tag { display: inline-block; font-size: 8pt; font-weight: 600; padding: 1pt 6pt; border-radius: 3px; margin-right: 3pt; white-space: nowrap; }
+.exists { background: #dcfce7; color: #166534; } .extend { background: #fef3c7; color: #92400e; } .new { background: #fee2e2; color: #991b1b; }
+/* chips for this guide: Live (production), Staging only, Next. Same colours as exists / extend / new. */
+.live { background: #dcfce7; color: #166534; } .staging { background: #fef3c7; color: #92400e; } .next { background: #fee2e2; color: #991b1b; }
+/* chips for the QA report: Pass, Partial, Fail. Same colours again. */
+.pass { background: #dcfce7; color: #166534; } .partial { background: #fef3c7; color: #92400e; } .fail { background: #fee2e2; color: #991b1b; }
+/* QA tier badges: Smoke, Medium, Production-ready. The brand's blue, violet and pink, so a tier never reads as a result. */
+.tier-smoke { background: #e0f2fe; color: #075985; } .tier-medium { background: #ede9fe; color: #5b21b6; } .tier-production { background: #fce7f3; color: #9d174d; }
+.cover .cover-tier { margin: 0 0 12pt; } .cover .cover-tier .tag { font-size: 10pt; padding: 2pt 9pt; letter-spacing: .04em; }
+/* TOC */
+.toc-page { page-break-after: always; }
+.toc-title { page-break-before: avoid; font-size: 18pt; }
+#TOC ul { list-style: none; padding-left: 0; } #TOC > ul > li { margin: 2pt 0; break-inside: avoid; } #TOC ul ul { padding-left: 1.2em; font-size: 8.6pt; }
+#TOC a { color: #111114; text-decoration: none; }
+#TOC { columns: 2; column-gap: 28pt; font-size: 9pt; }
+#TOC li { margin: 0.5pt 0; }
+hr { border: 0; border-top: 1px solid #e6e6ea; margin: 14pt 0; }
+.cover h1, .toc-title { page-break-before: avoid; }
+/* callouts */
+.lede { font-size: 12pt; line-height: 1.5; background: #fff6ec; border-left: 3px solid var(--orange); padding: 10pt 14pt; margin: 0 0 14pt; border-radius: 0 6px 6px 0; }
+.honest { background: #f6f3fb; border-left: 3px solid var(--violet); padding: 8pt 12pt; margin: 8pt 0 12pt; border-radius: 0 6px 6px 0; }
+.honest h4 { margin-top: 0; color: var(--violet); }
+.pull { font-size: 13pt; line-height: 1.4; color: #0a0a0b; margin: 10pt 0 14pt; padding-left: 12pt; border-left: 3px solid var(--pink); }
+.grid3 { display: flex; gap: 8pt; margin: 8pt 0 12pt; }
+.grid3 > div { flex: 1; border: 1px solid #e6e6ea; border-radius: 8px; padding: 8pt 10pt; font-size: 9pt; }
+.grid3 h4 { margin-top: 0; }
+figure.diagram { margin: 8pt 0 12pt; page-break-inside: avoid; }
+figure.diagram svg { width: 100%; height: auto; display: block; }
+figure.diagram img { width: 100%; height: auto; display: block; }
+figure.diagram figcaption { font-size: 9pt; font-weight: 600; margin-bottom: 3pt; color: #1f1f26; }
+/* stat tiles (short version) */
+.numbers { display: flex; flex-wrap: wrap; gap: 6pt; margin: 8pt 0 12pt; }
+.numbers .num { flex: 1 1 0; min-width: 0; border: 1px solid #e6e6ea; border-top: 3px solid var(--orange); border-radius: 6px; padding: 6pt 8pt; break-inside: avoid; }
+.numbers .num b { display: block; font-size: 15pt; line-height: 1.1; color: #0a0a0b; margin-bottom: 3pt; }
+.numbers .num span { display: block; font-size: 7.6pt; line-height: 1.3; color: #3a3a44; }
+td code, th code { overflow-wrap: anywhere; word-break: break-word; }
+td, th { overflow-wrap: anywhere; }
+/* keep short code blocks whole; weasyprint still splits a block taller than a page */
+pre { page-break-inside: avoid; }

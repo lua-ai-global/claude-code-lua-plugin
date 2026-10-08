@@ -1,0 +1,16 @@
+{
+  "name": "view-only",
+  "graph": {
+    "definition": {
+      "graph": [
+        {
+          "type": "step",
+          "step": {
+            "id": "only",
+            "description": "Only step"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -13,7 +13,7 @@
 // invocation should pass either `-t` (bare, for fresh UUID) or
 // `-t <id>` (named thread). This lint enforces that contract.
 //
-// SCOPE: scans agents/, commands/, hooks/. Skips JS audit-history comments
+// SCOPE: scans agents/, commands/, hooks/, lib/knowledge/qa/. Skips JS audit-history comments
 // and markdown lines containing "iteration-" / "audit" (history context).
 
 import { readFile, readdir, stat } from 'node:fs/promises';
@@ -22,7 +22,8 @@ import { join } from 'node:path';
 let failed = false;
 const fail = (msg) => { console.error(`✗ ${msg}`); failed = true; };
 
-const SCAN_DIRS = ['agents', 'commands', 'hooks'];
+// 1.9.0: the /lua-qa full-suite prompts in lib/knowledge/qa are read by players and graders.
+const SCAN_DIRS = ['agents', 'commands', 'hooks', 'lib/knowledge/qa'];
 
 // Match `lua chat ... -m <value> ...` invocations. The `-m` must be
 // followed by a non-empty argument (a quoted string, a placeholder like

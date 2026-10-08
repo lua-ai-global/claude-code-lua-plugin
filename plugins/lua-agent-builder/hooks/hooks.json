@@ -73,6 +73,12 @@
           },
           {
             "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/guard-qa-helper.mjs",
+            "if": "Bash(*lib/qa/cli.mjs*)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/warn-version-zero.mjs",
             "if": "Bash(*push*--set-version 0.*)",
             "timeout": 5

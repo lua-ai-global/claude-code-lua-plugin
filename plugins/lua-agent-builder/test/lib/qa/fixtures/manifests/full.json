@@ -1,0 +1,534 @@
+{
+  "version": "2",
+  "compiledAt": "2026-01-01T00:00:00.000Z",
+  "primitives": [
+    {
+      "kind": "agent",
+      "name": "sample-support",
+      "description": "Sample",
+      "persona": "You are a calm support agent for Example Shop. Help with orders and refunds. Never share customer data. You are a calm support agent for Example Shop. Help with orders and refunds. Never share customer data. You are a calm support agent for Example Shop. Help with orders and refunds. Never share customer data. You are a calm support agent for Example Shop. Help with orders and refunds. Never share customer data. You are a calm support agent for Example Shop. Help with orders and refunds. Never share customer data. You are a calm support agent for Example Shop. Help with orders and refunds. Never share customer data. You are a calm support agent for Example Shop. Help with orders and refunds. Never share customer data. You are a calm support agent for Example Shop. Help with orders and refunds. Never share customer data. You are a calm support agent for Example Shop. Help with orders and refunds. Never share customer data. You are a calm support agent for Example Shop. Help with orders and refunds. Never share customer data. ",
+      "model": "sample-model-1"
+    },
+    {
+      "kind": "skill",
+      "name": "orders",
+      "description": "Order questions and changes",
+      "context": "Use for anything about an order: status, cancel, refund.",
+      "tools": [
+        "get_order_status",
+        "cancel_order",
+        "refund_order"
+      ],
+      "hasCondition": false
+    },
+    {
+      "kind": "skill",
+      "name": "faq",
+      "description": "Answers from the help centre",
+      "context": "Search the help centre.",
+      "tools": [
+        "search_articles"
+      ],
+      "hasCondition": true
+    },
+    {
+      "kind": "skill",
+      "name": "account",
+      "description": "Profile changes",
+      "context": "Change profile fields.",
+      "tools": [
+        "update_profile",
+        "ghost_tool"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "get_order_status",
+      "description": "Get the status of an order. Use when the customer asks where their order is.",
+      "path": "artifacts/tool/get_order_status.js",
+      "schemas": {
+        "input": {
+          "type": "object",
+          "properties": {
+            "orderId": {
+              "type": "string",
+              "description": "order id"
+            }
+          },
+          "required": [
+            "orderId"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "tool",
+      "name": "cancel_order",
+      "description": "Cancel an order that has not shipped.",
+      "path": "artifacts/tool/cancel_order.js",
+      "schemas": {
+        "input": {
+          "type": "object",
+          "properties": {
+            "orderId": {
+              "type": "string",
+              "description": "order id"
+            },
+            "reason": {
+              "type": "string",
+              "description": "why"
+            }
+          },
+          "required": [
+            "orderId"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "tool",
+      "name": "refund_order",
+      "description": "Refund an order.",
+      "path": "artifacts/tool/refund_order.js",
+      "schemas": {
+        "input": {
+          "type": "object",
+          "properties": {
+            "orderId": {
+              "type": "string",
+              "description": "order id"
+            },
+            "amount": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "orderId",
+            "amount"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "tool",
+      "name": "search_articles",
+      "description": "Search help centre articles.",
+      "path": "artifacts/tool/search_articles.js",
+      "schemas": {
+        "input": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "query"
+            }
+          },
+          "required": [
+            "query"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "tool",
+      "name": "update_profile",
+      "description": "Update a customer profile field.",
+      "path": "artifacts/tool/update_profile.js",
+      "schemas": {
+        "input": {
+          "type": "object",
+          "properties": {
+            "field": {
+              "type": "string",
+              "description": "field"
+            },
+            "value": {
+              "type": "string",
+              "description": "value"
+            }
+          },
+          "required": [
+            "field"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "tool",
+      "name": "flag_fraud",
+      "description": "Mark an order as suspected fraud.",
+      "path": "artifacts/tool/flag_fraud.js",
+      "schemas": {
+        "input": {
+          "type": "object",
+          "properties": {
+            "orderId": {
+              "type": "string",
+              "description": "order id"
+            }
+          },
+          "required": [
+            "orderId"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "tool",
+      "name": "send_email",
+      "description": "Send an email to the customer.",
+      "path": "artifacts/tool/send_email.js",
+      "schemas": {
+        "input": {
+          "type": "object",
+          "properties": {
+            "to": {
+              "type": "string",
+              "description": "address"
+            },
+            "body": {
+              "type": "string",
+              "description": "text"
+            }
+          },
+          "required": [
+            "to"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "tool",
+      "name": "unattached_helper",
+      "description": "Does a thing.",
+      "path": "artifacts/tool/unattached_helper.js",
+      "schemas": {
+        "input": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      }
+    },
+    {
+      "kind": "preprocessor",
+      "name": "language-detect",
+      "description": "Detects the language"
+    },
+    {
+      "kind": "postprocessor",
+      "name": "tone-check",
+      "description": "Softens the tone"
+    },
+    {
+      "kind": "job",
+      "name": "nightly-sync",
+      "description": "Sync",
+      "schedule": {
+        "type": "cron",
+        "expression": "0 2 * * *",
+        "timezone": "UTC"
+      }
+    },
+    {
+      "kind": "job",
+      "name": "every-minute",
+      "description": "Poll",
+      "schedule": {
+        "type": "interval",
+        "seconds": 60
+      }
+    },
+    {
+      "kind": "job",
+      "name": "once",
+      "description": "One shot",
+      "schedule": {
+        "type": "once"
+      }
+    },
+    {
+      "kind": "webhook",
+      "name": "order-shipped",
+      "description": "Shipped events"
+    },
+    {
+      "kind": "trigger",
+      "name": "new-message",
+      "description": "Inbound"
+    },
+    {
+      "kind": "mcp-server",
+      "name": "crm",
+      "description": "CRM",
+      "config": {
+        "transport": "streamable-http",
+        "url": "https://crm.example.com/mcp"
+      }
+    },
+    {
+      "kind": "workflow",
+      "name": "refund-review",
+      "description": "Reviews a refund request and pays it out after approval.",
+      "form": "graph",
+      "schedule": {
+        "expression": "0 9 * * 1",
+        "timezone": "UTC"
+      },
+      "schemas": {
+        "input": {
+          "type": "object",
+          "properties": {
+            "orderId": {
+              "type": "string",
+              "description": "order"
+            },
+            "amount": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "orderId"
+          ]
+        }
+      },
+      "envKeys": [
+        "PAYMENTS_BASE_URL"
+      ],
+      "graph": {
+        "definition": {
+          "inputSchema": {
+            "type": "object"
+          },
+          "graph": [
+            {
+              "type": "step",
+              "step": {
+                "id": "load",
+                "description": "Load the order"
+              },
+              "sideEffects": "none"
+            },
+            {
+              "type": "agent",
+              "id": "classify",
+              "agentId": "agent-1",
+              "promptTemplate": "Classify the refund request as small, large or fraud. Be strict about fraud.",
+              "requiredConnections": [
+                "payments"
+              ]
+            },
+            {
+              "type": "conditional",
+              "exclusive": true,
+              "steps": [
+                {
+                  "type": "step",
+                  "step": {
+                    "id": "autoRefund",
+                    "description": "Refund automatically"
+                  },
+                  "sideEffects": "external"
+                },
+                {
+                  "type": "approval",
+                  "id": "managerOk",
+                  "title": "Manager approves large refund",
+                  "onDeny": "continue",
+                  "onTimeout": "deny"
+                },
+                {
+                  "type": "tool",
+                  "id": "flag",
+                  "toolId": "flag_fraud"
+                }
+              ],
+              "predicates": [
+                {
+                  "op": "eq",
+                  "left": {
+                    "path": "stepResults.classify.size"
+                  },
+                  "right": {
+                    "literal": "small"
+                  }
+                },
+                {
+                  "op": "and",
+                  "args": [
+                    {
+                      "op": "eq",
+                      "left": {
+                        "path": "stepResults.classify.size"
+                      },
+                      "right": {
+                        "literal": "large"
+                      }
+                    },
+                    {
+                      "op": "not",
+                      "arg": {
+                        "op": "eq",
+                        "left": {
+                          "path": "stepResults.load.state"
+                        },
+                        "right": {
+                          "literal": "locked"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "op": "in",
+                  "value": {
+                    "path": "stepResults.classify.size"
+                  },
+                  "set": [
+                    "fraud",
+                    "unknown"
+                  ]
+                }
+              ],
+              "otherwise": {
+                "type": "step",
+                "step": {
+                  "id": "noop",
+                  "description": "Do nothing"
+                }
+              }
+            },
+            {
+              "type": "waitForSignal",
+              "id": "bankReply",
+              "signal": "bank.reply",
+              "onTimeout": "continue"
+            },
+            {
+              "type": "parallel",
+              "steps": [
+                {
+                  "type": "tool",
+                  "id": "notifyCustomer",
+                  "toolId": "send_email",
+                  "sideEffects": "external"
+                },
+                {
+                  "type": "workflow",
+                  "id": "audit",
+                  "workflowId": "audit-log"
+                }
+              ]
+            },
+            {
+              "type": "foreach",
+              "step": {
+                "type": "tool",
+                "id": "eachLine",
+                "toolId": "refund_order"
+              },
+              "opts": {
+                "items": {
+                  "path": "x"
+                }
+              }
+            },
+            {
+              "type": "loop",
+              "loopType": "until",
+              "step": {
+                "type": "step",
+                "step": {
+                  "id": "poll",
+                  "description": "Poll the bank"
+                }
+              },
+              "predicate": {
+                "op": "truthy",
+                "value": {
+                  "path": "stepResults.poll.done"
+                }
+              },
+              "maxIterations": 5
+            },
+            {
+              "type": "sleep",
+              "id": "cool",
+              "duration": 90000
+            },
+            {
+              "type": "mapping",
+              "id": "shape",
+              "mapConfig": "{}"
+            },
+            {
+              "type": "exoticNode",
+              "id": "mystery"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "kind": "workflow",
+      "name": "weekly-digest",
+      "description": "Script form.",
+      "form": "script",
+      "script": "export const meta = {}",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "kind": "workflow",
+      "name": "view-only",
+      "description": "Graph comes from the server view only.",
+      "form": "graph"
+    },
+    {
+      "kind": "workflow",
+      "name": "non-exclusive",
+      "description": "No catch-all.",
+      "form": "graph",
+      "graph": {
+        "definition": {
+          "graph": [
+            {
+              "type": "conditional",
+              "exclusive": false,
+              "steps": [
+                {
+                  "type": "step",
+                  "step": {
+                    "id": "a",
+                    "description": "Branch A"
+                  }
+                },
+                {
+                  "type": "step",
+                  "step": {
+                    "id": "b",
+                    "description": "Branch B"
+                  }
+                }
+              ],
+              "predicates": [
+                {
+                  "op": "exists",
+                  "path": "initData.a"
+                },
+                {
+                  "op": "notExists",
+                  "path": "initData.b"
+                }
+              ]
+            },
+            {
+              "type": "approval",
+              "id": "plain",
+              "title": "Plain approval"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
