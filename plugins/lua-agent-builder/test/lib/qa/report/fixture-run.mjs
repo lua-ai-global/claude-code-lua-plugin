@@ -4,6 +4,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { PLUGIN_VERSION } from '../fixtures/plugin-version.mjs';
 
 const SVG = (label) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120" width="320" height="120"><rect width="320" height="120" fill="#0a0a0b"/><rect x="20" y="30" width="280" height="60" rx="8" fill="#131318" stroke="#ff8a00"/><text x="160" y="66" fill="#f4f4f6" font-size="14" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">${label}</text></svg>\n`;
 
@@ -25,7 +26,7 @@ const MAJOR = (turn, why, quote) => ({ severity: 'major', turn, quote, why, fixL
 export async function writeFixtureRun(dir) {
   const bar = { runsPerCard: 3, passRequired: 3 };
   await put(dir, 'run.json', {
-    schema: 'lua-qa/run@1', runId: '20261007-141502-9f3c', mode: 'full', createdAt: '2026-10-07T14:15:02.000Z', projectDir: '/tmp/demo-agent', pluginVersion: '1.8.0', luaCliVersion: '3.45.0',
+    schema: 'lua-qa/run@1', runId: '20261007-141502-9f3c', mode: 'full', createdAt: '2026-10-07T14:15:02.000Z', projectDir: '/tmp/demo-agent', pluginVersion: PLUGIN_VERSION, luaCliVersion: '3.45.0',
     agent: { id: 'agent-demo', name: 'Demo Support Agent', model: 'example-model' },
     environment: { kind: 'sandbox', agentVersion: null, testSession: false, logEnvironment: 'sandbox' },
     bar, counts: { icp: 4, redTeam: 2 },

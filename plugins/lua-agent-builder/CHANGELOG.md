@@ -6,7 +6,9 @@ All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `
 
 **The full QA suite: `/lua-qa full`.** Bare `/lua-qa` (and `/lua-qa <name>`, `/lua-qa quick …`) is still the 1.7.0 quick pass, with no new question; `/lua-qa full` runs the suite.
 
-Versioning: 1.8.0 was released with web apps (#17), so this suite is 1.9.0. If #18 (`fix/deploy-hook-false-positives`) merges first, its entry stays below this one; it needs a version of its own above 1.8.0, and this entry stays on top.
+Versioning: 1.8.0 was released with web apps (#17) and the `v1.8.0` tag exists, so this suite is 1.9.0. #18 (`fix/deploy-hook-false-positives`) is still open and declares 1.7.1, which is below that tag, so `release-prod.yml` would cut no release for it as it stands. Whichever merges second rebases and re-runs `lint-release-version`:
+- **This PR first (planned):** main becomes 1.9.0. #18 then takes 1.9.1, and its entry goes above this one.
+- **#18 first:** #18 takes 1.8.1, with its entry above 1.8.0. This PR stays 1.9.0, and this entry stays on top.
 
 ### New: `/lua-qa full`
 
@@ -91,7 +93,7 @@ The command shows all of this as a short list of assumptions, and the report's m
 
 All helpers sit behind one entry, `node ${CLAUDE_PLUGIN_ROOT}/lib/qa/cli.mjs <subcommand>` (27 subcommands, Node only, no runtime dependencies), and one permission rule, `Bash(node *lua-agent-builder*/lib/qa/cli.mjs *)`.
 - **`lua` runs only through `lib/qa/spawn.mjs`**, against a coded allowlist of argument shapes, with the deploy classifier (`lib/tokenizer.mjs`) as a second check.
-- **New hook `guard-qa-helper.mjs`** (PreToolUse, `if: Bash(*lib/qa/cli.mjs*)`). The allow rule is a glob, and a glob would also admit any other file named `lib/qa/cli.mjs` under a path containing `lua-agent-builder`. The hook resolves the real path of every such script and blocks any file that is not this plugin's own helper. It also blocks calls it cannot verify: a relative path, node flags or `NODE_OPTIONS` before the script, command substitution, or an unexpanded variable. That makes 13 hooks.
+- **New hook `guard-qa-helper.mjs`** (PreToolUse, `if: Bash(*lib/qa/cli.mjs*)`). The allow rule is a glob whose `*` crosses `/` (the Claude Code permissions docs, and a live `claude -p` probe on 2.1.293, recorded in `permissions-qa.test.mjs`), so it would also admit any other file named `lib/qa/cli.mjs` under a path containing `lua-agent-builder`. The hook resolves the real path of every such script and blocks any file that is not this plugin's own helper. It also blocks calls it cannot verify: a relative path, node flags or `NODE_OPTIONS` before the script, command substitution, or an unexpanded variable. That makes 13 hooks.
 - **Scrubbed environment.** A sandbox chat uploads the process environment as skill env, so chats spawn `lua` with an environment allowlist that always drops `LUA_API_KEY`. `lua test` keeps the full environment: it uploads nothing, and tools may need those secrets.
 - **Gates and consent.** Gates are stamped in `state.json`. Production, and a staged version without a test session, needs the exact consent option `I consent to running this against production`; `Cancel` or a paraphrase is refused.
   - The stamp command (`--production-consent-text`) matches a new `ask` rule, so Claude Code itself asks the user. No agent can mint consent unprompted.

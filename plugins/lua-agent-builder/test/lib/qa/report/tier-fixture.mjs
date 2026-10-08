@@ -6,6 +6,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { TIERS, exposedAttackClasses } from '../../../../lib/qa/tiers.mjs';
+import { PLUGIN_VERSION } from '../fixtures/plugin-version.mjs';
 
 const SVG = (label) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120" width="320" height="120"><rect width="320" height="120" fill="#0a0a0b"/><rect x="20" y="30" width="280" height="60" rx="8" fill="#131318" stroke="#ff8a00"/><text x="160" y="66" fill="#f4f4f6" font-size="14" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">${label}</text></svg>\n`;
 
@@ -62,7 +63,7 @@ export async function writeTierFixture(dir, tierId = 'medium') {
   const at = (min) => new Date(created + min * 60000).toISOString();
 
   await put(dir, 'run.json', {
-    schema: 'lua-qa/run@1', runId, mode: 'full', tier: tierId, createdAt: at(0), projectDir: '/tmp/helpdesk-demo', pluginVersion: '1.8.0', luaCliVersion: '3.45.0',
+    schema: 'lua-qa/run@1', runId, mode: 'full', tier: tierId, createdAt: at(0), projectDir: '/tmp/helpdesk-demo', pluginVersion: PLUGIN_VERSION, luaCliVersion: '3.45.0',
     agent: { id: 'agent-demo-helpdesk', name: 'Demo IT Help Desk', model: 'example-model' },
     environment: tierId === 'production-ready'
       ? { kind: 'staged', agentVersion: 7, testSession: true, logEnvironment: 'production' }

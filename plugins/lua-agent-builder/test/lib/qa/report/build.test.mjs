@@ -5,6 +5,7 @@ import { delimiter, join } from 'node:path';
 import { validate } from '../../../../lib/qa/schemas.mjs';
 import { buildCss, buildReport, buildTemplate, checkReportTools, cliReport, defaultWhich, INSTALL_HINTS, pandocArgs, replaceChips } from '../../../../lib/qa/report/build.mjs';
 import { makeIo, tmpRun } from './helpers.mjs';
+import { PLUGIN_VERSION } from '../fixtures/plugin-version.mjs';
 
 const NOW = () => new Date('2026-10-07T16:00:00.000Z');
 
@@ -84,9 +85,9 @@ describe('checkReportTools', () => {
 describe('template, css and chips', () => {
   it('buildTemplate fills placeholders and embeds the logo, escaping values', () => {
     const out = buildTemplate('T:@@TITLE_HTML@@|@@SUB@@|@@PREPARED_FOR@@|@@DATE@@|@@ENVIRONMENT@@|@@PLUGIN_VERSION@@|LOGO_URI|$&', {
-      title: 'A<br>B', sub: '<x> & "y"', preparedFor: 'me', date: '7 October 2026', pluginVersion: '1.8.0', logoSvg: '<svg/>',
+      title: 'A<br>B', sub: '<x> & "y"', preparedFor: 'me', date: '7 October 2026', pluginVersion: PLUGIN_VERSION, logoSvg: '<svg/>',
     });
-    expect(out).toBe(`T:A<br>B|&lt;x&gt; &amp; &quot;y&quot;|me|7 October 2026||1.8.0|data:image/svg+xml;base64,${Buffer.from('<svg/>').toString('base64')}|$&`);
+    expect(out).toBe(`T:A<br>B|&lt;x&gt; &amp; &quot;y&quot;|me|7 October 2026||${PLUGIN_VERSION}|data:image/svg+xml;base64,${Buffer.from('<svg/>').toString('base64')}|$&`);
   });
   it('buildCss writes a CSS-escaped footer', () => {
     expect(buildCss('a { content: "@@FOOTER@@"; }', { footer: 'Lua · QA "x" \\ y\nz' })).toBe('a { content: "Lua · QA \\"x\\" \\\\ y z"; }');
@@ -124,7 +125,7 @@ describe('buildReport', () => {
     expect(html).toContain('<h1>QA report:<br>Demo Support Agent</h1>');
     expect(html).toContain('<div><b>Date</b> 7 October 2026</div>');
     expect(html).toContain('<div><b>Environment</b> the sandbox</div>');
-    expect(html).toContain('lua-agent-builder 1.8.0');
+    expect(html).toContain(`lua-agent-builder ${PLUGIN_VERSION}`);
     expect(html).toContain('<nav id="TOC" class="toc-page">');
     expect(html).toContain('<a href="#short-version" id="toc-short-version">The short version</a>');
     expect(html).toContain('<link rel="stylesheet" href="prd.css">');

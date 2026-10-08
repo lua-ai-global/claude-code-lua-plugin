@@ -2,16 +2,24 @@
 // from an installed cache path and from a --plugin-dir worktree; the guard hook blocks any other file
 // with that name; the consent stamp asks; and the template still admits no bare production verb.
 //
-// Unverified live: does Claude Code's `*` match across `/` in this rule? NOT verified
-// live in this build (no `claude -p` permission probe was run). The glob model below treats `*` as
-// any characters, as the 2026-09-12 live check established for the existing rules. Fallback if a
-// real install disagrees: the rule simply prompts for each helper call (safe), and /lua-doctor says so.
+// Does Claude Code's `*` match across `/` in this rule? Yes, verified live on 2026-10-08.
+// Docs (code.claude.com/docs/en/permissions, "Wildcard patterns"): "A `*` in a Bash rule matches any
+// text, including spaces" and "Bash rules match the whole command text, with `*` standing in for any text."
+// Live probe, Claude Code 2.1.293: `claude -p --setting-sources project --settings <file holding only
+// this allow rule> --permission-mode default`, asked to run
+// `node <tmp>/fake/lua-agent-builder/x/lib/qa/cli.mjs --help` (a dummy cli.mjs that only echoes): it ran
+// with no permission denial, so both `*`s crossed several `/`. Controls with the same flags were refused
+// ("This command requires approval"): that command with a `{}` settings file, and
+// `node <tmp>/fake/other/x/lib/qa/cli.mjs --help` with the rule. The glob model below (`*` = any
+// characters) matches that. Because the glob is this wide, hooks/guard-qa-helper.mjs (a realpath check)
+// is the real boundary.
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { classifyProductionCommand } from '../../../lib/tokenizer.mjs';
 import { decide as guardHelper } from '../../../hooks/guard-qa-helper.mjs';
+import { cacheCliPath } from './fixtures/plugin-version.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const template = JSON.parse(readFileSync(join(here, '..', '..', '..', 'lib', 'permissions-template.json'), 'utf8'));
@@ -64,7 +72,7 @@ describe('QA helper allow rule', () => {
   });
 
   test.each([
-    'node /Users/x/.claude/plugins/cache/claude-code-lua-plugin/lua-agent-builder/1.8.0/lib/qa/cli.mjs record --run-dir a',
+    `node ${cacheCliPath('/Users/x/.claude', 'claude-code-lua-plugin')} record --run-dir a`,
     'node /w/plugins/lua-agent-builder/lib/qa/cli.mjs discover --run-dir a',
   ])('matches %s', (cmd) => {
     expect(matches(RULE, cmd)).toBe(true);

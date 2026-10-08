@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { computePlanHash, PRODUCTION_CONSENT_TEXT, sha256 } from '../../../../lib/qa/state.mjs';
+import { PLUGIN_VERSION } from './plugin-version.mjs';
 
 export const RUN_ID = '20261007-141502-9f3c';
 
@@ -76,7 +77,7 @@ export function runJson(projectDir, over = {}) {
     mode: 'full',
     createdAt: '2026-10-07T14:15:02.000Z',
     projectDir,
-    pluginVersion: '1.8.0',
+    pluginVersion: PLUGIN_VERSION,
     luaCliVersion: '3.45.0',
     agent: { id: 'agent_test_0001', name: 'Test Agent', model: null },
     environment: { kind: 'sandbox', agentVersion: null, testSession: null, logEnvironment: 'sandbox' },

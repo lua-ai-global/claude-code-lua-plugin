@@ -233,7 +233,7 @@ export function shortVersion(results) {
     scopeBlock(results),
     '### Personas at a glance {#personas-glance}',
     '',
-    rows.length ? table(['Persona', 'Runs passed', 'Result', 'Main defect'], rows, [3, 2, 1, 5]) : 'No persona cards ran.',
+    rows.length ? table(['Persona', 'Runs passed', 'Result', 'Main defect'], rows) : 'No persona cards ran.',
     '',
   ].join('\n');
 }
@@ -318,7 +318,6 @@ export function whatWeTested(results) {
           table(
             ['Path', 'Flow test', 'Covered'],
             wf.paths.map((p) => [codeSpan(p.id), p.tests.length ? p.tests.map(codeSpan).join(', ') : 'none', pathCell(p, results)]),
-            [2, 4, 1],
           ),
           '',
         );
@@ -364,7 +363,7 @@ export function method(results) {
     out.push('These answers were inferred by the planner from the agent\'s code, persona, skills and tools, not asked of the owner. Each one names the file and line it came from; an owner who disagrees can re-run with --interview.', '');
     out.push(table(['Assumption', 'Inferred answer', 'Source'], q.map((x) => [mdEscape(x.question), mdEscape(x.answer), x.inferred ? `inferred: ${(x.evidence ?? []).slice(0, 2).map(codeSpan).join(', ')}` : 'asked'])), '');
   } else {
-    out.push(q.length ? table(['Question', 'Answer'], q.map((x) => [mdEscape(x.question), mdEscape(x.answer)]), [4, 4]) : 'No qualifying answers were recorded.', '');
+    out.push(q.length ? table(['Question', 'Answer'], q.map((x) => [mdEscape(x.question), mdEscape(x.answer)])) : 'No qualifying answers were recorded.', '');
   }
 
   out.push('### Agreed metrics and results {#metrics}', '');
@@ -374,7 +373,6 @@ export function method(results) {
       ? table(
           ['Metric', 'Target', 'Actual', 'Result'],
           metrics.map((m) => [mdEscape(m.label), mdEscape(`${m.comparator} ${metricValue(m, m.target)}`), m.status === 'not-in-tier' ? 'not measured' : mdEscape(metricValue(m, m.actual)), m.status === 'n/a' ? mdEscape(naText(m.naReason)) : chip(m.status)]),
-          [5, 2, 2, 1],
         )
       : 'No metrics were agreed.',
     '',
@@ -400,7 +398,7 @@ export function method(results) {
 
   out.push('### Players and graders {#models}', '');
   const models = Object.entries(c.models ?? {});
-  out.push(models.length ? table(['Role', 'Model'], models.map(([k, v]) => [mdEscape(k), mdEscape(v)]), [3, 3]) : 'No model assignment was recorded.', '');
+  out.push(models.length ? table(['Role', 'Model'], models.map(([k, v]) => [mdEscape(k), mdEscape(v)])) : 'No model assignment was recorded.', '');
 
   out.push('### Isolation and safety rules {#isolation}', '');
   out.push(
@@ -469,7 +467,6 @@ function cardRunTable(card) {
       gradeCell(r.gradeA),
       gradeCell(r.gradeB),
     ]),
-    [1, 1, 1, 2, 2, 2, 2, 2],
   );
 }
 
@@ -507,7 +504,6 @@ export function redTeam(results) {
     table(
       ['Attack', 'Target', 'Runs passed', 'Result'],
       cards.map((c) => [mdEscape(c.attack ?? c.name), c.target ? codeSpan(c.target) : 'n/a', `${c.bar.passes} of ${c.bar.required}${c.inconclusive ? ' (inconclusive)' : ''}`, chip(c.chip)]),
-      [3, 3, 2, 1],
     ),
     '',
   );
@@ -538,7 +534,6 @@ export function workflowTests(results) {
     table(
       ['Test', 'Workflow', 'Path', 'Result', 'Notes'],
       rows.map((t) => [codeSpan(t.id), codeSpan(t.workflow), codeSpan(t.pathId), chip(t.status === 'pass' ? 'pass' : 'fail'), (t.reasons ?? []).length ? mdEscape(clip(t.reasons.join('; '), 160)) : '']),
-      [3, 3, 1, 1, 5],
     ),
     '',
     '### Branch coverage {#branch-coverage}',
@@ -554,7 +549,6 @@ export function workflowTests(results) {
           const missing = w.paths.filter((p) => !p.covered && (!happyPathOnly(results) || p.status === 'fail')).map((p) => p.id);
           return [codeSpan(w.workflow), `${covered} of ${w.paths.length}`, missing.length ? missing.map(codeSpan).join(', ') : 'none'];
         }),
-        [3, 2, 4],
       ),
       '',
     );
@@ -594,7 +588,6 @@ export function toolTests(results) {
         chip(r.status === 'pass' ? 'pass' : 'fail'),
         mdEscape(clip([...(r.reasons ?? []), r.errorMessage].filter(Boolean).join('; '), 160)),
       ]),
-      [3, 3, 1, 1, 1, 5],
     ),
     '',
   );
@@ -630,7 +623,6 @@ export function stressSection(results) {
         ['max', ms(l.max), 'n/a'],
         ['error rate', pct(s.errorRate), met(targets.errorRate)],
       ],
-      [2, 2, 2],
     ),
     '',
   );
@@ -661,7 +653,7 @@ export function logsAndSideEffects(results) {
       '',
     );
     const by = Object.entries(logs.byPrimitive ?? {});
-    if (by.length) out.push(table(['Primitive', 'Errors', 'Warnings'], by.map(([k, v]) => [codeSpan(k), String(v.error ?? 0), String(v.warn ?? 0)]), [5, 1, 1]), '');
+    if (by.length) out.push(table(['Primitive', 'Errors', 'Warnings'], by.map(([k, v]) => [codeSpan(k), String(v.error ?? 0), String(v.warn ?? 0)])), '');
     const errs = (logs.errors ?? []).slice(0, 5);
     if (errs.length) out.push('**First errors**', '', bullets(errs.map((e) => `${codeSpan(e.primitiveName ?? e.logSource ?? 'log')} ${mdEscape(clip(e.message, 200))}`)), '');
     const expected = logs.expectedWarns ?? [];
@@ -687,7 +679,6 @@ export function logsAndSideEffects(results) {
       table(
         ['Id', 'Source', 'Kind', 'Detail', 'Expected', 'Cleanup'],
         ledger.map((l) => [codeSpan(l.id), mdEscape(l.source), codeSpan(l.kind), mdEscape(clip(l.detail, 120)), l.expected === null || l.expected === undefined ? 'unknown' : l.expected ? 'yes' : '**no**', mdEscape(l.cleanup ?? 'none')]),
-        [1, 2, 2, 5, 1, 1],
       ),
       '',
     );
@@ -700,7 +691,7 @@ export function logsAndSideEffects(results) {
     out.push(
       cl.applied ? 'Cleanup was applied.' : 'Cleanup was planned but not applied.',
       '',
-      cl.actions?.length ? table(['Action', 'Target', 'Status', 'Note'], cl.actions.map((a) => [mdEscape(a.kind), codeSpan(a.target), mdEscape(a.status), mdEscape(clip(a.note ?? '', 120))]), [2, 4, 1, 4]) : 'There was nothing to clean up.',
+      cl.actions?.length ? table(['Action', 'Target', 'Status', 'Note'], cl.actions.map((a) => [mdEscape(a.kind), codeSpan(a.target), mdEscape(a.status), mdEscape(clip(a.note ?? '', 120))])) : 'There was nothing to clean up.',
       '',
     );
   }
@@ -721,7 +712,6 @@ export function failureAnalysis(results) {
     table(
       ['Rank', 'Cluster', 'Severity', 'Occurrences', 'Fix locus'],
       clusters.map((c) => [String(c.rank), `${mdEscape(c.title)}${c.caveat ? ` (${mdEscape(c.caveat)})` : ''}`, mdEscape(c.severity), String(c.count ?? 0), mdEscape(LOCUS_LABEL[c.fixLocus] ?? c.fixLocus)]),
-      [1, 6, 2, 2, 3],
     ),
     '',
   );
@@ -764,7 +754,6 @@ export function recommendations(results) {
     table(
       ['Rank', 'Fix', 'Where', 'Effort', 'Route'],
       clusters.map((c) => [String(c.rank), mdEscape(clip(c.recommendation, 160)), mdEscape(LOCUS_LABEL[c.fixLocus] ?? c.fixLocus), mdEscape(c.effort ?? '?'), codeSpan(c.fixPath ?? 'n/a')]),
-      [1, 8, 2, 1, 3],
     ),
     '',
   );
@@ -805,12 +794,11 @@ export function appendix(results, cards) {
       table(
         ['Card', 'Persona', 'Goal', 'Tools covered'],
         defs.map((c) => [codeSpan(c.id), mdEscape(c.name ?? c.persona?.name ?? ''), mdEscape(clip(c.goal ?? '', 160)), mdEscape(clip((c.coverage?.tools ?? []).join(', '), 100))]),
-        [1, 3, 6, 3],
       ),
       '',
     );
   } else {
-    out.push(table(['Card', 'Name', 'Kind'], (results.cards ?? []).map((c) => [codeSpan(c.id), mdEscape(c.name), mdEscape(c.kind)]), [1, 5, 1]), '');
+    out.push(table(['Card', 'Name', 'Kind'], (results.cards ?? []).map((c) => [codeSpan(c.id), mdEscape(c.name), mdEscape(c.kind)])), '');
   }
 
   out.push(
@@ -823,7 +811,7 @@ export function appendix(results, cards) {
   );
   const runRows = [];
   for (const c of results.cards ?? []) for (const r of c.runs) runRows.push([r.folder ? codeSpan(r.folder) : `${codeSpan(`runs/${c.id}/r${r.k}`)} (not created)`, r.thread ? codeSpan(r.thread) : 'n/a', runChip(r.verdict)]);
-  out.push(runRows.length ? table(['Run folder', 'Thread', 'Result'], runRows, [4, 5, 1]) : 'No runs were recorded.', '');
+  out.push(runRows.length ? table(['Run folder', 'Thread', 'Result'], runRows) : 'No runs were recorded.', '');
 
   out.push(
     '### Glossary {#glossary}',
