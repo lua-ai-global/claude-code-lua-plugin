@@ -117,8 +117,8 @@ export async function loadRunData(runDir) {
         folder: `runs/${cardId}/${name}`,
         record: await tryJson(join(dir, 'run-record.json')),
         turnCount: (await tryJsonl(join(dir, 'turns.jsonl'))).length,
-        gradeA: await tryJson(join(dir, 'grade-a.json')),
-        gradeB: await tryJson(join(dir, 'grade-b.json')),
+        gradeA: normalizeGrade(await tryJson(join(dir, 'grade-a.json'))),
+        gradeB: normalizeGrade(await tryJson(join(dir, 'grade-b.json'))),
         contamination: await tryJson(join(dir, 'checks', 'contamination.json')),
         readability: await tryJson(join(dir, 'checks', 'readability.json')),
         claims: await tryJson(join(dir, 'checks', 'claims.json')),
@@ -149,6 +149,52 @@ export async function loadRunData(runDir) {
     clusters: Array.isArray(clustersFile?.clusters) ? clustersFile.clusters : [],
     diagramFiles,
     features: await tryJson(join(runDir, 'discovery', 'features.json')),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// grade normalisation
+// ---------------------------------------------------------------------------
+
+const isPlainObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+
+// Graders have written a candidate's check as `source`, `check` or `kind`, sometimes as a path
+// ("checks/readability.json"); map each spelling onto the names the metrics count.
+const CANDIDATE_SOURCES = [['readab', 'readability'], ['claim', 'claims'], ['contaminat', 'contamination']];
+
+function candidateSource(c, key) {
+  const raw = String(c.source ?? c.check ?? c.kind ?? key ?? '').toLowerCase();
+  for (const [needle, name] of CANDIDATE_SOURCES) if (raw.includes(needle)) return name;
+  return raw || null;
+}
+
+/**
+ * Items of a grade list that may arrive as an array, or as an object keyed by check or criterion
+ * ({ readability: [...] }, { C1: {...} }, { common: [...] }). Object values become items, and a
+ * keyed single item keeps its key as `id`.
+ * @returns {Array<[object, string|undefined]>} each item with the key it came from
+ */
+function gradeItems(v) {
+  if (Array.isArray(v)) return v.filter(isPlainObject).map((x) => [x, undefined]);
+  if (!isPlainObject(v)) return [];
+  return Object.entries(v).flatMap(([key, val]) =>
+    Array.isArray(val) ? val.filter(isPlainObject).map((x) => [x, key]) : isPlainObject(val) ? [[{ id: key, ...val }, key]] : []);
+}
+
+/**
+ * Brings a grade file into the shape lua-qa/grade@1 declares (candidates, criteria and defects as
+ * arrays, every candidate with a canonical `source`), whatever variant the grader wrote. Without it an
+ * object-shaped list crashed `aggregate`, and candidates keyed `check` or `kind` were left out of the
+ * readability and claims metrics.
+ */
+export function normalizeGrade(g) {
+  if (!isPlainObject(g)) return g ?? null;
+  return {
+    ...g,
+    candidates: gradeItems(g.candidates).map(([c, key]) => ({ ...c, source: candidateSource(c, key) })),
+    criteria: gradeItems(g.criteria).map(([c]) => c),
+    defects: gradeItems(g.defects).map(([d]) => d),
+    safetyNotes: Array.isArray(g.safetyNotes) ? g.safetyNotes : g.safetyNotes ? [String(g.safetyNotes)] : [],
   };
 }
 
@@ -236,14 +282,17 @@ export function effectiveRuns(runs) {
 }
 
 /**
- * Why a run was never played, or null when it was. A run is not played when start-run never wrote its record, or
- * when no turn was ever recorded: nothing reached the agent, so it is neither valid nor a FAIL, whatever a grader
- * wrote about the empty folder.
+ * Why a run was never played, or null when it was. A run is not played when start-run never wrote its record,
+ * when no turn was ever recorded, or when the player stopped mid-conversation (the record is still `running`) and
+ * no grader saw it: the agent was never judged on a whole conversation, so the run is neither valid nor a FAIL,
+ * whatever a grader wrote about the empty folder.
  */
 export function notPlayedReason(r) {
   if (!r.record) return 'the run folder has no run record (start-run never completed)';
   // A record that says 0 turns, with no turn on disk either. A record without a turn count (older runs) is played.
   if (r.record.turns === 0 && !r.turnCount) return 'the player started the run but recorded no turn';
+  // finish-run never ran (the player crashed or lost the API) and nothing graded the partial transcript.
+  if (r.record.status === 'running' && !r.gradeA) return 'the player stopped mid-conversation (the run was never finished or graded)';
   return null;
 }
 
@@ -829,10 +878,10 @@ export async function cliRunVerdict(argv, io) {
     const record = await tryJson(join(dir, 'run-record.json'));
     if (!record) throw new QaError('RUN_RECORD_MISSING', 2, `run-record.json not found for ${values.card} ${name}`, 'Run start-run first');
     const tier = runTier(await tryJson(join(runDir, 'run.json')), await tryJson(join(runDir, 'state.json')));
-    const gradeA = await tryJson(join(dir, 'grade-a.json'));
-    const gradeB = await tryJson(join(dir, 'grade-b.json'));
+    const gradeA = normalizeGrade(await tryJson(join(dir, 'grade-a.json')));
+    const gradeB = normalizeGrade(await tryJson(join(dir, 'grade-b.json')));
     const contamination = (await tryJson(join(dir, 'checks', 'contamination.json'))) ?? record.checks?.contamination ?? null;
-    const unplayed = notPlayedReason({ record, turnCount: (await tryJsonl(join(dir, 'turns.jsonl'))).length });
+    const unplayed = notPlayedReason({ record, gradeA, turnCount: (await tryJsonl(join(dir, 'turns.jsonl'))).length });
     const verdict = unplayed ? 'NOT_PLAYED' : runVerdict({ gradeA, gradeB, contamination }, { graders: tier.graders });
     const safety = !unplayed && (gradeA?.safety === true || gradeB?.safety === true);
     const majors = unplayed ? [] : gradeMajors(gradeA, gradeB);

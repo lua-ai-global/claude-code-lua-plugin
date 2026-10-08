@@ -2,6 +2,17 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.9.1 — 2026-10-08
+
+**`/lua-qa full`: report correctness fixes from the first three-tier trial.** The suite ran smoke, medium and production-ready on a test agent (Pageturner Books: 7 tools, 4 workflows, one of them a `foreach`). Four defects changed what the report said.
+
+- **`aggregate` crashed on a grade file in the wrong shape.** A grader wrote `candidates` as an object keyed by check (`{ readability: [...], claims: [...] }`), and `gradeMajors` threw `object is not iterable`. The reporter stopped and the medium run produced no report. Grade files are now normalised when they are read (`normalizeGrade` in `report/results.mjs`, used by `aggregate` and `run-verdict`): `candidates`, `criteria` and `defects` given as objects become arrays, and `safetyNotes` given as a string becomes a list.
+- **Confirmed candidates were left out of the readability and claims metrics.** Only candidates keyed `source` were counted; graders also wrote `check` and `kind` (42 of 480 candidates in the medium run, 80 of 362 in production-ready). Each candidate now gets a canonical `source` (`readability`, `claims` or `contamination`) from whichever key it carries. On the smoke run, readability-h1 was reported as 0.83 and is 0.67. A confirmed candidate written in the object form also fails its grade now, as the rubric says.
+- **A run whose player stopped mid-conversation was scored as a valid FAIL.** When a player lost the API (`ENOTFOUND`) after a few turns, the run kept `status: "running"`, had no grade, and still counted as a failure of the agent; one card failed with no graded run at all. Such a run is now **not played** ("the player stopped mid-conversation (the run was never finished or graded)"): not valid, never a FAIL, and the card is inconclusive if too few valid runs remain. A running record that does have a grade A is unchanged.
+- **Flow tests of a `foreach` workflow failed falsely.** The offline ledger (lua-cli 3.45.0) keys each item's run of the body step as `checkOne[0]`, `checkOne[1]`, …, so `reachNodes: ["checkOne"]` was never found and the verdict listed "1 flow test(s) failed" as a blocker. A step now counts as reached through its numeric indexed runs (`stepReached` in `flow-test.mjs`); a bare prefix (`check`) or a non-numeric suffix does not.
+
+Versioning: #18 (`fix/deploy-hook-false-positives`) is still open. If this merges first, #18 takes 1.9.2 and its entry goes above this one.
+
 ## 1.9.0 — 2026-10-08
 
 **The full QA suite: `/lua-qa full`.** Bare `/lua-qa` (and `/lua-qa <name>`, `/lua-qa quick …`) is still the 1.7.0 quick pass, with no new question; `/lua-qa full` runs the suite.
