@@ -121,10 +121,11 @@ export function runBar(run, state) {
 
 /**
  * When the run's clock started (ms since epoch), from state.json only: the first plan-gate approval (kept once a
- * conversation has started), else the plan stamp, else the init entry. NaN when none parses.
+ * conversation has started), else the plan stamp. Never init-run: the clock starts at the plan approval, so
+ * discovery and the gates never eat into a cap. NaN before the plan is approved (a capped tier then fails closed).
  */
 export function clockStart(state) {
-  for (const at of [state?.clockStartedAt, state?.gates?.plan?.at, state?.history?.[0]?.at]) {
+  for (const at of [state?.clockStartedAt, state?.gates?.plan?.at]) {
     const t = Date.parse(at ?? '');
     if (Number.isFinite(t)) return t;
   }
@@ -157,6 +158,13 @@ export function tierBar(tier, runs) {
     throw new QaError('USAGE', 2, `The ${tier.label} tier runs each card ${tier.bars.map((b) => b.runsPerCard).join(' or ')} time(s); --runs ${runs} does not fit it`);
   }
   return { ...found };
+}
+
+/** What init-run says about the clock: a capped tier's starts at the plan approval (gate 4), not at init-run. */
+export function clockNote(tier) {
+  return tier.hardCap
+    ? `The ${tier.budgetMinutes}-minute cap starts when the user approves the plan at gate 4, not now; discovery and the gates do not count.`
+    : `About ${tier.budgetMinutes} minutes, an estimate counted from the plan approval at gate 4 (not a hard cap).`;
 }
 
 /** Card counts for init-run: the tier's defaults, a requested count checked against the tier's range. */

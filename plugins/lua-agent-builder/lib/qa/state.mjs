@@ -10,7 +10,7 @@ import { validate, validatePlan } from './schemas.mjs';
 import { runLua } from './spawn.mjs';
 import { PLUGIN_VERSION } from './api.mjs';
 import { parseAllowedEmailDomains } from './safety.mjs';
-import { parseTier, runTier, tierBar, tierCounts, tierOf } from './tiers.mjs';
+import { clockNote, parseTier, runTier, tierBar, tierCounts, tierOf } from './tiers.mjs';
 import { disableCommand, memoryStamp } from './memory.mjs';
 
 export const GATE_ORDER = Object.freeze(['discovery', 'questions', 'environment', 'plan']);
@@ -214,7 +214,7 @@ export async function cliInitRun(argv, io, deps = {}) {
     await mkdir(join(runDir, 'plan', 'cards'), { recursive: true });
     let gitignore = 'unchanged';
     if (v['add-gitignore']) gitignore = await addGitignore(projectDir);
-    emit(io, { ok: true, runId, runDir, tier: tierId, budgetMinutes: tier.budgetMinutes, bar, counts: { icp, redTeam }, gitignore });
+    emit(io, { ok: true, runId, runDir, tier: tierId, budgetMinutes: tier.budgetMinutes, clockStarts: 'plan-approval', clock: clockNote(tier), bar, counts: { icp, redTeam }, gitignore });
     return 0;
   } catch (err) {
     return fail(io, err);

@@ -2,7 +2,7 @@
 import { mkdir, readFile, readdir, writeFile, symlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { checkBundle, cliCards } from '../../../lib/qa/plan-write.mjs';
+import { checkBundle, cliCards, withDefaultSchemas } from '../../../lib/qa/plan-write.mjs';
 import { validatePlan } from '../../../lib/qa/schemas.mjs';
 import { main } from '../../../lib/qa/cli.mjs';
 import { cardJson, mkio, scaffoldRun, stateJson, validPlan, wj } from './fixtures/runtime-helpers.mjs';
@@ -40,15 +40,58 @@ describe('cards write', () => {
     expect((await write(s)).code).toBe(0);
     expect(await readFile(join(s.runDir, 'plan', 'cards', 'rt-01.json'), 'utf8')).toContain('sk_live_51Hf00fakefakefake');
   });
-  test('schema errors are written and reported (exit 1); the stamped plan gate is called out', async () => {
+  test('schema errors write nothing (exit 1) and say so', async () => {
     const bad = bundleOf();
     bad.cards[0] = { ...bad.cards[0], openers: ['only one'] };
     const s = await setup(bad);
     const r = await write(s);
     expect(r.code).toBe(1);
+    expect(r.out).toMatchObject({ ok: false, code: 'BUNDLE_INVALID', written: [], removed: [] });
+    expect(r.out.message).toMatch(/^Nothing was written: 1 schema error/);
     expect(r.out.errors).toEqual(['icp-01: openers needs at least 2 items']);
+    expect(r.out.next).toMatch(/run cards write again/);
+    expect(r.out.planGate).toBeUndefined();
+    expect(await readdir(join(s.runDir, 'plan', 'cards')).catch(() => [])).toEqual([]);
+    for (const f of ['flow-tests.json', 'tool-tests.json', 'stress.json']) expect(existsSync(join(s.runDir, 'plan', f))).toBe(false);
+  });
+  test('a schema error with --replace removes nothing', async () => {
+    const s = await setup({ cards: [cardJson('icp-01', { openers: ['only one'] })] });
+    await wj(join(s.runDir, 'plan', 'cards', 'icp-09.json'), cardJson('icp-09'));
+    const r = await write(s, ['--replace']);
+    expect(r.code).toBe(1);
+    expect(r.out).toMatchObject({ written: [], removed: [] });
+    expect(await readdir(join(s.runDir, 'plan', 'cards'))).toEqual(['icp-09.json']);
+  });
+  test('a write after the plan gate was stamped is called out', async () => {
+    const s = await setup({ cards: [cardJson('icp-01')] });
+    const r = await write(s);
+    expect(r.code).toBe(0);
     expect(r.out.planGate).toMatch(/stamp it again/);
-    expect(existsSync(join(s.runDir, 'plan', 'cards', 'icp-01.json'))).toBe(true);
+  });
+  test('cards and plans without a schema field get their own; a wrong one is kept and reported', async () => {
+    const plan = validPlan();
+    const strip = ({ schema: _s, ...rest }) => rest; // eslint-disable-line no-unused-vars
+    const bundle = { cards: plan.cards.map(strip), flowTests: strip(plan.flowTests), toolTests: strip(plan.toolTests), stress: strip(plan.stress) };
+    const s = await setup(bundle, { stateOver: unstamped() });
+    const r = await write(s);
+    expect(r.code).toBe(0);
+    const card = JSON.parse(await readFile(join(s.runDir, 'plan', 'cards', 'icp-01.json'), 'utf8'));
+    expect(Object.keys(card)[0]).toBe('schema');
+    expect(card.schema).toBe('lua-qa/card@1');
+    expect(JSON.parse(await readFile(join(s.runDir, 'plan', 'stress.json'), 'utf8')).schema).toBe('lua-qa/stress-plan@1');
+    expect(JSON.parse(await readFile(join(s.runDir, 'plan', 'flow-tests.json'), 'utf8')).schema).toBe('lua-qa/flow-tests@1');
+    expect(JSON.parse(await readFile(join(s.runDir, 'plan', 'tool-tests.json'), 'utf8')).schema).toBe('lua-qa/tool-tests@1');
+    expect(await validatePlan(s.runDir)).toEqual({ ok: true, errors: [], coverageGaps: [] });
+    const wrong = await setup({ cards: [cardJson('icp-01', { schema: 'lua-qa/card@9' })] });
+    const r2 = await write(wrong);
+    expect(r2.code).toBe(1);
+    expect(r2.out.errors).toEqual(['icp-01: schema must be "lua-qa/card@1"']);
+  });
+  test('withDefaultSchemas leaves non-objects alone', () => {
+    expect(withDefaultSchemas(null)).toBe(null);
+    expect(withDefaultSchemas([1])).toEqual([1]);
+    expect(withDefaultSchemas({ cards: 'x', stress: 5 })).toEqual({ cards: 'x', stress: 5 });
+    expect(withDefaultSchemas({ cards: [null, { id: 'icp-01', schema: undefined }] }).cards).toEqual([null, { schema: 'lua-qa/card@1', id: 'icp-01' }]);
   });
   test('cards only, or plan files only (--replace with no card folder is fine)', async () => {
     const s = await setup({ cards: [cardJson('icp-01')] });

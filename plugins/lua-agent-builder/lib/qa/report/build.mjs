@@ -125,9 +125,11 @@ export function coverSub(results, agent) {
   const times = n === 1 ? 'once' : `${n} times`;
   const tier = results.tier ?? 'medium';
   const label = tierLabel(tier).toLowerCase();
+  // An agent with no workflows had no flow tests: the cover does not claim one.
+  const noWorkflows = s.flowTests?.naReason === 'no workflows';
   const checks = tier === 'smoke'
-    ? 'direct tool tests, a happy-path workflow test and a log scan'
-    : 'direct tool and workflow tests, a stress test and a log scan';
+    ? (noWorkflows ? 'direct tool tests and a log scan' : 'direct tool tests, a happy-path workflow test and a log scan')
+    : (noWorkflows ? 'direct tool tests, a stress test and a log scan' : 'direct tool and workflow tests, a stress test and a log scan');
   const verdict = results.verdict?.text ?? `Overall result: ${s.overall}`;
   return `What a ${label} QA pass found out about ${agent}: ${s.cards.total} personas and attacks played ${times} each, ${checks}. ${verdict}.`;
 }

@@ -3,9 +3,10 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
-  DEFAULT_TIER, TIERS, TIER_IDS, barAllowed, cardsOverBudget, confidenceText, estimateMinutes, exposedAttackClasses, parseTier,
-  runTier, runTierId, tierBar, tierCounts, tierOf, tierVerdict,
+  DEFAULT_TIER, TIERS, TIER_IDS, barAllowed, cardsOverBudget, clockNote, clockStart, confidenceText, estimateMinutes, exposedAttackClasses, parseTier,
+  minutesLeft, runTier, runTierId, tierBar, tierCounts, tierOf, tierVerdict,
 } from '../../../lib/qa/tiers.mjs';
 import { cliGate, cliInitRun } from '../../../lib/qa/state.mjs';
 import { cliValidate, planChecklist, validate, validatePlan, validatePlanWithEstimate } from '../../../lib/qa/schemas.mjs';
@@ -126,6 +127,26 @@ describe('init-run and the gates', () => {
     expect(run.tier).toBe('smoke');
     expect(state.tier).toBe('smoke');
     expect(validate('run', run)).toEqual({ ok: true });
+    // Trial item 25: init-run says the clock starts at the plan approval, and starts none itself.
+    expect(out.clockStarts).toBe('plan-approval');
+    expect(out.clock).toMatch(/^The 30-minute cap starts when the user approves the plan at gate 4, not now/);
+    expect(state.clockStartedAt).toBeNull();
+    expect(clockStart(state)).toBeNaN();
+    expect(minutesLeft(run, state, Date.now())).toBe(0);
+  });
+  test('the clock note for an uncapped tier, and no shipped prompt starts the clock at init-run', async () => {
+    expect(clockNote(TIERS.medium)).toBe('About 120 minutes, an estimate counted from the plan approval at gate 4 (not a hard cap).');
+    expect((await init(['--tier', 'medium'])).out).toMatchObject({ clockStarts: 'plan-approval', clock: expect.stringMatching(/not a hard cap/) });
+    const root = fileURLToPath(new URL('../../../', import.meta.url));
+    const files = [
+      'commands/lua-qa.md', 'agents/lua-qa.md', 'agents/lua-qa-player.md', 'agents/lua-qa-cartographer.md',
+      'lib/knowledge/qa/mechanics.md', 'lib/knowledge/qa/player.md', 'lib/qa/workflow/qa-full.workflow.js',
+    ];
+    for (const f of files) {
+      const text = await readFile(join(root, f), 'utf8');
+      expect([f, /(clock|cap|minutes?)[^.\n]{0,40}(start|count)s?[^.\n]{0,20}(at|from|with) `?init-run/i.test(text)]).toEqual([f, false]);
+    }
+    expect(await readFile(join(root, 'lib/knowledge/qa/mechanics.md'), 'utf8')).toMatch(/count from the plan approval \(gate 4/);
   });
   test('production-ready: 12 + 4, 4 of 5; --runs 3 is refused; the default stays medium', async () => {
     const p = await init(['--tier', 'production-ready']);
@@ -388,6 +409,11 @@ describe('report pieces', () => {
     const base = { summary: { overall: 'pass', cards: { total: 6 } }, config: { runsPerCard: 1 } };
     expect(coverSub({ ...base, tier: 'smoke', verdict: { text: 'Smoke: no blockers found' } }, 'A')).toBe('What a smoke QA pass found out about A: 6 personas and attacks played once each, direct tool tests, a happy-path workflow test and a log scan. Smoke: no blockers found.');
     expect(coverSub({ ...base, config: { runsPerCard: 3 } }, 'A')).toMatch(/medium QA pass .* played 3 times each, direct tool and workflow tests, a stress test .* Overall result: pass\.$/);
+    // Trial item 21: an agent with no workflows had no flow test, so the cover does not claim one.
+    const noWf = { ...base, summary: { ...base.summary, flowTests: { total: 0, naReason: 'no workflows' } } };
+    expect(coverSub({ ...noWf, tier: 'smoke', verdict: { text: 'Smoke: no blockers found' } }, 'A')).toBe('What a smoke QA pass found out about A: 6 personas and attacks played once each, direct tool tests and a log scan. Smoke: no blockers found.');
+    expect(coverSub({ ...noWf, config: { runsPerCard: 3 } }, 'A')).toMatch(/played 3 times each, direct tool tests, a stress test and a log scan\. Overall result: pass\.$/);
+    expect(coverSub({ ...noWf, tier: 'smoke' }, 'A')).not.toMatch(/workflow/);
   });
 });
 

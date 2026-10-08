@@ -205,7 +205,10 @@ export function shortVersion(results) {
         : ['n/a', `Reply latency p90 under stress (${naText('no stress result')})`],
     s.toolTests.total ? [`${s.toolTests.pass} / ${s.toolTests.total}`, `Direct tool tests passed. ${s.toolTests.threwOnValidInput} threw on valid input`] : ['n/a', `Direct tool tests (${naText('no tool tests')})`],
     results.scope?.flowMode === 'happy-path'
-      ? ratioTile(s.flowTests.pass, s.flowTests.total, 'Workflow happy-path tests passed (other branches: not in this tier)', s.flowTests.naReason ?? 'no flow tests')
+      // With nothing to test, the tile says only why: "not in this tier" is about other branches of real workflows.
+      ? s.flowTests.total
+        ? [`${s.flowTests.pass} / ${s.flowTests.total}`, 'Workflow happy-path tests passed (other branches: not in this tier)']
+        : ['n/a', `Workflow happy-path tests (${naText(s.flowTests.naReason ?? 'no flow tests')})`]
       : typeof s.flowTests.branchCoverage === 'number'
         ? [pct(s.flowTests.branchCoverage), `Workflow branch coverage (${s.flowTests.pass} of ${s.flowTests.total} flow tests passed)`]
         : ['n/a', `Workflow branch coverage (${naText(s.flowTests.naReason ?? 'no flow tests')})`],
@@ -519,7 +522,12 @@ export function redTeam(results) {
 export function workflowTests(results) {
   const rows = results.flowTests ?? [];
   const out = ['## Workflow flow tests {#workflow-tests}', ''];
-  if (!rows.length) return `${out.join('\n')}No workflow flow tests ran. Either there are no graph workflows or the plan had none.\n`;
+  if (!rows.length) {
+    const why = results.summary?.flowTests?.naReason === 'no workflows'
+      ? 'The agent has no workflows, so there was nothing to flow-test (n/a: no workflows).'
+      : 'No workflow flow tests ran. Either there are no graph workflows or the plan had none.';
+    return `${out.join('\n')}${why}\n`;
+  }
   out.push(
     happyPathOnly(results)
       ? `${results.summary.flowTests.pass} of ${results.summary.flowTests.total} offline happy-path flow tests passed (lua test workflow with scripted step outputs, approvals and signals). The ${mdEscape(tierLabel(results.tier))} tier tests one happy path per workflow; the other branches are not in this tier.`

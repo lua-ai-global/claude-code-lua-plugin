@@ -124,7 +124,12 @@ describe('zero denominators render as n/a with a reason', () => {
     const r = buildResults(await loadRunData(t.dir), { now: NOW });
     await t.cleanup();
     const happy = { ...r, scope: { ...r.scope, flowMode: 'happy-path' }, summary: { ...r.summary, flowTests: { total: 0, pass: 0, fail: 0, branchCoverage: null, naReason: 'no workflows' } } };
-    expect(shortVersion(happy)).toMatch(/Workflow happy-path tests passed \(other branches: not in this tier\) \(n\/a: no workflows\)/);
+    // Trial item 22: with no workflows the tile says only "n/a: no workflows", not "not in this tier" as well.
+    expect(shortVersion(happy)).toMatch(/Workflow happy-path tests \(n\/a: no workflows\)/);
+    expect(shortVersion(happy)).not.toMatch(/not in this tier\) \(n\/a/);
+    const happyRan = { ...happy, summary: { ...happy.summary, flowTests: { total: 2, pass: 1, fail: 1, branchCoverage: 0.5 } } };
+    expect(shortVersion(happyRan)).toMatch(/1 \/ 2.*Workflow happy-path tests passed \(other branches: not in this tier\)/s);
+    expect(workflowTests({ ...happy, flowTests: [] })).toMatch(/The agent has no workflows, so there was nothing to flow-test \(n\/a: no workflows\)\./);
     const noPaths = { ...r, scope: { ...r.scope, flowMode: 'all' }, summary: { ...r.summary, flowTests: { ...r.summary.flowTests, branchCoverage: null, naReason: undefined } } };
     expect(workflowTests(noPaths)).toMatch(/Branch coverage is n\/a: no workflow paths\./);
     expect(shortVersion(noPaths)).toMatch(/Workflow branch coverage \(n\/a: no flow tests\)/);

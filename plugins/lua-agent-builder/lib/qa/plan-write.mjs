@@ -3,8 +3,11 @@
 // cartographer's Bash allowlist rightly refuses) become one Write and one helper call.
 //
 // Bundle: { schema: 'lua-qa/plan-bundle@1', cards: [card...], flowTests?: {...}, toolTests?: {...}, stress?: {...} }
-// Hard refusals write nothing: a card id that is not icp-NN / rt-NN (it becomes a file name), a duplicate id, or
-// real-looking contact data. Schema errors are written and reported, so `validate --what plan` shows them in place.
+// A card or plan with no `schema` field gets its own (`lua-qa/card@1`, `lua-qa/flow-tests@1`, `lua-qa/tool-tests@1`,
+// `lua-qa/stress-plan@1`); a wrong one is left as it is and reported.
+// The write is all or nothing. Hard refusals (exit 3): a card id that is not icp-NN / rt-NN (it becomes a file name),
+// a duplicate id, or real-looking contact data. Schema errors (exit 1) also write nothing: fix the bundle and run
+// `cards write` again.
 
 import { readdir, realpath, rm } from 'node:fs/promises';
 import { join, relative, resolve, isAbsolute } from 'node:path';
@@ -20,6 +23,23 @@ const PLAN_FILES = Object.freeze([
 ]);
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * The bundle with each card's and plan's `schema` filled in where it is missing (the planner need not write it).
+ * A present value, right or wrong, is kept, so a wrong one is still reported. Non-objects pass through unchanged.
+ */
+export function withDefaultSchemas(bundle) {
+  if (!isObj(bundle)) return bundle;
+  const fill = (obj, name) => {
+    if (!isObj(obj) || obj.schema !== undefined) return obj;
+    const { schema: _absent, ...rest } = obj; // eslint-disable-line no-unused-vars
+    return { schema: `lua-qa/${name}@1`, ...rest };
+  };
+  const out = { ...bundle };
+  if (Array.isArray(bundle.cards)) out.cards = bundle.cards.map((c) => fill(c, 'card'));
+  for (const [key, , schema] of PLAN_FILES) if (bundle[key] !== undefined) out[key] = fill(bundle[key], schema);
+  return out;
+}
 const inside = (root, p) => {
   const rel = relative(root, p);
   return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
@@ -101,14 +121,22 @@ export async function cliCards(argv, io) {
     const path = await bundlePath(runDir, io, v.file);
     let bundle;
     try {
-      bundle = await readJson(path);
+      bundle = withDefaultSchemas(await readJson(path));
     } catch {
       throw new QaError('USAGE', 2, `${v.file} is not valid JSON`);
     }
     const { refusals, errors } = checkBundle(bundle, policy);
     if (refusals.length) {
-      emit(io, { ok: false, code: 'BUNDLE_REFUSED', message: `Nothing was written: ${refusals.length} problem(s)`, refusals: refusals.slice(0, 40), hint: fakeDataHint(policy) });
+      emit(io, { ok: false, code: 'BUNDLE_REFUSED', message: `Nothing was written: ${refusals.length} problem(s)`, written: [], refusals: refusals.slice(0, 40), hint: fakeDataHint(policy) });
       return 3;
+    }
+    // All or nothing: a schema error writes no file, so a half-good plan never sits in plan/ looking written.
+    if (errors.length) {
+      emit(io, {
+        ok: false, code: 'BUNDLE_INVALID', message: `Nothing was written: ${errors.length} schema error(s) in the bundle`, written: [], removed: [],
+        errors: errors.slice(0, 60), next: `Fix ${v.file} and run cards write again.`,
+      });
+      return 1;
     }
     const cardsDir = join(runDir, 'plan', 'cards');
     const written = [];
@@ -132,11 +160,11 @@ export async function cliCards(argv, io) {
       }
     }
     emit(io, {
-      ok: errors.length === 0, written, removed, errors: errors.slice(0, 60),
+      ok: true, written, removed, errors: [],
       ...(state.gates?.plan ? { planGate: 'The plan gate was stamped before this write: show the change and stamp it again.' } : {}),
       next: 'Run validate --what plan.',
     });
-    return errors.length ? 1 : 0;
+    return 0;
   } catch (err) {
     return fail(io, err);
   }

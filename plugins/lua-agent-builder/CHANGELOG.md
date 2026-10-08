@@ -80,6 +80,13 @@ The command shows all of this as a short list of assumptions, and the report's m
 - **Harness artefacts.** The analyst files cross-run memory findings as one `test-artifact` cluster (`harnessArtefact: true`), never an agent defect. The report ranks artefact clusters last and never headlines one.
 - **Method.** A new "Shared identity and platform memory" subsection says that every persona is the same signed-in user (so identity findings, such as offering the account's own email for a reset, may be amplified), what discovery found about memory and what was done about it, and how the heuristic works.
 
+### Fixes from the smoke run
+
+- **The cover** no longer claims "a happy-path workflow test" (or "workflow tests") for an agent with no workflows.
+- **The flow-test tile** reads only `n/a: no workflows` when there is nothing to test; "other branches: not in this tier" is shown only next to real happy-path results. The workflow section says the agent has no workflows.
+- **`cards write`** fills in a missing `schema` on each card and plan (`lua-qa/card@1`, `flow-tests@1`, `tool-tests@1`, `stress-plan@1`) and keeps a wrong one so it is reported. The write is now all or nothing: a schema error writes no file (exit 1, `BUNDLE_INVALID`, `written: []`), like a refusal (exit 3), and the output says nothing was written.
+- **The smoke clock.** `init-run` prints `clockStarts: "plan-approval"` and a `clock` note, and the command says the clock starts at the plan approval, not at `init-run`. `clockStart` no longer falls back to the `init-run` entry, so the report's "Time taken" and the cap count only from the plan approval.
+
 ### Safety enforced in code
 
 All helpers sit behind one entry, `node ${CLAUDE_PLUGIN_ROOT}/lib/qa/cli.mjs <subcommand>` (27 subcommands, Node only, no runtime dependencies), and one permission rule, `Bash(node *lua-agent-builder*/lib/qa/cli.mjs *)`.

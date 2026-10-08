@@ -125,7 +125,8 @@ describe('the bar and the clock come from state.json', () => {
   test('clockStart and minutesLeft', () => {
     expect(clockStart({ clockStartedAt: APPROVED, gates: { plan: { at: '2026-10-07T15:00:00.000Z' } } })).toBe(Date.parse(APPROVED));
     expect(clockStart({ gates: { plan: { at: APPROVED } } })).toBe(Date.parse(APPROVED));
-    expect(clockStart({ history: [{ at: APPROVED }] })).toBe(Date.parse(APPROVED));
+    // Trial item 25: the clock never starts at init-run, only at the plan approval.
+    expect(clockStart({ history: [{ at: APPROVED, event: 'init' }] })).toBeNaN();
     expect(clockStart(null)).toBeNaN();
     expect(minutesLeft({}, { tier: 'medium' }, 0)).toBe(Infinity);
     expect(minutesLeft({}, { tier: 'smoke', clockStartedAt: APPROVED }, at(10)().getTime())).toBe(20);
