@@ -26,18 +26,18 @@ Then it launches the Workflow tool (`lib/qa/workflow/qa-full.workflow.js`), fall
 
 Five new leaf subagents: `lua-qa-cartographer`, `lua-qa-player`, `lua-qa-grader`, `lua-qa-analyst`, `lua-qa-reporter`. None of them starts another agent. `lua-qa` gained the full-mode mechanics role. Ten prompt files live in `lib/knowledge/qa/`.
 
-### Fixes from the first live trial (an IT-desk agent, sandbox)
+### Hardened by the live trial (an IT-desk agent, sandbox)
 
 - **Side effects.** `open`, `raise`, `file`, `log`, `reset`, `grant`, `request`, `register` and `submit` (and a few more) count as write verbs, and the first verb in a tool name decides even after a vendor prefix, so `acme_open_it_ticket` is `likely`. A tool whose effect cannot be told is drawn and listed as `effect unknown`, never as "reads only".
-- **Decision trees.** The outline and the skill SVGs now carry the persona's must-never and escalation rules (read from the whole persona, not the 600-character excerpt), each skill's own rules, per-tool conditions from the description and the skill context, and one "ask for <field>" path per required field.
+- **Decision trees.** The outline and the skill SVGs carry the persona's must-never and escalation rules (read from the whole persona, not the 600-character excerpt), each skill's own rules, per-tool conditions from the description and the skill context, and one "ask for <field>" path per required field.
 - **Sync state.** The flow model's `sync` names what is `ahead`, `notDeployed` or drifting; `flow-model` prints it and the cartographer returns it, so gate 1 says whether local code is ahead.
 - **`init-run`** creates `plan/` and `plan/cards/`.
 - **Agreed email domains.** Gate 3 can agree a company domain a tool insists on (`gate --stamp environment --allowed-email-domains acme-corp.test`). It lives on the stamp only. The recorder, tool tests, flow tests, stress and the plan validator then accept an address on it only with an obviously fake local part (`qa.reset.01@…`), and the whole local part is checked (every RFC 5322 character, so `jane=test.1@…` is refused). Public mailbox providers are refused by provider family on any TLD or country suffix (`yahoo.co.uk`, `outlook.de`, `gmx.at` …). The default stays `@example.*`.
 - **The validator checks what the docs say:** turn ranges per card kind, the coverage checklist (skill spread, technical and non-technical, impatient / privacy-sensitive / vague / out-of-scope via the new optional `traits`, chat-startable workflows), test data in every text field of a card, and flow tests against the flow model: every path needs a test, and an empty list needs an explicit `notApplicable`, which is refused when the agent has workflows.
-- **Burst stress** no longer requires `threads` / `turnsPerThread` / `concurrency`.
+- **Burst stress** needs no `threads` / `turnsPerThread` / `concurrency` (only the concurrent shape does).
 - **Expected warnings.** `tool-tests.json` `expectedLogs` lists a tool's own deliberate `console.warn` lines (found at plan time). The log scan counts them under `expectedWarns`, not as findings, and only while the plan is the sealed one; the report lists them.
 - **`cards write`.** The planner writes one bundle with the Write tool and `cards write --file <runDir>/plan/bundle.json [--replace]` splits it into `plan/cards/*.json` and the three test plans, refusing a bad id or real-looking data before writing anything.
-- **`--timeout <seconds>`** (5 to 115) on the resumable subcommands (`tool-test`, `flow-test`, `stress`, `log-scan`, `prechecks`, `backfill-tools`, `discover`, `aggregate`, `report`) stops the call, the `lua` processes it started and any sandbox lock it held; `record` and the other stateful ones refuse it. macOS has no `timeout` binary, and a wrapper also defeats the permission rule; the docs now say so.
+- **`--timeout <seconds>`** (5 to 115) on the resumable subcommands (`tool-test`, `flow-test`, `stress`, `log-scan`, `prechecks`, `backfill-tools`, `discover`, `aggregate`, `report`) stops the call, the `lua` processes it started and any sandbox lock it held; `record` and the other stateful ones refuse it. macOS has no `timeout` binary, and a wrapper also defeats the permission rule; the docs say so.
 
 ### QA tiers: smoke, medium, production-ready
 
@@ -58,34 +58,34 @@ Five new leaf subagents: `lua-qa-cartographer`, `lua-qa-player`, `lua-qa-grader`
 
 ### Inferred answers by default; `--interview` brings the questions back
 
-Gates 2 and 3 no longer ask the user anything. The cartographer infers the qualifying answers from the code, the persona, the skills and the tools. It writes them to `plan/questions.json` with `"inferred": true` and `file:line` evidence; the validator refuses an inferred answer without evidence. It writes the default metrics with `"inferred": true` and proposes the environment: sandbox by default, or a staged version for production-ready when one exists and the code is in sync.
+Gates 2 and 3 ask the user nothing by default. The cartographer infers the qualifying answers from the code, the persona, the skills and the tools. It writes them to `plan/questions.json` with `"inferred": true` and `file:line` evidence; the validator refuses an inferred answer without evidence. It writes the default metrics with `"inferred": true` and proposes the environment: sandbox by default, or a staged version for production-ready when one exists and the code is in sync.
 
-The command shows all of this as a short list of assumptions, and the report's method section lists them as inferred, with their sources. Inference never picks production, never agrees a company email domain (the environment gate refuses `--allowed-email-domains` with `EMAIL_DOMAIN_REFUSED` when the questions gate was inferred) and never edits `.gitignore`. Production is reached only through the environment question and the consent question, whether by `--interview` or because the user asked for it. AskUserQuestion remains for the gate-1 map check, the gate-4 plan approval, production consent (unchanged), a genuinely ambiguous environment, and `--interview`, which restores the old question gates.
+The command shows all of this as a short list of assumptions, and the report's method section lists them as inferred, with their sources. Inference never picks production, never agrees a company email domain (the environment gate refuses `--allowed-email-domains` with `EMAIL_DOMAIN_REFUSED` when the questions gate was inferred) and never edits `.gitignore`. Production is reached only through the environment question and the consent question, whether by `--interview` or because the user asked for it. AskUserQuestion remains for the gate-1 map check, the gate-4 plan approval, production consent (unchanged), a genuinely ambiguous environment, and `--interview`, which brings back the question gates.
 
 ### Launching the Workflow tool
 
 - **The script copy.** `workflow-args` copies `qa-full.workflow.js` byte for byte into `<runDir>/workflow/` and prints its `scriptPath`, because the Workflow tool refuses a script outside the working directory.
 - **Agent types.** `--agent-types plugin|prefixed|general-purpose` chooses the agent types. The command detects which `subagent_type` values its Agent tool offers. With `general-purpose`, each role's prompt starts by telling it to read its own agent file under `agents/`, because a general-purpose agent does not load those instructions itself.
 
-### Smaller fixes
+### Metric defaults
 
-- The default metrics `readability-h1` and `claims-h3` are now the ratio of runs without a confirmed failure (target 1.0, `>=`), matching how `aggregate` computes them. The old "count == 0" defaults failed every clean run.
+- The default metrics `readability-h1` and `claims-h3` are the ratio of runs without a confirmed failure (target 1.0, `>=`), matching how `aggregate` computes them.
 
-### Honest numbers and cross-run isolation (first report review)
+### Honest numbers and cross-run isolation
 
 - **n/a, never 100%.** A metric or headline tile with nothing behind it (no workflows, no flow or tool tests, no stress result, no valid runs) reads `n/a: <reason>`, never 100% or a pass. Branch coverage with no workflow path is `null` with `naReason: "no workflows"` (or `"no flow tests"`), every n/a metric carries its `naReason`, and a run with no valid run is never an overall pass.
 - **Not played.** A planned run whose folder was never created, whose folder has no run record, or in which no turn was recorded is `NOT_PLAYED`: excluded from the valid runs, never a FAIL, never a safety veto, listed with its reason, and it makes the card inconclusive when too few valid runs remain. `aggregate` adds a row for every planned run with no folder, so the report says "44 of 48 runs were valid (4 runs not played)". `run-verdict` stores `NOT_PLAYED` for a run with no turn. The workflow script grades a run only when the player returns the folder `start-run` created for it and at least one turn; a placeholder folder, no turn or no player result is not played and is not graded or retried.
-- **Platform memory.** Every player chats as the same signed-in user, so memory that outlives a thread let one persona's notes reach later runs. Discovery now reads `lua features list --ci` (a new read-only allowlist shape) into `discovery/features.json`: `luaMemory*` cross-chat memory behind its master gate, and org memory (`memoryWrite`, `memoryRecall`); a failed read is `unknown`, never off. The environment gate records it (`--memory caveat|off`). Switching memory off for the test window needs the verbatim consent `I consent to turning off agent memory for this test run`; the restore list goes into `state.json` before anything is switched, the user's own `lua features disable|enable` commands (an `ask` rule) do the switching, the new `memory --check off|restored` subcommand verifies it, `start-run` refuses until it is verified off (`MEMORY_NOT_OFF`), and cleanup always lists a `restore-feature` action until the features read back on. Otherwise memory findings carry the caveat "possible cross-run memory".
+- **Platform memory.** Every player chats as the same signed-in user, so memory that outlives a thread let one persona's notes reach later runs. Discovery reads `lua features list --ci` (a new read-only allowlist shape) into `discovery/features.json`: `luaMemory*` cross-chat memory behind its master gate, and org memory (`memoryWrite`, `memoryRecall`); a failed read is `unknown`, never off. The environment gate records it (`--memory caveat|off`). Switching memory off for the test window needs the verbatim consent `I consent to turning off agent memory for this test run`; the restore list goes into `state.json` before anything is switched, the user's own `lua features disable|enable` commands (an `ask` rule) do the switching, the new `memory --check off|restored` subcommand verifies it, `start-run` refuses until it is verified off (`MEMORY_NOT_OFF`), and cleanup always lists a `restore-feature` action until the features read back on. Otherwise memory findings carry the caveat "possible cross-run memory".
 - **Cross-run memory heuristic.** The contamination pre-check also reads the replies: one that quotes another card's test email or phone, persona name or six words of its openers, before this run said them and when the agent's own compiled sources (`discovery/manifest.json`) do not contain them, is `CONTAMINATED` with a `cross-run memory:` reason. On the first trial it flags exactly the runs the analyst had traced to recalled notes.
 - **Harness artefacts.** The analyst files cross-run memory findings as one `test-artifact` cluster (`harnessArtefact: true`), never an agent defect. The report ranks artefact clusters last and never headlines one.
 - **Method.** A new "Shared identity and platform memory" subsection says that every persona is the same signed-in user (so identity findings, such as offering the account's own email for a reset, may be amplified), what discovery found about memory and what was done about it, and how the heuristic works.
 
-### Fixes from the smoke run
+### No-workflow wording, `cards write` and the clock (from the smoke run)
 
-- **The cover** no longer claims "a happy-path workflow test" (or "workflow tests") for an agent with no workflows.
+- **The cover** claims no workflow test for an agent with no workflows.
 - **The flow-test tile** reads only `n/a: no workflows` when there is nothing to test; "other branches: not in this tier" is shown only next to real happy-path results. The workflow section says the agent has no workflows.
-- **`cards write`** fills in a missing `schema` on each card and plan (`lua-qa/card@1`, `flow-tests@1`, `tool-tests@1`, `stress-plan@1`) and keeps a wrong one so it is reported. The write is now all or nothing: a schema error writes no file (exit 1, `BUNDLE_INVALID`, `written: []`), like a refusal (exit 3), and the output says nothing was written.
-- **The smoke clock.** `init-run` prints `clockStarts: "plan-approval"` and a `clock` note, and the command says the clock starts at the plan approval, not at `init-run`. `clockStart` no longer falls back to the `init-run` entry, so the report's "Time taken" and the cap count only from the plan approval.
+- **`cards write`** fills in a missing `schema` on each card and plan (`lua-qa/card@1`, `flow-tests@1`, `tool-tests@1`, `stress-plan@1`) and keeps a wrong one so it is reported. The write is all or nothing: a schema error writes no file (exit 1, `BUNDLE_INVALID`, `written: []`), like a refusal (exit 3), and the output says nothing was written.
+- **The smoke clock.** `init-run` prints `clockStarts: "plan-approval"` and a `clock` note, and the command says the clock starts at the plan approval, not at `init-run`. `clockStart` never falls back to the `init-run` entry, so the report's "Time taken" and the cap count only from the plan approval.
 
 ### Safety enforced in code
 
@@ -98,7 +98,7 @@ All helpers sit behind one entry, `node ${CLAUDE_PLUGIN_ROOT}/lib/qa/cli.mjs <su
   - `state.json` keeps only a SHA-256 of the run's consent token. `workflow-args` takes the token as input and never prints one it was not given.
 - **The approved plan is sealed.** The plan gate stores a hash of the cards and the three test plans, and `start-run`, `record`, `tool-test`, `flow-test` and `stress` refuse edited files (`PLAN_CHANGED`).
 - **Tool and flow tests take the sandbox lock.** `lua test` compiles into the `dist-v2/` that a sandbox chat pushes from, so in a sandbox run these tests take the same lock as the players' chats. A busy sandbox leaves the test to do; it is not recorded as an error. Tool tests re-check their input for real contact data before each spawn and write a ledger row for every tool with a side effect. Burst stress is refused on a staged version (`lua chat -b` would hit the sandbox instead).
-- **Fake data only.** Persona emails must be `@example.com` / `.org` / `.net`.
+- **Fake data only.** Persona emails must be `@example.*`, or on a company domain agreed at the environment gate with an obviously fake local part.
 - **Redaction.** Secret-shaped strings are redacted in every file the helpers write and in everything they print.
 
 ### Quick mode unchanged
@@ -107,7 +107,7 @@ Bare `/lua-qa` is the 1.7.0 pass, as are `/lua-qa quick` and `/lua-qa <tool or w
 
 ### Report
 
-`.lua-qa/runs/<runId>/report/` holds `results.json` (always), `report.html` (always) and `report.pdf` (when pandoc and WeasyPrint are present). The pass bar is 3 of 3 runs (or 4 of 5), the highest attempt per run counts, and a card with too many void runs is `inconclusive`, not a pass. A safety veto counts even on a run that contamination voided.
+`.lua-qa/runs/<runId>/report/` holds `results.json` (always), `report.html` (always) and `report.pdf` (when pandoc and WeasyPrint are present). The pass bar is the tier's (smoke 1 of 1, medium 3 of 3 or 4 of 5, production-ready 4 of 5), the highest attempt per run counts, and a card with too many void runs is `inconclusive`, not a pass. A safety veto counts even on a run that contamination voided.
 
 ### Lints
 
