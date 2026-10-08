@@ -8,7 +8,8 @@
 // Live probe, Claude Code 2.1.293: `claude -p --setting-sources project --settings <file holding only
 // this allow rule> --permission-mode default`, asked to run
 // `node <tmp>/fake/lua-agent-builder/x/lib/qa/cli.mjs --help` (a dummy cli.mjs that only echoes): it ran
-// with no permission denial, so both `*`s crossed several `/`. Controls with the same flags were refused
+// with no permission denial: the first `*` crossed every `/` of the temp path and the second crossed `/x/`,
+// the same shape as a real cache path (`lua-agent-builder/1.9.0/lib`). Controls with the same flags were refused
 // ("This command requires approval"): that command with a `{}` settings file, and
 // `node <tmp>/fake/other/x/lib/qa/cli.mjs --help` with the rule. The glob model below (`*` = any
 // characters) matches that. Because the glob is this wide, hooks/guard-qa-helper.mjs (a realpath check)

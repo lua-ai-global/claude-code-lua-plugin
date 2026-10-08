@@ -6,7 +6,7 @@ All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `
 
 **The full QA suite: `/lua-qa full`.** Bare `/lua-qa` (and `/lua-qa <name>`, `/lua-qa quick …`) is still the 1.7.0 quick pass, with no new question; `/lua-qa full` runs the suite.
 
-Versioning: 1.8.0 was released with web apps (#17) and the `v1.8.0` tag exists, so this suite is 1.9.0. #18 (`fix/deploy-hook-false-positives`) is still open and declares 1.7.1, which is below that tag, so `release-prod.yml` would cut no release for it as it stands. Whichever merges second rebases and re-runs `lint-release-version`:
+Versioning: 1.8.0 was released with web apps (#17) and the `v1.8.0` tag exists, so this suite is 1.9.0. #18 (`fix/deploy-hook-false-positives`) is still open and declares 1.7.1. That is below the released 1.8.0, so #18 must take a version above it before merging; as it stands, `release-prod.yml` (which only checks that the tag is new) would cut an out-of-order v1.7.1. Whichever merges second rebases and re-runs `lint-release-version`:
 - **This PR first (planned):** main becomes 1.9.0. #18 then takes 1.9.1, and its entry goes above this one.
 - **#18 first:** #18 takes 1.8.1, with its entry above 1.8.0. This PR stays 1.9.0, and this entry stays on top.
 
