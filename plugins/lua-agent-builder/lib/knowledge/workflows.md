@@ -213,6 +213,8 @@ const { runId, status } = await Workflows.start('outreach', { leads }, { idempot
 const run = await Workflows.get(runId);            // restricted runs: { restricted: true }, no output — never an error
 await Workflows.signal(runId, 'review', { approved: true }, { dedupeKey: deliveryId });
 await Workflows.resume(runId, 'ask', { answer: 42 });
+// in a web-app route (non-GET), acting as the signed-in viewer — web-apps.md §3 (lua-cli 3.50.0+):
+await Workflows.viewer.decideApproval(runId, approvalId, { decision: 'approve', note });
 await Workflows.cancel(runId, { mode: 'request' | 'force', reason });
 await Workflows.list({ workflow: 'outreach', status: 'failed', limit: 20, sort: '-createdAt' });
 ```

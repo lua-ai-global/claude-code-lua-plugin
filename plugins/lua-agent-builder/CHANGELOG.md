@@ -2,6 +2,21 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.12.0 — 2026-10-11
+
+**Org-shared Data and viewer decisions from web apps** (lua-cli 3.50.0).
+
+### Changed
+
+- **`primitives.md`: `Data.shared(name)`.** A new section next to `Data`: org-shared collections that several agents of one organization read and write, with the same methods as `Data` (`collections`, `create`, `get`, `getEntry`, `update`, `patch` with `ifVersion`, `increment`, `search`, `delete`). It covers when to pick it over private `Data` or a supervision grant (`Agents.data(id)`), the org-admin setup (`POST/GET/PUT/DELETE /admin/orgs/:orgId/shared-collections`, explicit agent ids, at most 200 per list, never `*`; the builder hands the request to the user and never runs it), the reader/writer split, the errors (`shared_data_forbidden` 403, also for an unknown or other-org name; `shared_data_test_session_write_refused` 409; `shared_data_unavailable_offline` on every call in a local test run), audit, embedding billing, and no personal data or secrets. The routing table gains the "several agents share one dataset" row.
+- **`decision-trees.md`**: "How should I store this data?" routes data shared by several agents of one org to `Data.shared`.
+- **`web-apps.md` §3 and `workflows.md` §6: `Workflows.viewer.decideApproval` / `Workflows.viewer.resume`.** A non-GET web-app route can decide a workflow approval or answer an input step as the signed-in viewer (their access, approver, four-eyes and step-up rules, and audit, as in the Inbox); `agentId` names another agent's run for a fleet dashboard; `viewer_unavailable` anywhere else; `STEP_UP_REQUIRED` / `APPROVAL_SURFACE_DENIED` go to the Inbox. Locally the route runs as the developer, so a test call really decides.
+- **The debug subagent** (`agents/lua-debug.md`) reads a `SharedDataError` by code: offline is not a code bug, `shared_data_forbidden` is an ACL fix for an org admin, a test session may only read.
+
+Not covered: the supervision additions in lua-cli 3.50.0 (`Agents.secrets(id).put`, `Agents.versions(id).list({ status, offset })`, deleting stale staged versions), because the plugin does not teach the supervision surface. `PINNED_MIN_LUA_CLI` is unchanged: the new sections are marked lua-cli 3.50.0+.
+
+Versioning: 1.11.0 (`/lua-deploy webapp`, #21) is on `main`, so this is 1.12.0.
+
 ## 1.11.0 — 2026-10-11
 
 **`/lua-deploy webapp` deploys just the web app (lua-cli 3.49.0+).** lua-cli 3.49.0 adds `lua deploy webapp`, a scoped promote like `lua deploy webhook`: a new agent version identical to the live one except that web app's pin is created and promoted, so nothing else staged on the agent goes live. Until now the plugin made a web app live by creating a whole agent version, diffing it against the live one and stopping when anything else would have changed.
