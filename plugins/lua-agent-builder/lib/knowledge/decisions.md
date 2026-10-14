@@ -67,12 +67,12 @@ Jev takes about 32,000 tokens of input. On `auto` a larger state falls back to O
 
 ### OpenRouter models (⏳ 3.49.2)
 
-Set `model` to a `vendor/model` id and the call runs on that model with the same request and answer shape; the result reports `provider: 'openrouter'`. Which ids are served is the list in the public docs (`/reference/sdk/decisions#other-decision-models-through-openrouter`; today `perplexity/pplx-decider-v1.1-27b`, `liquid/d1`, `microsoft/microsoft-decision-1`, `cloudflare/clef-flash`, `cloudflare/clef`, `inception/mercury-decide`, `togethercomputer/tev1-4b-experimental`, `upstage/solar-decide-flash`, `upstage/solar-decide`, `jaredpalmer/kev-4b`, `nace-ai/drex-v1.5`). Read the docs for the current list; never invent an id.
+Set `model` to a `vendor/model` id and the call runs on that model with the same request and answer shape; the result reports `provider: 'openrouter'`. Which ids are served is the list in the public docs (`/reference/sdk/decisions#other-decision-models-through-openrouter`; today `perplexity/pplx-decider-v1.1-27b`, `liquid/d1`, `microsoft/microsoft-decision-1`, `cloudflare/clef-flash`, `cloudflare/clef`, `inception/mercury-decide`, `togethercomputer/tev1-4b-experimental`, `upstage/solar-decide-flash`, `upstage/solar-decide`, `jaredpalmer/kev-4b`, `nace-ai/drex-v1.5`, `scaledown/classify-1`). Read the docs for the current list; never invent an id.
 
 - `provider: 'openrouter'` without a `model` → `decision_invalid` (`provider openrouter needs a model id, such as liquid/d1`).
 - `typesafe/...` or `openai/...` ids on openrouter → `decision_invalid` with a message naming the provider to set instead (Jev and OpenAI run on Lua's own providers, never through OpenRouter). Both of these are also **compile errors** for a `LuaDecision`, so `lua compile` / `lua push` stop before anything is written.
 - Any other `vendor/model` id is accepted locally and checked when the call is made: an unknown id, or a model Lua does not serve because its vendor retains request data (`respan/span-01`, `cloudflare/clef-omni`, `inception/mercury-decide:free`, `openai/gpt-6-luna-decisions`), fails with `decision_rejected` (HTTP 422) and the upstream message. No fallback.
-- Images are sent to every model; a model its vendor lists as text-only may read or ignore them.
+- Images are sent to every model; a model its vendor lists as text-only may read or ignore them. `scaledown/classify-1` takes one png or jpeg image; a second image or another format fails `decision_rejected` before the call. It answers in 3 to 6 s, past the 3 s default timeout, so set `timeoutMs` (up to 15000) when pinning it.
 
 ## 5. Options (`Decisions.ask` options and `LuaDecision` config share them)
 
