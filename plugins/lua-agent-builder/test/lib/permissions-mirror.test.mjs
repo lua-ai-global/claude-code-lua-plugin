@@ -151,10 +151,27 @@ describe('permission layer (lib/permissions-template.json) under Claude Code sem
       'mcp__plugin_lua-agent-builder_lua-platform',
       'mcp__plugin_lua-agent-builder_lua-docs__search_lua_cli',
       'mcp__plugin_lua-agent-builder_lua-docs__query_docs_filesystem_lua_cli',
-      'mcp__plugin_lua-agent-builder_lua-ui',
+      'mcp__plugin_lua-agent-builder_ui__list-all-documentation',
+      'mcp__plugin_lua-agent-builder_ui__get-documentation',
+      'mcp__plugin_lua-agent-builder_ui__get-documentation-for-story',
+      'mcp__ui__list-all-documentation',
+      'mcp__ui__get-documentation',
+      'mcp__ui__get-documentation-for-story',
     ]));
     expect(allow).not.toContain('mcp__plugin_lua-agent-builder_lua-docs');
     expect(allow.some((r) => /submit_feedback/.test(r))).toBe(false);
+  });
+
+  test('no remote (http/sse) MCP server is allowed as a whole — only tool by tool', () => {
+    const servers = JSON.parse(readFileSync(join(here, '../../.mcp.json'), 'utf8')).mcpServers;
+    const remote = Object.entries(servers).filter(([, e]) => e.type === 'http' || e.type === 'sse').map(([name]) => name);
+    expect(remote).toEqual(expect.arrayContaining(['lua-docs', 'ui']));
+    for (const server of remote) {
+      for (const prefix of [`mcp__plugin_lua-agent-builder_${server}`, `mcp__${server}`]) {
+        const whole = allow.filter((r) => r === prefix || r === `${prefix}__*` || r === `${prefix}*`);
+        expect({ server, whole }).toEqual({ server, whole: [] });
+      }
+    }
   });
 
   test('the alternative binaries are denied wholesale (the plugin never emits them)', () => {

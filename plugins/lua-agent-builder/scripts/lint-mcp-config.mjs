@@ -10,11 +10,13 @@
 // silently with "command not found" when end-users installed the plugin.
 //
 // Lint contract per discovered server entry:
-//   A. Remote (`"type": "http"` / `"sse"`): `url` must be an https:// URL on a
-//      heylua.ai or lua.dev host (both Lua-owned). Nothing to vendor or build —
-//      the transport is the public endpoint. Today these are the public docs MCP
-//      at https://docs.heylua.ai/mcp (documented on docs.heylua.ai/mcp-for-builders)
-//      and the @lua-ai-global/ui Storybook MCP at https://ui.lua.dev/mcp.
+//   A. Remote (`"type": "http"` / `"sse"`): `url` must be an https:// URL on
+//      one of the exact Lua-owned hosts in REMOTE_HOSTS (no wildcard subdomain,
+//      no port, no credentials). Nothing to vendor or build — the transport is
+//      the public endpoint. Today these are the public docs MCP at
+//      https://docs.heylua.ai/mcp (documented on docs.heylua.ai/mcp-for-builders)
+//      and the @lua-ai-global/ui Storybook MCP at https://ui.lua.dev/mcp. A new
+//      remote server means adding its host here deliberately.
 //   B. Local stdio (`command` + `args`):
 //      1. The args path must reference ${CLAUDE_PLUGIN_ROOT}/mcp/<name>/...
 //         (other layouts are not handled — extend this script if needed).
@@ -46,12 +48,18 @@ if (serverNames.length === 0) {
 }
 
 const REMOTE_TYPES = new Set(['http', 'sse']);
-const REMOTE_HOST_RE = /^https:\/\/([a-z0-9-]+\.)*(heylua\.ai|lua\.dev)(\/|$)/;
+const REMOTE_HOSTS = new Set(['docs.heylua.ai', 'ui.lua.dev']);
+const isAllowedRemoteUrl = (raw) => {
+  if (typeof raw !== 'string') return false;
+  let url;
+  try { url = new URL(raw); } catch { return false; }
+  return url.protocol === 'https:' && REMOTE_HOSTS.has(url.hostname) && url.port === '' && url.username === '' && url.password === '';
+};
 
 for (const [name, entry] of Object.entries(servers)) {
   if (REMOTE_TYPES.has(entry?.type)) {
-    if (typeof entry.url !== 'string' || !REMOTE_HOST_RE.test(entry.url)) {
-      fail(`.mcp.json server "${name}": remote "${entry?.type}" server must have an https:// url on a heylua.ai or lua.dev host (got ${JSON.stringify(entry?.url)}).`);
+    if (!isAllowedRemoteUrl(entry.url)) {
+      fail(`.mcp.json server "${name}": remote "${entry?.type}" server must have an https:// url on one of ${[...REMOTE_HOSTS].join(', ')} (got ${JSON.stringify(entry?.url)}).`);
     }
     if (entry.command || entry.args) {
       fail(`.mcp.json server "${name}": a remote server must not also declare command/args.`);
@@ -106,4 +114,4 @@ if (failed) {
   console.error('\nFix the issues above and re-run `npm run lint`.');
   process.exit(1);
 }
-console.log(`✓ .mcp.json: all ${serverNames.length} server(s) resolve to a buildable source tree or a heylua.ai / lua.dev remote endpoint.`);
+console.log(`✓ .mcp.json: all ${serverNames.length} server(s) resolve to a buildable source tree or an allowed remote host (${[...REMOTE_HOSTS].join(', ')}).`);

@@ -13,14 +13,27 @@
 //     (registered in .mcp.json as an `http` server). Its tool names are fixed
 //     by the docs host and listed here verbatim — re-verify with the server's
 //     tools/list if a reference ever fails at runtime.
-//   - lua-ui tools: the public Storybook MCP for @lua-ai-global/ui at
-//     https://ui.lua.dev/mcp (`http` server). Its tool names are kebab-case and
-//     fixed by Storybook's MCP addon (tools/list checked 2026-10-19).
+//   - ui tools: the public Storybook MCP for @lua-ai-global/ui at
+//     https://ui.lua.dev/mcp (`http` server, key `ui`). Its tool names are
+//     kebab-case and fixed by Storybook's MCP addon (tools/list checked
+//     2026-10-19).
+//
+// Also checks tool-name validity:
+//   - every tool name a server reports must match ^[A-Za-z0-9_-]{1,64}$ (the
+//     MCP / Anthropic API tool-name rule);
+//   - every composed plugin name, mcp__plugin_<plugin>_<server>__<tool>, must
+//     use only [A-Za-z0-9_-] and stay within COMPOSED_MAX. That is NOT 64:
+//     composed names longer than 64 resolve in Claude Code today —
+//     mcp__plugin_lua-agent-builder_lua-docs__query_docs_filesystem_lua_cli
+//     (69) and mcp__plugin_lua-agent-builder_lua-platform__list_primitive_versions
+//     (67) are live, callable tools (checked 2026-10-19). COMPOSED_MAX (128) is a
+//     sanity ceiling, not a verified Claude Code limit. The `ui` server still uses a short key, so its
+//     longest name (…_ui__get-documentation-for-story) is 61.
 
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 
-// Tool names may be kebab-case (lua-ui's `get-documentation`).
+// Tool names may be kebab-case (the ui server's `get-documentation`).
 const REF_RE = /mcp__([a-zA-Z][a-zA-Z_-]*)__([a-zA-Z_-]+)/g;
 
 // Claude Code exposes a PLUGIN's MCP servers as
@@ -66,8 +79,34 @@ async function discoverLuaPlatformTools() {
 const REGISTRY = {
   'lua-platform': await discoverLuaPlatformTools(),
   'lua-docs': new Set(['search_lua_cli', 'query_docs_filesystem_lua_cli', 'submit_feedback']),
-  'lua-ui': new Set(['list-all-documentation', 'get-documentation', 'get-documentation-for-story']),
+  ui: new Set(['list-all-documentation', 'get-documentation', 'get-documentation-for-story']),
 };
+
+// Tool-name validity (see the header): raw names ≤ 64, composed names ≤ COMPOSED_MAX.
+const RAW_TOOL_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const COMPOSED_MAX = 128;
+const NAME_CHARS_RE = /^[A-Za-z0-9_-]+$/;
+{
+  let bad = false;
+  for (const [server, tools] of Object.entries(REGISTRY)) {
+    if (!NAME_CHARS_RE.test(server)) {
+      console.error(`✗ MCP server key "${server}" has characters outside [A-Za-z0-9_-]; Claude Code puts it into every tool name.`);
+      bad = true;
+    }
+    for (const tool of tools) {
+      if (!RAW_TOOL_RE.test(tool)) {
+        console.error(`✗ ${server} tool "${tool}" must match ^[A-Za-z0-9_-]{1,64}$.`);
+        bad = true;
+      }
+      const full = `mcp__${PLUGIN_PREFIX}${server}__${tool}`;
+      if (!NAME_CHARS_RE.test(full) || full.length > COMPOSED_MAX) {
+        console.error(`✗ "${full}" (${full.length} characters) must use only [A-Za-z0-9_-] and stay within ${COMPOSED_MAX} characters. Shorten the server key in .mcp.json.`);
+        bad = true;
+      }
+    }
+  }
+  if (bad) process.exit(1);
+}
 
 // Every server referenced by a prompt must be registered in .mcp.json, and
 // vice versa — otherwise a prompt names a server Claude Code never starts.

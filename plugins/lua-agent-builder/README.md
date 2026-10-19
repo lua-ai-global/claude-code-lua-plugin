@@ -20,7 +20,7 @@ New login runs in your own terminal (`lua auth configure`) — the plugin never 
 ```
 plugins/lua-agent-builder/
 ├── .claude-plugin/plugin.json   # plugin manifest
-├── .mcp.json                    # lua-platform (local stdio) + lua-docs (https://docs.heylua.ai/mcp) + lua-ui (https://ui.lua.dev/mcp)
+├── .mcp.json                    # lua-platform (local stdio) + lua-docs (https://docs.heylua.ai/mcp) + ui (https://ui.lua.dev/mcp)
 ├── commands/                    # 23 slash commands
 ├── agents/                      # 10 subagents (architect, skill-builder, debug, deploy-pilot, qa, qa-cartographer, qa-player, qa-grader, qa-analyst, qa-reporter)
 ├── hooks/                       # 12 Node ESM hooks + hooks.json
@@ -80,7 +80,7 @@ plugins/lua-agent-builder/
 
 - `lua-platform` (local, `mcp/lua-platform/dist/server.js`, one self-contained bundle — no `node_modules` needed at runtime): five read-only tools — `list_agents`, `get_agent`, `list_primitive_versions`, `get_deployment_status`, `tail_logs` — over the same lua-api routes lua-cli uses, with lua-cli's credential resolution (env → `.env` → renewable session → credentials file).
 - `lua-docs` (remote, `https://docs.heylua.ai/mcp`): the public docs search (`search_lua_cli`, `query_docs_filesystem_lua_cli`).
-- `lua-ui` (remote, `https://ui.lua.dev/mcp`, no auth): the `@lua-ai-global/ui` component catalog, a public Storybook MCP (`list-all-documentation`, `get-documentation`, `get-documentation-for-story`). The skill builder looks a component's props up here before writing web-app pages; the permission template allows the whole server (all three tools only read docs).
+- `ui` (remote, `https://ui.lua.dev/mcp`, no auth): the `@lua-ai-global/ui` component catalog, a public Storybook MCP (`list-all-documentation`, `get-documentation`, `get-documentation-for-story`). The skill builder looks a component's props up here before writing web-app pages. The permission template allows the three tools one by one, never the whole server. The key is short on purpose, so every composed tool name stays within 64 characters.
 - Claude Code names a plugin's MCP tools `mcp__plugin_lua-agent-builder_<server>__<tool>`; the subagents, slashes and the permission template use that form (the plain `mcp__lua-platform__…` spelling only exists for a server you register yourself with `claude mcp add`).
 
 ## Build & test

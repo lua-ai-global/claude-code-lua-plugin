@@ -141,11 +141,38 @@ for (const sample of BARE_SAMPLES) {
 
 // The plugin's read-only MCP tools must be pre-approved under the name Claude
 // Code gives a plugin server, or every subagent call to them prompts (§3.7).
-for (const required of ['mcp__plugin_lua-agent-builder_lua-platform', 'mcp__plugin_lua-agent-builder_lua-docs__search_lua_cli', 'mcp__plugin_lua-agent-builder_lua-docs__query_docs_filesystem_lua_cli', 'mcp__plugin_lua-agent-builder_lua-ui']) {
+// The `ui` server (the @lua-ai-global/ui catalog) is allowed tool by tool, in
+// both spellings.
+const UI_TOOLS = ['list-all-documentation', 'get-documentation', 'get-documentation-for-story'];
+for (const required of [
+  'mcp__plugin_lua-agent-builder_lua-platform',
+  'mcp__plugin_lua-agent-builder_lua-docs__search_lua_cli',
+  'mcp__plugin_lua-agent-builder_lua-docs__query_docs_filesystem_lua_cli',
+  ...UI_TOOLS.flatMap((tool) => [`mcp__plugin_lua-agent-builder_ui__${tool}`, `mcp__ui__${tool}`]),
+]) {
   if (!allowSet.has(required)) fail(`permissions.allow must contain "${required}" — Claude Code names plugin MCP tools mcp__plugin_<plugin>_<server>__<tool>, and without this every subagent MCP call prompts.`);
 }
 if (allowSet.has('mcp__plugin_lua-agent-builder_lua-docs') || allowSet.has('mcp__lua-docs')) {
   fail('Do not allow the whole lua-docs server: submit_feedback posts to the docs team and must keep prompting.');
+}
+
+// No remote (http/sse) server in .mcp.json may be allowed as a whole: its host
+// can add tools at any time, and a whole-server rule would pre-approve them
+// unseen. Allow its tools one by one instead.
+try {
+  const mcpServers = JSON.parse(await readFile('.mcp.json', 'utf8'))?.mcpServers ?? {};
+  for (const [server, entry] of Object.entries(mcpServers)) {
+    if (entry?.type !== 'http' && entry?.type !== 'sse') continue;
+    for (const prefix of [`mcp__plugin_lua-agent-builder_${server}`, `mcp__${server}`]) {
+      for (const rule of [...allowSet]) {
+        if (rule === prefix || rule === `${prefix}__*` || rule === `${prefix}*`) {
+          fail(`permissions.allow must not allow the whole remote MCP server "${server}" ("${rule}") — list its tools one by one.`);
+        }
+      }
+    }
+  }
+} catch (err) {
+  fail(`Could not read .mcp.json to check remote-server allow rules: ${err.message}`);
 }
 
 // Critical safety check: --auto-deploy must be denied somewhere.
