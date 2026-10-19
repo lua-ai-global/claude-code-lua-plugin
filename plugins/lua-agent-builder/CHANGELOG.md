@@ -2,6 +2,22 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.14.0 — 2026-10-19
+
+**Web-app pages on the new design: `@lua-ai-global/ui` 0.3, app-client 0.1 and the `lua-ui` MCP** (lua-cli 3.55.0; LUA-1481).
+
+### New
+
+- **The `lua-ui` MCP server** in `.mcp.json`: `https://ui.lua.dev/mcp`, the public Storybook catalog of `@lua-ai-global/ui` (no auth; `list-all-documentation`, `get-documentation`, `get-documentation-for-story`). The skill builder has the three tools in its `tools:` line (plugin and bare spellings, like `lua-docs`) and looks a component's props up there before writing it. The permission template allows the whole server (`mcp__plugin_lua-agent-builder_lua-ui`, `mcp__lua-ui`): every tool only reads docs.
+
+### Changed
+
+- **`web-apps.md` §4.** The template stack is ui `~0.3` (the enterprise restyle Lua Workspace uses: flat surfaces, 6px radius, denser controls, Inter) and app-client `~0.1`, with the new `page` (`PageColumn`, `PageTitle`, `PageSection`, `Panel`, `StatGrid`, `Stat`), `list-row` (`ListRow`) and `empty-state` (`EmptyState`) components. New "Look and theme" bullet: app-client applies the shell's light/dark, density and the person's accent to `<html>` on `lua.start()` and every `lua:init`, so pages keep only `void lua.start()` (no theme lines) and use semantic tokens, never palette classes or hex. New `lua apps upgrade <name>` bullet: what it changes (ui/app-client ranges, the old theme lines, the copied client, the bundled pane), that 0.2 → 0.3 needs no code changes, `lua apps dev` to look the pages over, and that the gateway restyles ui < 0.3 apps until they are rebuilt. §2 notes newer templates import the package already. §9 gains the "page ignores the accent" and "ui export missing" rows.
+- **`agents/lua-skill-builder.md`** step 4 for web apps: no theme code (it used to say keep the theme lines), semantic tokens only, the lua-ui MCP before any component, the new page components, and `lua apps upgrade` named for the user (never run by the builder: it edits files and installs packages, outside the approved npm forms) when a component is newer than the installed ui.
+- **Lints**: `lint-mcp-config` accepts a remote server on a `lua.dev` host as well as `heylua.ai`; `lint-mcp-refs` knows the `lua-ui` tools and accepts kebab-case tool names; `lint-permissions` and `permissions-mirror.test.mjs` require the lua-ui allow rule; `lint-knowledge-commands` learns `lua apps upgrade`.
+
+`PINNED_MIN_LUA_CLI` is unchanged: the new facts are marked lua-cli 3.55.0 (3.54.0 for `lua apps upgrade` itself).
+
 ## 1.13.0 — 2026-10-12
 
 **Preview a web app version before it is live** (lua-cli 3.51.0).

@@ -151,6 +151,7 @@ describe('permission layer (lib/permissions-template.json) under Claude Code sem
       'mcp__plugin_lua-agent-builder_lua-platform',
       'mcp__plugin_lua-agent-builder_lua-docs__search_lua_cli',
       'mcp__plugin_lua-agent-builder_lua-docs__query_docs_filesystem_lua_cli',
+      'mcp__plugin_lua-agent-builder_lua-ui',
     ]));
     expect(allow).not.toContain('mcp__plugin_lua-agent-builder_lua-docs');
     expect(allow.some((r) => /submit_feedback/.test(r))).toBe(false);

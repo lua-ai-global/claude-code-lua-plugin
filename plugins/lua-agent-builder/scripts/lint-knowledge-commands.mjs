@@ -101,7 +101,7 @@ setSub('test',         ['skill', 'webhook', 'job', 'preprocessor', 'postprocesso
 setSub('push',         ['skill', 'agent', 'persona', 'webhook', 'trigger', 'job', 'preprocessor', 'postprocessor', 'mcp',
                         'device', 'device-trigger', 'voice', 'workflow', 'webapp', 'decision', 'backup', 'all']);
 // lua-cli 3.42.0 (Lua Apps): scaffold and run a web app.
-setSub('apps',         ['new', 'dev', 'preview', 'delete']); // preview: lua-cli 3.51.0, delete: 3.48.0
+setSub('apps',         ['new', 'dev', 'preview', 'delete', 'upgrade']); // preview: lua-cli 3.51.0, delete: 3.48.0, upgrade: 3.54.0
 setSub('deploy',       ['skill', 'webhook', 'trigger', 'job', 'preprocessor', 'postprocessor', 'webapp', 'persona', 'all']); // webapp: lua-cli 3.49.0
 setSub('env',          ['sandbox', 'staging', 'production']);
 setSub('persona',      ['sandbox', 'staging', 'production']);

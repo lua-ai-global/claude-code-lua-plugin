@@ -51,6 +51,8 @@ If you just want to start: [Installation](#installation) → [Your first agent](
 
 `/lua-doctor` checks all of these and offers consent-gated fixes. Platforms: macOS 14+, Ubuntu 22.04+, Windows 11; CI runs the suite on all three with Node 18 and 20.
 
+New in 1.14.0: **web-app pages on the new Lua design.** `lua apps new` now scaffolds pages on `@lua-ai-global/ui` 0.3 (the look Lua Workspace uses) and `@lua-ai-global/app-client` 0.1, which applies the shell's light/dark, density and the person's accent to the page by itself. The builder writes pages with the design's colour tokens only and no theme code, and looks each component up in the new `lua-ui` MCP (`https://ui.lua.dev/mcp`, the public component catalog) before using it. For an app made earlier it names `lua apps upgrade <name>` for you to run. Needs lua-cli 3.55.0.
+
 New in 1.13.0: **preview a web app before it goes live.** After `/lua-push webapp`, the builder can open the staged version with `lua apps preview`: a Lua Workspace link on its own address, where Data writes go to a throwaway copy, emails and messages are recorded instead of sent, and outside calls are blocked. Anyone who can edit the agent can open it, for 24 hours by default. Needs lua-cli 3.51.0.
 
 New in 1.12.0: **org-shared Data and viewer decisions.** When several agents of one organization need the same dataset, the builder now recommends `Data.shared(name)` (same methods as `Data`; an org admin creates the collection and names its readers and writers through the admin API) and explains its errors, including why every call fails in a local test run. A web app's routes can decide workflow approvals and answer input steps as the signed-in person with `Workflows.viewer`. Needs lua-cli 3.50.0.

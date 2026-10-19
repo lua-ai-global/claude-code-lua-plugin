@@ -141,7 +141,7 @@ for (const sample of BARE_SAMPLES) {
 
 // The plugin's read-only MCP tools must be pre-approved under the name Claude
 // Code gives a plugin server, or every subagent call to them prompts (§3.7).
-for (const required of ['mcp__plugin_lua-agent-builder_lua-platform', 'mcp__plugin_lua-agent-builder_lua-docs__search_lua_cli', 'mcp__plugin_lua-agent-builder_lua-docs__query_docs_filesystem_lua_cli']) {
+for (const required of ['mcp__plugin_lua-agent-builder_lua-platform', 'mcp__plugin_lua-agent-builder_lua-docs__search_lua_cli', 'mcp__plugin_lua-agent-builder_lua-docs__query_docs_filesystem_lua_cli', 'mcp__plugin_lua-agent-builder_lua-ui']) {
   if (!allowSet.has(required)) fail(`permissions.allow must contain "${required}" — Claude Code names plugin MCP tools mcp__plugin_<plugin>_<server>__<tool>, and without this every subagent MCP call prompts.`);
 }
 if (allowSet.has('mcp__plugin_lua-agent-builder_lua-docs') || allowSet.has('mcp__lua-docs')) {

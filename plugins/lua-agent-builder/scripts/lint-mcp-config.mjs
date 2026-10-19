@@ -11,9 +11,10 @@
 //
 // Lint contract per discovered server entry:
 //   A. Remote (`"type": "http"` / `"sse"`): `url` must be an https:// URL on a
-//      heylua.ai host. Nothing to vendor or build — the transport is the
-//      public endpoint. Today this is the public docs MCP at
-//      https://docs.heylua.ai/mcp (documented on docs.heylua.ai/mcp-for-builders).
+//      heylua.ai or lua.dev host (both Lua-owned). Nothing to vendor or build —
+//      the transport is the public endpoint. Today these are the public docs MCP
+//      at https://docs.heylua.ai/mcp (documented on docs.heylua.ai/mcp-for-builders)
+//      and the @lua-ai-global/ui Storybook MCP at https://ui.lua.dev/mcp.
 //   B. Local stdio (`command` + `args`):
 //      1. The args path must reference ${CLAUDE_PLUGIN_ROOT}/mcp/<name>/...
 //         (other layouts are not handled — extend this script if needed).
@@ -45,12 +46,12 @@ if (serverNames.length === 0) {
 }
 
 const REMOTE_TYPES = new Set(['http', 'sse']);
-const REMOTE_HOST_RE = /^https:\/\/([a-z0-9-]+\.)*heylua\.ai(\/|$)/;
+const REMOTE_HOST_RE = /^https:\/\/([a-z0-9-]+\.)*(heylua\.ai|lua\.dev)(\/|$)/;
 
 for (const [name, entry] of Object.entries(servers)) {
   if (REMOTE_TYPES.has(entry?.type)) {
     if (typeof entry.url !== 'string' || !REMOTE_HOST_RE.test(entry.url)) {
-      fail(`.mcp.json server "${name}": remote "${entry?.type}" server must have an https:// url on a heylua.ai host (got ${JSON.stringify(entry?.url)}).`);
+      fail(`.mcp.json server "${name}": remote "${entry?.type}" server must have an https:// url on a heylua.ai or lua.dev host (got ${JSON.stringify(entry?.url)}).`);
     }
     if (entry.command || entry.args) {
       fail(`.mcp.json server "${name}": a remote server must not also declare command/args.`);
@@ -105,4 +106,4 @@ if (failed) {
   console.error('\nFix the issues above and re-run `npm run lint`.');
   process.exit(1);
 }
-console.log(`✓ .mcp.json: all ${serverNames.length} server(s) resolve to a buildable source tree or a heylua.ai remote endpoint.`);
+console.log(`✓ .mcp.json: all ${serverNames.length} server(s) resolve to a buildable source tree or a heylua.ai / lua.dev remote endpoint.`);

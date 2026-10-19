@@ -13,11 +13,15 @@
 //     (registered in .mcp.json as an `http` server). Its tool names are fixed
 //     by the docs host and listed here verbatim — re-verify with the server's
 //     tools/list if a reference ever fails at runtime.
+//   - lua-ui tools: the public Storybook MCP for @lua-ai-global/ui at
+//     https://ui.lua.dev/mcp (`http` server). Its tool names are kebab-case and
+//     fixed by Storybook's MCP addon (tools/list checked 2026-10-19).
 
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 
-const REF_RE = /mcp__([a-zA-Z][a-zA-Z_-]*)__([a-zA-Z_]+)/g;
+// Tool names may be kebab-case (lua-ui's `get-documentation`).
+const REF_RE = /mcp__([a-zA-Z][a-zA-Z_-]*)__([a-zA-Z_-]+)/g;
 
 // Claude Code exposes a PLUGIN's MCP servers as
 //   mcp__plugin_<plugin-name>_<server-name>__<tool>
@@ -62,6 +66,7 @@ async function discoverLuaPlatformTools() {
 const REGISTRY = {
   'lua-platform': await discoverLuaPlatformTools(),
   'lua-docs': new Set(['search_lua_cli', 'query_docs_filesystem_lua_cli', 'submit_feedback']),
+  'lua-ui': new Set(['list-all-documentation', 'get-documentation', 'get-documentation-for-story']),
 };
 
 // Every server referenced by a prompt must be registered in .mcp.json, and

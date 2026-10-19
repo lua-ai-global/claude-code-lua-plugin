@@ -7,6 +7,10 @@
     "lua-docs": {
       "type": "http",
       "url": "https://docs.heylua.ai/mcp"
+    },
+    "lua-ui": {
+      "type": "http",
+      "url": "https://ui.lua.dev/mcp"
     }
   }
 }

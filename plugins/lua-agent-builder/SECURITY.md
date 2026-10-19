@@ -11,7 +11,7 @@ We aim to acknowledge within 2 business days and ship a fix within 30 days for h
 This plugin's surface includes:
 
 - **Hooks** (`hooks/*.mjs`) — run as subprocesses of Claude Code on `SessionStart`, `UserPromptSubmit`, and `Pre/PostToolUse(Bash)` events.
-- **MCP servers** — `mcp/lua-platform/dist/server.js`, a local stdio server exposing 5 read-only tools (a single self-contained bundle since 1.6.0 — its npm dependencies, `@modelcontextprotocol/sdk` included, are inlined at build time from the lockfile); it talks to `https://api.heylua.ai` over HTTPS with the user's lua-cli credential (and, for a session login, refreshes the stored refresh token at Google's securetoken endpoint exactly like lua-cli does). `lua-docs` is the public remote MCP at `https://docs.heylua.ai/mcp` (read-only docs search).
+- **MCP servers** — `mcp/lua-platform/dist/server.js`, a local stdio server exposing 5 read-only tools (a single self-contained bundle since 1.6.0 — its npm dependencies, `@modelcontextprotocol/sdk` included, are inlined at build time from the lockfile); it talks to `https://api.heylua.ai` over HTTPS with the user's lua-cli credential (and, for a session login, refreshes the stored refresh token at Google's securetoken endpoint exactly like lua-cli does). `lua-docs` is the public remote MCP at `https://docs.heylua.ai/mcp` (read-only docs search); `lua-ui` is the public remote Storybook MCP at `https://ui.lua.dev/mcp` (read-only `@lua-ai-global/ui` component docs, no credential sent).
 - **Slash commands and subagents** (`commands/*.md`, `agents/*.md`) — Markdown prompts that Claude reads and executes.
 - **Permission rules** (`lib/permissions-template.json`) — merged into the user's `.claude/settings.json` by `/lua-doctor` Step 5 with consent.
 
