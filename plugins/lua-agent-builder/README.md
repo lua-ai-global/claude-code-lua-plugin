@@ -23,13 +23,14 @@ plugins/lua-agent-builder/
 ├── .mcp.json                    # lua-platform (local stdio) + lua-docs (https://docs.heylua.ai/mcp) + ui (https://ui.lua.dev/mcp)
 ├── commands/                    # 23 slash commands
 ├── agents/                      # 10 subagents (architect, skill-builder, debug, deploy-pilot, qa, qa-cartographer, qa-player, qa-grader, qa-analyst, qa-reporter)
-├── hooks/                       # 12 Node ESM hooks + hooks.json
+├── hooks/                       # 15 Node ESM hooks + hooks.json (session-guard and session-context: live build sessions only)
 ├── lib/
-│   ├── knowledge/               # primitives, workflows, cli-reference, integrations, decision-trees, log-drains, devices, web-apps, decisions
+│   ├── knowledge/               # primitives, workflows, cli-reference, integrations, decision-trees, log-drains, devices, web-apps, decisions, build-session
 │   │   └── qa/                  # /lua-qa full prompts: rubric, ICP cards, player, red team, graders, analyst, fix-locus, mechanics, qualifying questions
 │   ├── qa/                      # /lua-qa full helpers behind one entry, lib/qa/cli.mjs (recorder, checks, discovery + SVG, report, Workflow script)
 │   ├── permissions-template.json# allow/ask/deny rules /lua-doctor merges into .claude/settings.json
 │   ├── tokenizer.mjs            # production-verb classifier for the deploy gate
+│   ├── session-mode.mjs, session-commands.mjs # live build session mode (LUA_BUILD_SESSION=1) and the vendored B23 command table
 │   └── credentials.mjs, hook-runtime.mjs, lua-cli.mjs, platform.mjs
 ├── mcp/lua-platform/            # vendored MCP server (src/, tests/, dist/server.js committed)
 ├── scripts/                     # 17 lint scripts + 2 check scripts + pack
