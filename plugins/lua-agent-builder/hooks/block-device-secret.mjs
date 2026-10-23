@@ -1,5 +1,6 @@
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
 import { isHeadless } from '../lib/headless.mjs';
+import { isBuildSession, SESSION_DEVICE_SECRET_REASON } from '../lib/session-mode.mjs';
 
 // lua-cli 3.45.0 `lua devices credential` (aliases `credentials`, `key`) prints the
 // device secret once to stdout unless `--out <file>` is given — and stdout of a Bash
@@ -30,6 +31,10 @@ export function decide(input, env = process.env) {
   if (HELP_RE.test(command)) return null;
   const out = command.match(OUT_RE);
   if (out && !TERMINAL_TARGET_RE.test(out[2])) return null;
+
+  // Live build session (1.15.0): still blocked, and `--out` is no way round it there either (the session-guard
+  // hook refuses that form): the credential is issued to the user in Lua Desktop.
+  if (isBuildSession(env)) return { block: true, reason: SESSION_DEVICE_SECRET_REASON };
 
   return {
     block: true,

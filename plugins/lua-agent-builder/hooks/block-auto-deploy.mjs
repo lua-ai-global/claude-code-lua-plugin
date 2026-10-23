@@ -8,15 +8,18 @@
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
 import { hasAutoDeploy } from '../lib/tokenizer.mjs';
 import { isHeadless } from '../lib/headless.mjs';
+import { isBuildSession, SESSION_AUTO_DEPLOY_REASON } from '../lib/session-mode.mjs';
 
 /**
  * @param {{tool_input?: {command?: string}}|null} input
- * @param {Record<string, string|undefined>} [env] — defaults to process.env (headless switch)
+ * @param {Record<string, string|undefined>} [env] — defaults to process.env (headless and build-session switches)
  */
 export function decide(input, env = process.env) {
   const command = input?.tool_input?.command ?? '';
 
   if (hasAutoDeploy(command)) {
+    // Live build session (1.15.0): still blocked; the reason points at the release flow.
+    if (isBuildSession(env)) return { block: true, reason: SESSION_AUTO_DEPLOY_REASON };
     return {
       block: true,
       reason:

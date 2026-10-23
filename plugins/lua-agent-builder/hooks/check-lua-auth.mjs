@@ -28,6 +28,10 @@
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
 import { spawnLua } from '../lib/lua-cli.mjs';
 import { isHeadless, HEADLESS_NOTE } from '../lib/headless.mjs';
+import { isBuildSession } from '../lib/session-mode.mjs';
+
+// Live build session (LUA_BUILD_SESSION=1, 1.15.0): skipped entirely, no probe is spawned. The session's Lua
+// access comes from the pod (spec B22), there is nothing to sign in to, and `/lua-auth` is not available there.
 
 export const AUTH_PROBE_ARGS = ['models', 'list', '--json', '--ci'];
 const AUTH_PROBE_TIMEOUT_MS = 15_000;
@@ -40,6 +44,8 @@ const AUTH_PROBE_TIMEOUT_MS = 15_000;
  * @param {Record<string, string|undefined>} [env] — defaults to process.env (headless switch)
  */
 export function decide(versionResult, authResult, env = process.env) {
+  if (isBuildSession(env)) return null;
+
   // If lua-cli isn't installed, check-lua-version already warned the user.
   // Don't double-warn here.
   if (versionResult.exitCode !== 0) return null;
@@ -93,6 +99,7 @@ export function decide(versionResult, authResult, env = process.env) {
 // Async wrapper used by runHook — spawns both checks then asks decide.
 /* istanbul ignore next */
 async function decideWithSpawn() {
+  if (isBuildSession()) return null;
   const versionResult = await spawnLua(['--version'], { timeoutMs: 5_000 });
   const authResult = await spawnLua(AUTH_PROBE_ARGS, { timeoutMs: AUTH_PROBE_TIMEOUT_MS });
   return decide(versionResult, authResult);

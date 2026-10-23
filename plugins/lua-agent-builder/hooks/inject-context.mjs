@@ -13,13 +13,15 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
+import { isBuildSession } from '../lib/session-mode.mjs';
 
 /**
  * Iteration-13 audit: prefers `input.cwd` (Claude Code hook payload field —
  * the user's actual CWD at prompt time) over `process.cwd()`.
  *
  * @param {{cwd?: string}|null} input — Claude Code hook payload
- * @param {{cwd?: string}} [opts] — test override; takes precedence over input.cwd
+ * @param {{cwd?: string, env?: Record<string, string|undefined>}} [opts] — test override; `cwd` takes precedence
+ *   over input.cwd; `env` defaults to process.env (build-session switch)
  */
 export function decide(input, opts = {}) {
   const cwd = opts.cwd ?? input?.cwd ?? process.cwd();
@@ -44,9 +46,12 @@ export function decide(input, opts = {}) {
 
   if (!agentId) return null;
 
+  // Live build session (1.15.0): one more line, so every turn knows the session-mode routing applies.
+  const session = isBuildSession(opts.env ?? process.env);
   const lines = [
     `[lua] agent: ${agentId}`,
     orgId ? `[lua] org:   ${orgId}` : null,
+    session ? '[lua] live build session: production changes are approved in Lua Desktop (lib/knowledge/build-session.md)' : null,
   ].filter(Boolean);
 
   return { warn: lines.join('\n') };

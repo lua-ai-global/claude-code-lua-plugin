@@ -15,6 +15,7 @@
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
 import { classifyProductionCommand, SMOKE_LABELS } from '../lib/tokenizer.mjs';
 import { isHeadless } from '../lib/headless.mjs';
+import { isBuildSession } from '../lib/session-mode.mjs';
 
 /** How far back the post-deploy log scan looks, in both spellings. */
 const SMOKE_WINDOW = '1m';
@@ -33,6 +34,9 @@ export async function decide(
   // so reaching this point would itself be a finding for the harness, not
   // something to probe with more production traffic.
   if (isHeadless(env)) return null;
+  // Live build session (1.15.0): same rule. A release happens in lua-core after the user approves it in Lua
+  // Desktop, with its own watch pass; this session never pings production.
+  if (isBuildSession(env)) return null;
   const command = input?.tool_input?.command ?? '';
   const classified = classifyProductionCommand(command);
   if (!classified || !SMOKE_LABELS.has(classified.label)) return null;
