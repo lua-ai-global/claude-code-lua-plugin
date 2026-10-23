@@ -21,8 +21,15 @@
 // SessionStart probes (auth, CLI version) and the post-deploy production ping, and adds context. With
 // LUA_BUILD_SESSION unset every hook behaves exactly as before.
 
+import { fileURLToPath } from 'node:url';
 import { findLuaInvocations, UNCLASSIFIABLE_LABEL, UNRESOLVED_LABEL } from './tokenizer.mjs';
 import { classifyLuaCommand, flagValue, isSecretKeyName } from './session-commands.mjs';
+
+/**
+ * Absolute path of the session knowledge file. Hook output is not expanded (`${CLAUDE_PLUGIN_ROOT}` would stay
+ * literal) and a relative path would be read against the agent project, so the hooks name it absolutely.
+ */
+export const SESSION_KNOWLEDGE_PATH = fileURLToPath(new URL('./knowledge/build-session.md', import.meta.url));
 
 /** The pod env var (shared-types `BUILD_SESSION_POD_ENV_FLAG`). */
 export const BUILD_SESSION_ENV_FLAG = 'LUA_BUILD_SESSION';
@@ -97,7 +104,8 @@ export const RELEASE_LABELS = new Set([
 export const APPROVAL_WAIT_NOTE =
   'The CLI prints `waiting for approval in Lua Desktop…` and waits for the decision (at most 30 minutes). If the ' +
   'Bash call ends first, or the CLI exits 10 / answers 403 naming a Desktop card or a request id, the request is ' +
-  'PENDING, not failed: do not run it again and do not look for another route. Tell the user in one line what you ' +
+  'PENDING, not failed: do not run it again, do not nohup or poll it, and do not look for another route. Tell the ' +
+  'user in one line what you ' +
   'asked for and why; the decision comes back as a <lua-action-result> note. Prefer ' +
   `${ACTION} {agentId, command, args, reason}: it returns at once and shows your reason on the card.`;
 
@@ -190,6 +198,15 @@ function envWord(argv) {
 const isLocalEnvEdit = (argv) => argv[0] === 'env' && ['sandbox', 'staging'].includes(envWord(argv));
 
 /**
+ * `lua --version`, `lua --help`, `lua help …`, `lua <anything> --help|-h` only print. The shared table has no row for
+ * them (they fall to its fail-closed default, `approval`), so the guard must not call them production changes.
+ * Only the approval CONTEXT is skipped: an unavailable or secret command with `--help` stays blocked.
+ */
+const HELP_FLAGS = ['--help', '-h'];
+const isHelpOrVersion = (argv) =>
+  ['--version', '-V', ...HELP_FLAGS].includes(argv[0]) || argv[0] === 'help' || argv.some((a) => HELP_FLAGS.includes(a));
+
+/**
  * @param {string[]} argv
  * @param {{class: string, ruleId: string, note?: string}} c
  * @returns {string}
@@ -265,7 +282,7 @@ export function sessionCommandDecision(command, env = process.env) {
     const c = classifyLuaCommand(argv);
     if (c.class === 'unavailable') blocks.push(unavailableReason(argv, c));
     else if (c.class === 'secret') blocks.push(secretReason(argv, c));
-    else if (c.class === 'approval' && !isLocalEnvEdit(argv)) warns.push(approvalNote(argv, c));
+    else if (c.class === 'approval' && !isLocalEnvEdit(argv) && !isHelpOrVersion(argv)) warns.push(approvalNote(argv, c));
   }
   if (blocks.length) return { block: true, reason: [...new Set(blocks)].join('\n') };
   if (warns.length) return { warn: [...new Set(warns)].join('\n') };
@@ -287,6 +304,6 @@ export function sessionStartBrief(env = process.env) {
     `- Making code live is a release: ${RELEASE} (never \`lua deploy\` / \`lua version promote\`). Test first with ${STAGE} + ${TEST_CHAT}.`,
     `- Secret values are typed by the user in Desktop: ${SECRET} {name, purpose, env}. Never ask for one in chat.`,
     '- Not available: `lua auth|login|logout|configure`, `lua admin`, `lua docs` (use the lua-docs MCP), `lua update`, `lua destroy`.',
-    '- Slash commands follow their "Build session" section; the full table is ${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md. Ask questions in your reply and stop instead of using an interactive question tool, and follow subagent playbooks inline.',
+    `- Slash commands follow their "Build session" section; the full table is ${SESSION_KNOWLEDGE_PATH}. Ask questions in your reply and stop instead of using an interactive question tool, and follow subagent playbooks inline.`,
   ].join('\n');
 }

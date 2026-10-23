@@ -1,7 +1,10 @@
 // 1.15.0 — live build session mode (spec v3 B22/B23): the shared library behind the session-mode hooks.
 
 import { describe, test, expect } from '@jest/globals';
+import { existsSync } from 'node:fs';
+import { isAbsolute } from 'node:path';
 import {
+  SESSION_KNOWLEDGE_PATH,
   APPROVAL_WAIT_NOTE,
   BUILD_SESSION_ENV_FLAG,
   RELEASE_LABELS,
@@ -249,6 +252,22 @@ describe('sessionCommandDecision in a session', () => {
     expect(sessionCommandDecision(command, SESSION)).toBeNull();
   });
 
+  test.each([
+    'lua --version',
+    'lua -V',
+    'lua --help',
+    'lua help deploy',
+    'lua drains create --help',
+    'lua integrations connect -h',
+  ])('help and version only print: %s gets no approval context', (command) => {
+    expect(sessionCommandDecision(command, SESSION)).toBeNull();
+  });
+
+  test('--help does not lift a block', () => {
+    expect(sessionCommandDecision('lua update --help', SESSION).block).toBe(true);
+    expect(sessionCommandDecision('lua devices credential --help', SESSION).block).toBe(true);
+  });
+
   test('a block anywhere in a chain wins over warnings; repeated reasons are listed once', () => {
     const d = sessionCommandDecision('lua integrations connect x && lua update && lua update', SESSION);
     expect(d.block).toBe(true);
@@ -277,7 +296,12 @@ describe('sessionStartBrief', () => {
     for (const t of ['request_action', 'request_release', 'request_secret', 'stage_for_test', 'test_chat']) {
       expect(brief).toContain(`mcp__lua-session__${t}`);
     }
-    expect(brief).toContain('lib/knowledge/build-session.md');
+    // An absolute path that exists: hook output is not expanded, and a relative path would be read in the project.
+    expect(isAbsolute(SESSION_KNOWLEDGE_PATH)).toBe(true);
+    expect(existsSync(SESSION_KNOWLEDGE_PATH)).toBe(true);
+    expect(SESSION_KNOWLEDGE_PATH.replace(/\\/g, '/')).toMatch(/\/lib\/knowledge\/build-session\.md$/);
+    expect(brief).toContain(SESSION_KNOWLEDGE_PATH);
+    expect(brief).not.toContain('${CLAUDE_PLUGIN_ROOT}');
     expect(brief).not.toMatch(SLASH);
   });
 

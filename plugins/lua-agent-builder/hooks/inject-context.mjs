@@ -13,7 +13,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
-import { isBuildSession } from '../lib/session-mode.mjs';
+import { isBuildSession, SESSION_KNOWLEDGE_PATH } from '../lib/session-mode.mjs';
 
 /**
  * Iteration-13 audit: prefers `input.cwd` (Claude Code hook payload field —
@@ -51,7 +51,7 @@ export function decide(input, opts = {}) {
   const lines = [
     `[lua] agent: ${agentId}`,
     orgId ? `[lua] org:   ${orgId}` : null,
-    session ? '[lua] live build session: production changes are approved in Lua Desktop (lib/knowledge/build-session.md)' : null,
+    session ? `[lua] live build session: production changes are approved in Lua Desktop (${SESSION_KNOWLEDGE_PATH})` : null,
   ].filter(Boolean);
 
   return { warn: lines.join('\n') };
