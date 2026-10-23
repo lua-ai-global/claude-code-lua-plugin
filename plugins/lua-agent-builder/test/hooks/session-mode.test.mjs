@@ -204,6 +204,12 @@ describe('the other guards in a session', () => {
     'lua devices key thermo --out .dev.env',
     'lua devices CREDENTIAL thermo --out .dev.env',
     'lua devices Key thermo',
+    // F011: `--operations <list>` before the verb, and lua-cli run by package name or entry file.
+    'lua devices --operations commands credential',
+    'npx lua-cli devices --operations commands credential',
+    'npx lua-cli devices --operations commands credential d1 --out .dev.env',
+    'node node_modules/lua-cli/dist/index.js devices --operations commands credential',
+    'lua devices --operations=commands key --out .dev.env',
   ])('block-device-secret and session-guard both block %s in a session', (command) => {
     for (const env of [SESSION, SESSION_ONLY]) {
       expect(blockDeviceSecret({ tool_input: { command } }, env)?.block).toBe(true);
@@ -218,6 +224,16 @@ describe('session-guard decide()', () => {
     expect(sessionGuard({ tool_input: { command: 'lua integrations connect --integration slack' } }, SESSION).warn)
       .toContain('approval request');
     expect(sessionGuard({ tool_input: { command: 'lua status' } }, SESSION)).toBeNull();
+  });
+
+  test('lua build-session is blocked inside a session, except status', () => {
+    for (const command of ['lua build-session release --approve', 'lua build-session start', 'lua build-session']) {
+      const r = sessionGuard({ tool_input: { command } }, SESSION);
+      expect([command, r?.block]).toEqual([command, true]);
+      expect(r.reason).toContain('SESSION_COMMAND_UNAVAILABLE');
+    }
+    expect(sessionGuard({ tool_input: { command: 'lua build-session status bs_abc' } }, SESSION)).toBeNull();
+    expect(sessionGuard({ tool_input: { command: 'lua build-session release --approve' } }, {})).toBeNull();
   });
 
   test('no input, no command: null', () => {

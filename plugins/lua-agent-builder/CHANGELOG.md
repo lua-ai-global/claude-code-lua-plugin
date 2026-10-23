@@ -8,7 +8,7 @@ All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `
 
 ### New
 
-- **`lib/session-commands.mjs`**: the B23 command classes (`direct_read`, `session_write`, `approval`, `secret`, `unavailable`), vendored from lua-core-services `shared-types/src/build-sessions/commands.ts` (commit `162935cf`) because this public repo cannot depend on the private monorepo. `test/lib/session-commands.test.mjs` carries the shared spec's tables verbatim as a parity fixture.
+- **`lib/session-commands.mjs`**: the B23 command classes (`direct_read`, `session_write`, `approval`, `secret`, `unavailable`), vendored from lua-core-services `shared-types/src/build-sessions/commands.ts` (commit `7c53151b` on `feat/live-build-sessions`, keeping the case-insensitive and alias rows of `b4be3b9b`) because this public repo cannot depend on the private monorepo. `test/lib/session-commands.test.mjs` carries the shared spec's tables verbatim as a parity fixture.
 - **`lib/session-mode.mjs`**: the session switch (checked before headless, which the pod also sets), the `lua-session` tool ids (`stage_for_test`, `test_chat`, `preview_webapp`, `request_release`, `update_memory`, `share_file`, `request_action`, `request_secret`) and the routing texts.
 - **`lib/tokenizer.mjs` `findLuaInvocations`**: an advisory list of every lua argv in a Bash command, using the gate's lexer and command positions. The gate itself (`classifyProductionCommand`) is unchanged.
 - **`hooks/session-guard.mjs`** (PreToolUse, `Bash(*lua*)`): in a session it blocks the unavailable commands (`SESSION_COMMAND_UNAVAILABLE`) and secret values on a command line (`SESSION_SECRET_DENIED`, naming `request_secret`; a device credential is issued to the user in Desktop). Approval-class commands are not blocked: the session's proxy turns them into a Desktop card. The hook adds context so a pending answer (a Bash timeout, exit 10, a 403 `pending_user_approval`) is treated as pending, never retried. Non-secret `lua env sandbox|staging` edits (the local `.env`) pass silently.
@@ -23,6 +23,9 @@ All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `
 - `block-device-secret` in a session blocks every device-credential form, `--out <file>` included (the out file would sit in the pod), and the session classifier matches the lua-cli verb aliases `credentials` / `key` and action words in any case, like lua-cli `normalizeArg`.
 - `check-lua-auth`, `check-lua-version`: skipped, and no probe is spawned. `post-deploy-smoke`: never pings production.
 - `detect-project`: no `/lua-doctor` pointer. `inject-context`: one `[lua] live build session` line.
+- `--operations <list>` (a value-taking `lua devices` option) no longer hides the verb after it: a credential verb after an `--operations` list is `secret` and blocked in a session, not an approval warning (F011).
+- `lua build-session` is not available inside a session except `lua build-session status` (shared table rows `build-session.read` / `build-session`): Claude cannot start, end, send to or approve the release of sessions from the pod.
+- `block-device-secret` also recognises lua-cli run by package name or entry file (`npx lua-cli …`, `npx lua-cli@<v> …`, `node …/lua-cli/dist/index.js …`). Outside a session this only adds a block on the printing form; the `--out <file>` form still passes there.
 - `scripts/lint-mcp-refs.mjs`: knows the host-provided `lua-session` server (bare `mcp__lua-session__…` names, not in `.mcp.json`).
 
 The version is not bumped here: the bump to 1.15.0 also re-stamps `mcp/lua-platform` and its committed bundle, so it belongs to the release PR.

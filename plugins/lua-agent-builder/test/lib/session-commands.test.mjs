@@ -2,8 +2,9 @@
 //
 // The tables below are copied VERBATIM from lua-core-services
 // packages/shared-types/src/build-sessions/commands.spec.ts at commit
-// b4be3b9b41c78d568115b7b9cca3f7ce47214979 (feat/lbs/plugin-session-mode, on top of
-// 162935cf on feat/live-build-sessions). When the
+// 7c53151b5171501383980f873536bd9ec52ea8b7 (feat/live-build-sessions), plus the
+// case-insensitive / alias rows of b4be3b9b (feat/lbs/plugin-session-mode), which this
+// mirror keeps although the integration branch does not have them yet. When the
 // shared table changes, port the change into lib/session-commands.mjs and the
 // new spec rows here; a row that fails here means the mirror has drifted.
 
@@ -105,11 +106,43 @@ describe('B23 command classes (shared spec parity)', () => {
     'lua devices key d1 --out .dev.env',
     'lua devices CREDENTIAL d1 --out .dev.env',
     'lua devices credentials d1 --out=.dev.env',
+    // F011: `--operations` takes a value, so the subcommand is still `credential` / `key`.
+    'lua devices --operations commands credential',
+    // (`lua devices` has no `key` action — lua-cli commands/devices.ts DeviceAction — so the triage's `key` row is the
+    // credential verb with a device named d1.)
+    'lua devices --operations=commands credential d1 --out .dev.env',
+    'lua devices --operations commands,triggers credential d1 --out .dev.env',
+    // Plugin-only (alias kept here): the triage row verbatim.
+    'lua devices --operations=commands key --out .dev.env',
+    'lua devices --operations commands key d1',
   ])('%s → secret', (cmd) => expect(cls(cmd)).toBe('secret'));
 
   test.each(['lua auth configure', 'lua admin', 'lua docs', 'lua update', 'lua destroy'])('%s → unavailable', (cmd) =>
     expect(cls(cmd)).toBe('unavailable')
   );
+
+  test('lua build-session is not available inside a session, except the status read', () => {
+    for (const verb of ['start', 'attach', 'send', 'stop', 'try', 'release', 'end', 'zzz-new-verb']) {
+      expect(classifyLuaCommand(['lua', 'build-session', verb])).toMatchObject({
+        class: 'unavailable',
+        ruleId: 'build-session',
+      });
+    }
+    expect(classifyLuaCommand(['lua', 'build-session', 'release', '--approve']).class).toBe('unavailable');
+    expect(classifyLuaCommand(['lua', 'build-session']).class).toBe('unavailable');
+    expect(classifyLuaCommand(['lua', 'build-session', 'status', 'bs_abc'])).toMatchObject({
+      class: 'direct_read',
+      ruleId: 'build-session.read',
+    });
+  });
+
+  test('--operations takes a value: its list is never read as the devices verb', () => {
+    expect(classifyLuaCommand(['lua', 'devices', '--operations', 'commands', 'list']).class).toBe('direct_read');
+    expect(classifyLuaCommand(['npx', 'lua-cli', 'devices', '--operations', 'commands', 'credential'])).toMatchObject({
+      class: 'secret',
+      ruleId: 'devices.credential',
+    });
+  });
 
   test('any delete is approval with critical risk, even under a read command', () => {
     expect(classifyLuaCommand(['lua', 'skills', 'delete', 's1'])).toMatchObject({ class: 'approval', risk: 'critical' });
@@ -174,7 +207,7 @@ describe('B23 fail-open guards (shared spec parity)', () => {
 
   // Top-level commands registered in lua-cli src/cli/command-definitions.ts (program.command(...)).
   test.each([
-    'admin', 'agents', 'apps', 'auth', 'browser', 'browsers', 'channels', 'chat', 'compile', 'completion',
+    'admin', 'agents', 'apps', 'auth', 'browser', 'browsers', 'build-session', 'channels', 'chat', 'compile', 'completion',
     'decisions', 'deploy', 'devices', 'docs', 'drains', 'env', 'evals', 'features', 'governance', 'init',
     'integrations', 'jobs', 'logs', 'marketplace', 'mcp', 'models', 'persona', 'postprocessors', 'preprocessors',
     'production', 'push', 'resources', 'skills', 'source', 'status', 'sync', 'telemetry', 'test', 'triggers',

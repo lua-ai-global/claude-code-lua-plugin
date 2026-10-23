@@ -2,8 +2,11 @@
 //
 // SOURCE OF TRUTH: lua-core-services `packages/shared-types/src/build-sessions/commands.ts`
 // (`BUILD_SESSION_COMMAND_RULES`, `classifyLuaCommand`) and `packages/shared-types/src/secret-scrub.ts`
-// (`WORKFLOW_SECRET_KEY_RE`), as of commit b4be3b9b41c78d568115b7b9cca3f7ce47214979 (lua-core-services branch
-// `feat/lbs/plugin-session-mode`, on top of 162935cf on `feat/live-build-sessions`). This plugin is a public repository of plain ESM with no dependency on the private
+// (`WORKFLOW_SECRET_KEY_RE`), as of commit 7c53151b5171501383980f873536bd9ec52ea8b7 on `feat/live-build-sessions`
+// (`--operations` takes a value; the `build-session` rows). This mirror is deliberately STRICTER than that commit in
+// one way, kept from lua-core-services b4be3b9b (branch `feat/lbs/plugin-session-mode`, not yet on the integration
+// branch): action words match case-insensitively and the `devices` credential aliases `credentials` / `key` are
+// listed, like lua-cli `normalizeArg`. This plugin is a public repository of plain ESM with no dependency on the private
 // monorepo (or zod), so the table is mirrored here line for line. test/lib/session-commands.test.mjs carries the
 // shared spec's tables verbatim as a parity fixture: when the shared table changes, port the change here and the
 // new spec rows there. coding-harness `session-mode.ts` uses the same mirror-plus-parity pattern.
@@ -76,7 +79,7 @@ const VALUE_TAKING_FLAGS = [
   '-e', '--env', '--environment', '-m', '--message', '-k', '--key', '-v', '--value', '-t', '--thread', '--input',
   '--name', '--agent', '--agent-id', '--type', '--limit', '--page', '--since', '--until', '--user-id', '--channel',
   '--execution-id', '--run-id', '-i', '--workflow-name', '-r', '--status', '--workflow', '--cursor', '--sort',
-  '--tag', '--device-name', '--group', '--payload', '--command', '--trigger', '--timeout', '--out', '--org',
+  '--tag', '--device-name', '--operations', '--group', '--payload', '--command', '--trigger', '--timeout', '--out', '--org',
   '--integration', '--scope', '--connection-id', '--connection', '--webhook-id', '--template-id', '--skill-name',
   '--query', '--version-id', '--model', '--reason', '--direction', '--batch-id', '--id', '--file', '--path',
 ];
@@ -133,6 +136,16 @@ export const BUILD_SESSION_COMMAND_RULES = Object.freeze([
   { id: 'destroy', path: ['destroy'], class: 'unavailable', note: 'Not available in a session.' },
   { id: 'telemetry', path: ['telemetry'], class: 'unavailable', note: 'Local CLI setting; fixed in the session image.' },
   { id: 'completion', path: ['completion'], class: 'unavailable', note: 'Shell completion is not needed in a session.' },
+  // `lua build-session` drives sessions from a terminal (B24). Inside a session pod it would let Claude start, end,
+  // send to or approve the release of sessions, skipping the Desktop approval B12/B23 require: only the read is
+  // allowed. Claude's own session tools are the lua-session MCP tools (request_release, test_chat).
+  { id: 'build-session.read', path: ['build-session'], verbs: ['status'], class: 'direct_read', note: 'Reads the session row.' },
+  {
+    id: 'build-session',
+    path: ['build-session'],
+    class: 'unavailable',
+    note: 'Sessions are started, released and ended by the user in Lua Desktop; inside a session use the lua-session tools.',
+  },
 
   // ── env: names-only list is a read; value writes are secret or approval; deletes approval ──
   { id: 'env.list', path: ['env'], when: hasFlag('--list', '-l'), class: 'direct_read', note: 'Names only.' },
