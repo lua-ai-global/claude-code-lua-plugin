@@ -20,6 +20,7 @@ All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `
 
 - `confirm-deploy`: the prefix is void and every gated verb stays blocked (`DEPLOY_DENIED_SESSION`). Deploy and promote name `request_release`; activations and template releases name `request_action`.
 - `block-auto-deploy`, `block-auth-configure`, `block-device-secret`: still block, with session wording.
+- `block-device-secret` in a session blocks every device-credential form, `--out <file>` included (the out file would sit in the pod), and the session classifier matches the lua-cli verb aliases `credentials` / `key` and action words in any case, like lua-cli `normalizeArg`.
 - `check-lua-auth`, `check-lua-version`: skipped, and no probe is spawned. `post-deploy-smoke`: never pings production.
 - `detect-project`: no `/lua-doctor` pointer. `inject-context`: one `[lua] live build session` line.
 - `scripts/lint-mcp-refs.mjs`: knows the host-provided `lua-session` server (bare `mcp__lua-session__…` names, not in `.mcp.json`).

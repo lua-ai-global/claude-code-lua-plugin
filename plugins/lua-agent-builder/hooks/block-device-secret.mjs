@@ -29,12 +29,15 @@ export function decide(input, env = process.env) {
   const command = input?.tool_input?.command ?? '';
   if (!CREDENTIAL_RE.test(command)) return null;
   if (HELP_RE.test(command)) return null;
+
+  // Live build session (1.15.0): every credential form is blocked HERE, `--out <file>` included, BEFORE the `--out`
+  // exemption below: an out file in the pod is a file Claude can read, and the device credential is issued to the
+  // user in Lua Desktop instead. CREDENTIAL_RE already covers the `credentials` / `key` aliases in any case, so this
+  // hook does not depend on the session-guard classifier spelling the verb the same way.
+  if (isBuildSession(env)) return { block: true, reason: SESSION_DEVICE_SECRET_REASON };
+
   const out = command.match(OUT_RE);
   if (out && !TERMINAL_TARGET_RE.test(out[2])) return null;
-
-  // Live build session (1.15.0): still blocked, and `--out` is no way round it there either (the session-guard
-  // hook refuses that form): the credential is issued to the user in Lua Desktop.
-  if (isBuildSession(env)) return { block: true, reason: SESSION_DEVICE_SECRET_REASON };
 
   return {
     block: true,

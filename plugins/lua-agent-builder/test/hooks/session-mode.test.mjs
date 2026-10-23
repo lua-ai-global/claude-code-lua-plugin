@@ -66,6 +66,10 @@ const CORPUS = [
   'lua devices credential --ci --device-name pico --out /dev/stdout',
   'lua devices credential --ci --device-name pico --out .env.device',
   'lua devices credential --help',
+  'lua devices credentials thermo --out .dev.env',
+  'lua devices key thermo --out .dev.env',
+  'lua devices CREDENTIAL thermo --out .dev.env',
+  'lua devices Key thermo',
   `lua status ${'x'.repeat(40 * 1024)}`,
   'lua push all --ci --force',
   "lua version create --ci -m 'x'",
@@ -193,10 +197,18 @@ describe('the other guards in a session', () => {
     expect(r.reason).not.toMatch(SLASH);
   });
 
-  test('block-device-secret: the --out form is left to session-guard, which blocks it in a session', () => {
-    const command = 'lua devices credential --ci --device-name p --out .env.device';
-    expect(blockDeviceSecret({ tool_input: { command } }, SESSION)).toBeNull();
-    expect(sessionGuard({ tool_input: { command } }, SESSION).block).toBe(true);
+  // Both hooks block every credential spelling in a session, `--out` or not, so neither relies on the other.
+  test.each([
+    'lua devices credential --ci --device-name p --out .env.device',
+    'lua devices credentials thermo --out .dev.env',
+    'lua devices key thermo --out .dev.env',
+    'lua devices CREDENTIAL thermo --out .dev.env',
+    'lua devices Key thermo',
+  ])('block-device-secret and session-guard both block %s in a session', (command) => {
+    for (const env of [SESSION, SESSION_ONLY]) {
+      expect(blockDeviceSecret({ tool_input: { command } }, env)?.block).toBe(true);
+      expect(sessionGuard({ tool_input: { command } }, env)?.block).toBe(true);
+    }
   });
 });
 
