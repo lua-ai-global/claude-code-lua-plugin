@@ -2,8 +2,8 @@
 //
 // SOURCE OF TRUTH: lua-core-services `packages/shared-types/src/build-sessions/commands.ts`
 // (`BUILD_SESSION_COMMAND_RULES`, `classifyLuaCommand`) and `packages/shared-types/src/secret-scrub.ts`
-// (`WORKFLOW_SECRET_KEY_RE`), as of commit 162935cf619016d739a6aa4415ab9e720ae034ce on
-// `feat/live-build-sessions`. This plugin is a public repository of plain ESM with no dependency on the private
+// (`WORKFLOW_SECRET_KEY_RE`), as of commit b4be3b9b41c78d568115b7b9cca3f7ce47214979 (lua-core-services branch
+// `feat/lbs/plugin-session-mode`, on top of 162935cf on `feat/live-build-sessions`). This plugin is a public repository of plain ESM with no dependency on the private
 // monorepo (or zod), so the table is mirrored here line for line. test/lib/session-commands.test.mjs carries the
 // shared spec's tables verbatim as a parity fixture: when the shared table changes, port the change here and the
 // new spec rows there. coding-harness `session-mode.ts` uses the same mirror-plus-parity pattern.
@@ -93,7 +93,12 @@ const DESTRUCTIVE_TOKENS = ['delete', 'remove', 'rm', 'destroy', 'purge'];
 /** Tokens whose approval is `high` risk (production changes / releases). */
 const HIGH_RISK_TOKENS = ['deploy', 'promote', 'publish', 'apply', 'install', 'transfer', 'rotate-secret', 'rotate-token'];
 
-/** Positional tokens after `skip` leading tokens: flags and the values of known value-taking flags removed. */
+/**
+ * Positional tokens after `skip` leading tokens: flags and the values of known value-taking flags removed. Tokens are
+ * LOWERCASED: lua-cli `normalizeArg` (src/utils/aliases.ts) matches action words case-insensitively, so
+ * `lua devices CREDENTIAL` is the credential verb and `lua skills DELETE` is a delete. Flag values (`-k KEY`,
+ * `--out <file>`) are read with `flagValue` from the raw argv and keep their case.
+ */
 function positionals(argv, skip) {
   const out = [];
   for (let i = skip; i < argv.length; i++) {
@@ -102,7 +107,7 @@ function positionals(argv, skip) {
       if (!a.includes('=') && VALUE_TAKING_FLAGS.includes(a)) i++;
       continue;
     }
-    out.push(a);
+    out.push(a.toLowerCase());
   }
   return out;
 }
@@ -229,7 +234,8 @@ export const BUILD_SESSION_COMMAND_RULES = Object.freeze([
   {
     id: 'devices.credential',
     path: ['devices'],
-    verbs: ['credential', 'issue', 'token', 'rotate'],
+    // lua-cli `devices.action` aliases: `credentials` and `key` both normalise to `credential`.
+    verbs: ['credential', 'credentials', 'key', 'issue', 'token', 'rotate'],
     class: 'secret',
     risk: 'high',
     note: 'Credentials are issued to the user in Desktop, never into the pod.',
@@ -271,7 +277,7 @@ export function normaliseLuaArgv(argv) {
 
 function ruleMatches(rule, argv) {
   if (argv.length < rule.path.length) return false;
-  for (let i = 0; i < rule.path.length; i++) if (argv[i] !== rule.path[i]) return false;
+  for (let i = 0; i < rule.path.length; i++) if (argv[i].toLowerCase() !== rule.path[i]) return false;
   if (rule.verbs) {
     // The verb is the first positional after the path, skipping a leading environment name.
     const verb = positionals(argv, rule.path.length).find((t) => !ENV_TOKENS.includes(t));

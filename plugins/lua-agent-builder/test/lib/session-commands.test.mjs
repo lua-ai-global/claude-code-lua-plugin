@@ -2,7 +2,8 @@
 //
 // The tables below are copied VERBATIM from lua-core-services
 // packages/shared-types/src/build-sessions/commands.spec.ts at commit
-// 162935cf619016d739a6aa4415ab9e720ae034ce (feat/live-build-sessions). When the
+// b4be3b9b41c78d568115b7b9cca3f7ce47214979 (feat/lbs/plugin-session-mode, on top of
+// 162935cf on feat/live-build-sessions). When the
 // shared table changes, port the change into lib/session-commands.mjs and the
 // new spec rows here; a row that fails here means the mirror has drifted.
 
@@ -93,6 +94,17 @@ describe('B23 command classes (shared spec parity)', () => {
     'lua env production -k STRIPE_SECRET_KEY -v sk_live_x',
     'lua env sandbox -k API_TOKEN -v x',
     'lua devices credential d1',
+    // lua-cli `devices.action` aliases (`credentials`, `key`) and case-insensitive action words (`normalizeArg`).
+    'lua devices credentials d1',
+    'lua devices key d1',
+    'lua devices CREDENTIAL d1',
+    'lua devices Key d1',
+    // `--out <file>` does not change the class: the value would still land in the pod.
+    'lua devices credential d1 --out .dev.env',
+    'lua devices credentials d1 --out .dev.env',
+    'lua devices key d1 --out .dev.env',
+    'lua devices CREDENTIAL d1 --out .dev.env',
+    'lua devices credentials d1 --out=.dev.env',
   ])('%s → secret', (cmd) => expect(cls(cmd)).toBe('secret'));
 
   test.each(['lua auth configure', 'lua admin', 'lua docs', 'lua update', 'lua destroy'])('%s → unavailable', (cmd) =>
@@ -102,6 +114,14 @@ describe('B23 command classes (shared spec parity)', () => {
   test('any delete is approval with critical risk, even under a read command', () => {
     expect(classifyLuaCommand(['lua', 'skills', 'delete', 's1'])).toMatchObject({ class: 'approval', risk: 'critical' });
     expect(classifyLuaCommand(['lua', 'push', 'skill', '--delete'])).toMatchObject({ class: 'approval', risk: 'critical' });
+  });
+
+  test('matches action words case-insensitively, like lua-cli normalizeArg', () => {
+    expect(classifyLuaCommand(['lua', 'skills', 'DELETE', 's1'])).toMatchObject({ class: 'approval', risk: 'critical' });
+    expect(classifyLuaCommand(['lua', 'skills', 'Activate', 's1'])).toMatchObject({ class: 'approval' });
+    expect(classifyLuaCommand(['lua', 'devices', 'LIST']).class).toBe('direct_read');
+    // Flag values keep their case: the env key is still read from the raw argv.
+    expect(cls('lua env production -k Stripe_Secret_Key -v x')).toBe('secret');
   });
 
   test('unknown commands fail closed to approval, never direct_read', () => {
