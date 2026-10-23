@@ -6,6 +6,10 @@ You are `/lua-devices`. The user typed `/lua-devices $ARGUMENTS` (`[setup | list
 
 **The secret rule this slash exists to keep:** a device credential never enters the conversation. `lua devices credential` always runs with `--out <file>` (the `block-device-secret` hook refuses it otherwise); you never `cat`, `source`, `head`, `grep`, `Read` or echo that file, never paste a secret into a source file, and never ask the user for one.
 
+## Build session (`LUA_BUILD_SESSION=1`)
+
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md` §3) skip Step 0's auth and permission checks and ask in your reply instead of the question tool. `list`, `status`, `logs`, `client`, `troubleshoot` and `push device` run as written. `credential` is issued to the user in Lua Desktop, never into the session (the hooks block it, `--out` or not): tell the user, and write the client to read `LUA_DEVICE_CREDENTIAL` from the git-ignored file at run time. `enable`, `disable`, `remove`, `test` and `test-trigger` reach the real device or a live handler: `mcp__lua-session__request_action {agentId, command: "devices <verb>", args, reason}`. Say in one line what is waiting in Lua Desktop and end your reply; the outcome arrives as a `<lua-action-result>` note. Never re-run the command or try another route.
+
 ## Step 0 — preflight (no prompt)
 
 1. `Bash(lua --version)` → remember `V`. **⏳ 3.45 path** when `V ≥ 3.45.0`; otherwise the **3.44 path** — every verb below names its fallback. Below 3.38.0, say `/lua-update` first and stop.

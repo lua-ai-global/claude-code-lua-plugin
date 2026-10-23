@@ -8,6 +8,10 @@ A decision is an **agent** resource, so this slash needs a project directory (`l
 
 Writing a new decision is `/lua-new decision <name>` (the builder writes the `LuaDecision`, registers it in `decisions: [...]` and compiles); pushing it is `/lua-push decision`. This slash drives what is already on the server.
 
+## Build session (`LUA_BUILD_SESSION=1`)
+
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) skip Step 0 and ask in your reply instead of the question tool. `list`, `versions` and `run` run as written (`run` is a session test). `publish` and `delete` are `mcp__lua-session__request_action {agentId, command: "decisions <verb>", args, reason}`. Say in one line what is waiting in Lua Desktop and end your reply; the outcome arrives as a `<lua-action-result>` note. Never re-run the command or try another route.
+
 ## Step 0 — auth preflight (auto-resolve via Skill tool)
 
 Run `Bash(lua models list --json --ci)` — a 1–2 s authenticated call. Exit 0 or 10 = authenticated (10 = a typed key scoped away from the model catalog; fine). Exit 9 = not authenticated: use the **Skill tool** with `skill: "lua-auth"`, then re-probe; if still 9, abort with the CLI error verbatim. Exit 11 = the Lua API is unreachable: abort with that line (do not start a login). Do not use `lua agents` as the probe.

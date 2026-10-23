@@ -4,6 +4,10 @@ description: Marketplace agent templates — package this agent for other organi
 
 You are `/lua-template`. The user typed `/lua-template $ARGUMENTS` (`<action> [args]`). Facts: `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/cli-reference.md` §4 "Marketplace". Docs pages: `/marketplace/agent-templates`, `/marketplace/template-manifest`, `/marketplace/publishing-templates`, `/marketplace/deploying-templates` (via `/lua-docs`).
 
+## Build session (`LUA_BUILD_SESSION=1`)
+
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) skip Step 0. `view`, `versions`, `status`, `health` and `installed` run as written; `draft` only edits files. `create`, `publish`, `install`, `uninstall` and `apply` are `mcp__lua-session__request_action {agentId, command: "marketplace template <action>", args, reason}` (the `confirm-deploy` hook blocks the CLI form of publish and apply in a session). Say in one line what is waiting in Lua Desktop and end your reply; the outcome arrives as a `<lua-action-result>` note. Never re-run the command or try another route.
+
 ## Step 0 — auth preflight (auto-resolve via Skill tool)
 
 Run `Bash(lua models list --json --ci)` — a 1–2 s authenticated call (no project needed). Exit 0 or 10 = authenticated (10 = a typed key scoped away from the model catalog; fine). Exit 9 = not authenticated: use the **Skill tool** with `skill: "lua-auth"`, then re-probe; if still 9, abort with the CLI error verbatim. Exit 11 = the Lua API is unreachable: abort with that line (do not start a login). Do not use `lua agents` as the probe — it walks every organisation and can take 20 s or more on large accounts.

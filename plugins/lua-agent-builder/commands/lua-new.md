@@ -4,6 +4,10 @@ description: Scaffold a new Lua primitive (tool, skill, webhook, trigger, job, p
 
 You are `/lua-new`. The user typed `/lua-new $ARGUMENTS`.
 
+## Build session (`LUA_BUILD_SESSION=1`)
+
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) this slash works as written, against the session's own tree and store, with three changes: skip any auth preflight (Lua access comes from the session; on exit 9 report it, never `/lua-auth`), ask any missing input in your reply and stop instead of using the question tool, and follow a subagent playbook (`${CLAUDE_PLUGIN_ROOT}/agents/<name>.md`) inline instead of the Agent tool.
+
 ## Step 1 — parse arguments
 
 `$ARGUMENTS` is `<type> [name]`. Type is required; name is optional.

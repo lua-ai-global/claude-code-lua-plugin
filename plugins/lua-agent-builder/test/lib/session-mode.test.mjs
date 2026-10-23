@@ -161,6 +161,24 @@ describe('sessionCommandDecision in a session', () => {
     expect(d.reason).not.toContain('secret-shaped');
   });
 
+  test('a sandbox / staging non-secret set or delete only edits the workspace .env: no approval context', () => {
+    for (const command of [
+      'lua env sandbox --ci -k LOG_LEVEL -v debug',
+      'lua env staging --ci -k LOG_LEVEL --delete',
+      'lua env --ci -k LOG_LEVEL -v debug sandbox',
+    ]) {
+      expect(sessionCommandDecision(command, SESSION)).toBeNull();
+    }
+    // production is a real write: approval context
+    expect(sessionCommandDecision('lua env production --ci -k LOG_LEVEL -v debug', SESSION).warn).toContain('approval');
+    // a bare `lua env` (interactive menu) is not a local edit
+    expect(sessionCommandDecision('lua env', SESSION).warn).toContain('approval');
+    // a secret in sandbox is still blocked, and the env word survives flags before it
+    const d = sessionCommandDecision('lua env --ci staging -k API_TOKEN -v x', SESSION);
+    expect(d.block).toBe(true);
+    expect(d.reason).toContain('env: "staging"');
+  });
+
   test('a secret write with no environment defaults the suggestion to production', () => {
     const d = sessionCommandDecision('lua env -k API_TOKEN -v x', SESSION);
     expect(d.reason).toContain('env: "production"');

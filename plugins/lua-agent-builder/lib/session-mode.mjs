@@ -169,6 +169,25 @@ const pathOf = (argv) => {
 };
 
 const ENV_NAMES = ['sandbox', 'staging', 'production'];
+const ENV_VALUE_FLAGS = ['-k', '--key', '-v', '--value'];
+
+/** The environment word of `lua env <env> …` (its first positional), or undefined. */
+function envWord(argv) {
+  for (let i = 1; i < argv.length; i++) {
+    if (argv[i].startsWith('-')) {
+      if (ENV_VALUE_FLAGS.includes(argv[i])) i++;
+      continue;
+    }
+    return argv[i].toLowerCase();
+  }
+  return undefined;
+}
+
+/**
+ * `lua env sandbox|staging …` edits only the workspace `.env` (lua-cli env.ts: no API call, `staging` is the
+ * sandbox alias), so a non-secret set or delete there never reaches the proxy and needs no Desktop approval.
+ */
+const isLocalEnvEdit = (argv) => argv[0] === 'env' && ['sandbox', 'staging'].includes(envWord(argv));
 
 /**
  * @param {string[]} argv
@@ -192,7 +211,8 @@ function unavailableReason(argv, c) {
 function secretReason(argv, c) {
   if (c.ruleId === 'devices.credential') return SESSION_DEVICE_SECRET_REASON;
   const key = flagValue(argv, '-k', '--key');
-  const env = argv.slice(1).find((t) => ENV_NAMES.includes(t)) ?? 'production';
+  const word = envWord(argv);
+  const env = ENV_NAMES.includes(word) ? word : 'production';
   const named = key ? `name: "${key}", ` : 'name: "<KEY>", ';
   return (
     'SESSION_SECRET_DENIED: this command would put a secret value on a command line' +
@@ -245,7 +265,7 @@ export function sessionCommandDecision(command, env = process.env) {
     const c = classifyLuaCommand(argv);
     if (c.class === 'unavailable') blocks.push(unavailableReason(argv, c));
     else if (c.class === 'secret') blocks.push(secretReason(argv, c));
-    else if (c.class === 'approval') warns.push(approvalNote(argv, c));
+    else if (c.class === 'approval' && !isLocalEnvEdit(argv)) warns.push(approvalNote(argv, c));
   }
   if (blocks.length) return { block: true, reason: [...new Set(blocks)].join('\n') };
   if (warns.length) return { warn: [...new Set(warns)].join('\n') };

@@ -4,6 +4,10 @@ description: Push a primitive (skill/webhook/trigger/job/processor/mcp/device/de
 
 You are `/lua-push`. The user wants to push local changes to the server.
 
+## Build session (`LUA_BUILD_SESSION=1`)
+
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) this slash works as written, against the session's own tree and store, with three changes: skip any auth preflight (Lua access comes from the session; on exit 9 report it, never `/lua-auth`), ask any missing input in your reply and stop instead of using the question tool, and follow a subagent playbook (`${CLAUDE_PLUGIN_ROOT}/agents/<name>.md`) inline instead of the Agent tool. A push lands in the session, never in production; `--auto-deploy` stays blocked.
+
 ## Step 0 — auth preflight (auto-resolve via Skill tool)
 
 Run `Bash(lua models list --json --ci)` — a 1–2 s authenticated call (no project needed). Exit 0 or 10 = authenticated (10 = a typed key scoped away from the model catalog; fine). Exit 9 = not authenticated: use the **Skill tool** with `skill: "lua-auth"`, then re-probe; if still 9, abort with the CLI error verbatim. Exit 11 = the Lua API is unreachable: abort with that line (do not start a login). Do not use `lua agents` as the probe — it walks every organisation and can take 20 s or more on large accounts.

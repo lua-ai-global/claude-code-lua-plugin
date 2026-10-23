@@ -4,6 +4,17 @@ description: Make something live in production — a primitive version, the pers
 
 You are `/lua-deploy`. The user wants to change what runs in production.
 
+## Build session (`LUA_BUILD_SESSION=1`)
+
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md` §5) nothing below applies: no auth preflight, no question, no pilot and no deploy verb (`confirm-deploy` blocks every one there, prefixed or not). A session ships everything it changed as **one release** the user approves in Lua Desktop:
+
+1. `mcp__lua-session__stage_for_test` (a fleet session: the `agentIds` that changed). A compile or push error is fixed first (`/lua-test`, debug playbook inline).
+2. Try the change on the staged version: `mcp__lua-session__test_chat` for the conversations it touches, `mcp__lua-session__preview_webapp` for a web app. Report a failure and stop.
+3. `mcp__lua-session__request_release {summary}`: plain words on what changes for the agent's users (and `agentIds` for a fleet). The platform builds the candidate, re-runs the Try it cases and shows the card; after approval it promotes, publishes the workflows and watches the first runs.
+4. Say in one line what is waiting in Lua Desktop and end your reply; the outcome arrives as a `<lua-action-result>` note. Never re-run the command or try another route.
+
+`$ARGUMENTS` naming one primitive, web app or workflow changes nothing: the release carries the whole session. A rollback to an earlier agent version is `mcp__lua-session__request_action {agentId, command: "version promote", args: ["<N>"], reason}`.
+
 ## Step 0 — auth preflight (auto-resolve via Skill tool)
 
 Run `Bash(lua models list --json --ci)` — a 1–2 s authenticated call (no project needed). Exit 0 or 10 = authenticated (10 = a typed key scoped away from the model catalog; fine). Exit 9 = not authenticated: use the **Skill tool** with `skill: "lua-auth"`, then re-probe; if still 9, abort with the CLI error verbatim. Exit 11 = the Lua API is unreachable: abort with that line (do not start a login). Do not use `lua agents` as the probe — it walks every organisation and can take 20 s or more on large accounts. If authentication cannot be established: "Authentication failed; can't deploy. Re-run `/lua-auth` then `/lua-deploy`."
