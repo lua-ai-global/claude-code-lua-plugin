@@ -4,7 +4,7 @@ All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `
 
 ## Unreleased (planned 1.15.0)
 
-**Live build session mode** (`LUA_BUILD_SESSION=1`; Live Build Sessions spec v3 B22, as superseded by B23 "every `lua` command works in a session"). A Lua session pod runs one long-lived Claude Code process that a builder drives from Lua Desktop; the pod sets `LUA_BUILD_SESSION=1` and the plugin adapts. **With the variable unset nothing changes**: every hook answers as in 1.14.0 and the three new hooks are silent (`test/hooks/session-mode.test.mjs`). See `docs/BUILD_SESSION.md` and `lib/knowledge/build-session.md`.
+**Live build session mode** (`LUA_BUILD_SESSION=1`; Live Build Sessions spec v3 B22, as superseded by B23 "every `lua` command works in a session"). A Lua session pod runs one long-lived Claude Code process that a builder drives from Lua Desktop; the pod sets `LUA_BUILD_SESSION=1` and the plugin adapts. **With the variable unset nothing changes** except one security fix (below, "Changed (all modes)"): every other hook answer is as in 1.14.0 and the three new hooks are silent (`test/hooks/session-mode.test.mjs`). See `docs/BUILD_SESSION.md` and `lib/knowledge/build-session.md`.
 
 ### New
 
@@ -26,8 +26,11 @@ All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `
 - `detect-project`: no `/lua-doctor` pointer. `inject-context`: one `[lua] live build session` line.
 - `--operations <list>` (a value-taking `lua devices` option) no longer hides the verb after it: a credential verb after an `--operations` list is `secret` and blocked in a session, not an approval warning (F011).
 - `lua build-session` is not available inside a session except `lua build-session status` (shared table rows `build-session.read` / `build-session`): Claude cannot start, end, send to or approve the release of sessions from the pod.
-- `block-device-secret` also recognises lua-cli run by package name or entry file (`npx lua-cli …`, `npx lua-cli@<v> …`, `node …/lua-cli/dist/index.js …`). Outside a session this only adds a block on the printing form; the `--out <file>` form still passes there.
 - `scripts/lint-mcp-refs.mjs`: knows the host-provided `lua-session` server (bare `mcp__lua-session__…` names, not in `.mcp.json`).
+
+### Changed (all modes)
+
+- `block-device-secret` also recognises lua-cli run by package name or entry file (`npx lua-cli …`, `npx lua-cli@<v> …`, `node …/lua-cli/dist/index.js …`), not only the `lua` / `heylua` / `lua-ai` binaries. Outside a session this adds a block on the printing form of those spellings (the device secret would land in the conversation); their `--out <file>` form still passes there, as for `lua`.
 
 The version is not bumped here: the bump to 1.15.0 also re-stamps `mcp/lua-platform` and its committed bundle, so it belongs to the release PR.
 
