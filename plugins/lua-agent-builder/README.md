@@ -23,7 +23,7 @@ plugins/lua-agent-builder/
 ├── .mcp.json                    # lua-platform (local stdio) + lua-docs (https://docs.heylua.ai/mcp) + ui (https://ui.lua.dev/mcp)
 ├── commands/                    # 23 slash commands
 ├── agents/                      # 10 subagents (architect, skill-builder, debug, deploy-pilot, qa, qa-cartographer, qa-player, qa-grader, qa-analyst, qa-reporter)
-├── hooks/                       # 15 Node ESM hooks + hooks.json (session-guard and session-context: live build sessions only)
+├── hooks/                       # 16 Node ESM hooks + hooks.json (session-guard, session-context, session-untrusted-output: live build sessions only)
 ├── lib/
 │   ├── knowledge/               # primitives, workflows, cli-reference, integrations, decision-trees, log-drains, devices, web-apps, decisions, build-session
 │   │   └── qa/                  # /lua-qa full prompts: rubric, ICP cards, player, red team, graders, analyst, fix-locus, mechanics, qualifying questions

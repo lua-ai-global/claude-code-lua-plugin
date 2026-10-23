@@ -22,6 +22,7 @@ import { decide as injectContext } from '../../hooks/inject-context.mjs';
 import { decide as postDeploySmoke } from '../../hooks/post-deploy-smoke.mjs';
 import { decide as sessionGuard } from '../../hooks/session-guard.mjs';
 import { decide as sessionContext } from '../../hooks/session-context.mjs';
+import { decide as untrustedOutput } from '../../hooks/session-untrusted-output.mjs';
 import { classifyProductionCommand } from '../../lib/tokenizer.mjs';
 import { runHook } from '../helpers/run-hook.mjs';
 
@@ -303,6 +304,45 @@ describe('SessionStart / UserPromptSubmit / PostToolUse in a session', () => {
   test('session-context defaults to process.env (off in the test runner)', () => {
     expect(sessionContext(null)).toBeNull();
   });
+
+  // F065 (belt): lua reads with runtime output get an UNTRUSTED DATA banner after the tool result.
+  test.each([
+    'lua logs --ci --json --type all --limit 30',
+    'lua workflows runs wf1',
+    'lua workflows job-logs r1',
+    'lua integrations inspect slack',
+    'lua devices logs d1',
+    'lua drains deliveries x',
+    "lua chat --ci -e sandbox -m 'hi' -t",
+    'lua test workflow wf1',
+    'cd agent && npx lua-cli logs --follow | head -50',
+  ])('session-untrusted-output banners %s in a session', (command) => {
+    for (const env of [SESSION, SESSION_ONLY]) {
+      const r = untrustedOutput({ tool_input: { command } }, env);
+      expect(r?.warn).toContain('UNTRUSTED DATA');
+      expect(r.warn).not.toMatch(SLASH);
+    }
+  });
+
+  test.each([
+    'lua status --json --ci',
+    'lua push all --ci --force',
+    'lua logs --help',
+    'lua integrations connect --integration slack',
+    'git log',
+  ])('session-untrusted-output is silent on %s', (command) => {
+    expect(untrustedOutput({ tool_input: { command } }, SESSION)).toBeNull();
+  });
+
+  test('session-untrusted-output is silent outside a session, on every corpus command and a read', () => {
+    for (const off of [...OFF_SPELLINGS, HEADLESS]) {
+      for (const command of [...CORPUS, 'lua logs --type all']) {
+        expect(untrustedOutput({ tool_input: { command } }, off)).toBeNull();
+      }
+    }
+    expect(untrustedOutput({ tool_input: { command: 'lua logs' } })).toBeNull();
+    expect(untrustedOutput(null, SESSION)).toBeNull();
+  });
 });
 
 describe('hooks.json registers the session hooks', () => {
@@ -315,12 +355,29 @@ describe('hooks.json registers the session hooks', () => {
     expect(entry).toMatchObject({ type: 'command', if: 'Bash(*lua*)' });
   });
 
+  test('session-untrusted-output runs after a Bash command that mentions lua', () => {
+    const entry = commands('PostToolUse').find((h) => h.command.endsWith('/hooks/session-untrusted-output.mjs'));
+    expect(entry).toMatchObject({ type: 'command', if: 'Bash(*lua*)' });
+  });
+
   test('session-context runs at SessionStart', () => {
     expect(commands('SessionStart').some((h) => h.command.endsWith('/hooks/session-context.mjs'))).toBe(true);
   });
 });
 
 describe('script entry points (spawned)', () => {
+  test('session-untrusted-output: PostToolUse context in a session, nothing outside', async () => {
+    const input = { tool_input: { command: 'lua logs --type all' }, tool_response: { stdout: 'x' } };
+    const on = await runHook('session-untrusted-output.mjs', input, { env: SESSION });
+    expect(on.exitCode).toBe(0);
+    const out = JSON.parse(on.stdout);
+    expect(out.hookSpecificOutput.hookEventName).toBe('PostToolUse');
+    expect(out.hookSpecificOutput.additionalContext).toContain('UNTRUSTED DATA');
+    const off = await runHook('session-untrusted-output.mjs', input, { env: { LUA_BUILD_SESSION: '' } });
+    expect(off.exitCode).toBe(0);
+    expect(off.stdout).toBe('');
+  });
+
   test('session-guard: an unavailable command exits 2 in a session', async () => {
     const r = await runHook('session-guard.mjs', { tool_input: { command: 'lua update' } }, { env: SESSION });
     expect(r.exitCode).toBe(2);

@@ -111,6 +111,12 @@
             "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/post-compile-summary.mjs",
             "if": "Bash(*compile*)",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/session-untrusted-output.mjs",
+            "if": "Bash(*lua*)",
+            "timeout": 5
           }
         ]
       }
