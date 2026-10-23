@@ -23,6 +23,11 @@ describe('block-device-secret decide()', () => {
     'lua devices credential --ci --device-name pico --out=/dev/fd/1',
     'lua devices credential --ci --device-name pico --out /dev/tty',
     'lua devices credential --ci --device-name pico --out "/proc/self/fd/1"',
+    // F011: lua-cli by package name or entry file, not only the `lua` binary.
+    'npx lua-cli devices credential --device-name pico',
+    'npx -y lua-cli@3.53.0 devices --operations commands credential --device-name pico',
+    'node node_modules/lua-cli/dist/index.js devices --operations commands credential',
+    'node "/usr/lib/node_modules/lua-cli/dist/index.js" devices key --device-name pico',
   ])('blocks %s', (command) => {
     const result = decide({ tool_input: { command } });
     expect(result?.block).toBe(true);
@@ -42,6 +47,9 @@ describe('block-device-secret decide()', () => {
     'lua devices test --ci --device-name keypad --command read_key',
     'lua devices list --ci',
     'lua auth key --force',
+    'npx lua-cli devices credential --device-name pico --out .env.device',
+    'node node_modules/lua-cli/dist/index.js devices list',
+    'npm install lua-cli && echo devices key',
     'git commit -m "document lua devices"',
     'echo key',
   ])('allows %s', (command) => {
@@ -77,6 +85,11 @@ describe('block-device-secret in a live build session', () => {
     'lua devices Key thermo --out=.dev.env',
     "lua devices credentials --ci --device-name pico --out '.env.device.pico'",
     'cd agent && lua devices key --ci --device-name pico --out ./device/.env.device',
+    // F011: `--operations <list>` before the verb, and lua-cli run by package name or entry file.
+    'lua devices --operations commands credential',
+    'npx lua-cli devices --operations commands credential',
+    'npx lua-cli devices --operations commands credential d1 --out .dev.env',
+    'node node_modules/lua-cli/dist/index.js devices --operations commands credential',
   ])('blocks %s', (command) => {
     for (const env of SESSIONS) {
       const result = decide({ tool_input: { command } }, env);

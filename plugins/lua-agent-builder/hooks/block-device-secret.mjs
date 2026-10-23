@@ -10,10 +10,12 @@ import { isBuildSession, SESSION_DEVICE_SECRET_REASON } from '../lib/session-mod
 // template's `ask` row is the user's confirmation for the `--out` form.
 //
 // Text match, deliberately broad: any `lua` / `heylua` / `lua-ai` binary (bare or a
-// path ending in one) followed, before the next command separator, by `devices` and
-// a credential action. Action words are case-insensitive (lua-cli `normalizeArg`).
+// path ending in one), the package name `lua-cli` (`npx lua-cli`, `npx lua-cli@3.53.0`)
+// or its entry file (`node …/lua-cli/dist/index.js`, F011), followed, before the next
+// command separator, by `devices` and a credential action. Action words are
+// case-insensitive (lua-cli `normalizeArg`).
 const CREDENTIAL_RE =
-  /(?:^|[\s;&|(`/"'])(?:lua|heylua|lua-ai)(?:\.cmd)?\s+(?:[^;&|\n`]*\s)?devices\s+(?:[^;&|\n`]*\s)?(?:credentials?|key)(?![\w-])/i;
+  /(?:^|[\s;&|(`/"'])(?:lua|heylua|lua-ai|lua-cli(?:@[\w.^~-]+)?|lua-cli\/dist\/index\.[cm]?js)(?:\.cmd)?["']?\s+(?:[^;&|\n`]*\s)?devices\s+(?:[^;&|\n`]*\s)?(?:credentials?|key)(?![\w-])/i;
 // `--out <file>` (or `--out=<file>`), capturing the target. A target under /dev/ or /proc/
 // (`/dev/stdout`, `/dev/fd/1`, `/dev/tty`, `/proc/self/fd/1`) writes the secret straight back to
 // the terminal, so it does not count as an out file.
