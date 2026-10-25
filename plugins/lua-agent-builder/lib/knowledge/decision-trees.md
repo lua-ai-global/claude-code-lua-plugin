@@ -1,6 +1,6 @@
 # Decision trees
 
-Quick-reference flowcharts the architect uses when mapping a user's task to primitives. Each tree is opinionated — the *recommended* path, with deviations called out. Shapes referenced here are defined in `primitives.md`, `workflows.md`, `integrations.md`, `web-apps.md`, `cli-reference.md`.
+Quick-reference flowcharts the architect uses when mapping a user's task to primitives. Each tree is opinionated — the *recommended* path, with deviations called out. Shapes referenced here are defined in `primitives.md`, `workflows.md`, `integrations.md`, `web-apps.md`, `browser.md`, `cli-reference.md`.
 
 ---
 
@@ -15,6 +15,7 @@ What's the agent's primary job?
 ├── Talk on the phone                             → LuaVoice (+ the persona's `voice` variant, fast tools)
 ├── Control hardware / a local machine            → a device: self-describing client, or defineDevice + defineDeviceTrigger (devices.md §2; /lua-devices)
 ├── Give people a screen of their own             → a web app: defineWebApp (Vite + React pages, typed routes on Data) (web-apps.md; /lua-new webapp)
+├── Work on websites that have no API             → the browser: browser: true, or a named LuaBrowser per site with allowedDomains + confirmActions (browser.md; /lua-browser)
 └── Several of the above                          → one agent, built in stages: persona → tools → integrations → webhooks/triggers → jobs → workflows → web apps → QA → deploy
 ```
 
@@ -38,6 +39,7 @@ Package the finished agent for other orgs? → a marketplace **agent template** 
 10. Phone call out?                                               → Voice.call
 11. People need a page — a board, review queue, dashboard, form, admin screen over the agent's data? → defineWebApp (web-apps.md)
 12. A judgment call the code branches on — is this X, which of these, how much — wanted as a number, not prose? → Decisions.ask inline; a LuaDecision + Decisions.run when several places ask it or it must be tunable without a redeploy (decisions.md; ⏳ lua-cli 3.48.0)
+13. The data is on a web page with no API — a price, stock, a portal, a page that needs JavaScript? → the browser: Browser.read for one known page, the step-by-step commands when you know the clicks, Browser.execute({ task }) only when you can describe the outcome but not the clicks (browser.md; ⏳ lua-cli 3.49.0)
 ```
 
 If several apply, the agent usually needs all of them. Stage: tools → integrations → webhooks/triggers → jobs → workflows → processors → web apps. Test each stage before the next.

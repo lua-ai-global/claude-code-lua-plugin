@@ -1,4 +1,4 @@
-# Lua SDK primitive reference (lua-cli 3.33.0 base · 3.36.0 / 3.37.0 additions marked ⏳)
+# Lua SDK primitive reference (lua-cli 3.33.0 base · 3.36.0 / 3.37.0 / 3.49.0 / 3.58.0 additions marked ⏳)
 
 Source of truth for every primitive and runtime API the plugin's agents reason about. Every shape below is read from the lua-cli 3.33.0 source (`src/types/skill.ts`, `src/types/voice.ts`, `src/types/workflow.ts`, `src/api-exports.ts`, `src/interfaces/*.ts`, `template/`) — not from the public docs, which lag in places. When this file and the live docs disagree, this file wins; when this file and the installed CLI disagree, check `lua --cli-version` (the plugin targets ≥ 3.33.0) and look the symbol up with the `mcp__plugin_lua-agent-builder_lua-docs__query_docs_filesystem_lua_cli` tool (`rg -n "<symbol>" /api/`).
 
@@ -15,15 +15,16 @@ import { LuaAgent, LuaSkill, LuaTool, LuaWebhook, LuaJob, PreProcessor, PostProc
          LuaMCPServer, defineTrigger, defineDevice, defineDeviceTrigger, defineVoice,
          createWorkflow, createStep,
          User, Data, Products, Baskets, Orders, Jobs, Workflows, AI, Agents, Integrations,
-         Voice, Channels, Team, Templates, CDN, Lua, env, ToolFlag } from 'lua-cli';
+         Voice, Channels, Team, Templates, CDN, Lua, env, ToolFlag,
+         LuaBrowser, defineBrowser, Browser } from 'lua-cli';   // ⏳ the last three: lua-cli 3.49.0+
 import { z } from 'zod';
 ```
 
 - **Only the root specifier `'lua-cli'` exists.** `package.json` `exports` has `.`, `./voice`, `./voice/test`, `./workflow-builder` — there is **no `lua-cli/skill`** (some older docs show it; it fails type-checking). `lua-cli/voice` re-exports LiveKit plugin namespaces (`deepgram`, `elevenlabs`, `openai`, `google`, `xai`, `inference`) for class-form voice models only.
-- **`defineTool`, `defineSkill`, `defineWebhook`, `defineJob`, `definePreProcessor`, `definePostProcessor`, `defineMCPServer` do NOT exist as exports.** The only `define*` helpers are `defineTrigger`, `defineDevice`, `defineDeviceTrigger`, `defineVoice`, `defineWorkflow`. Tools, skills, webhooks, jobs, processors and MCP servers use `new LuaX({...})` or `class X implements LuaTool`.
-- **Value exports** (usable at runtime): `LuaSkill`, `LuaWebhook`, `LuaTrigger`, `LuaJob`, `PreProcessor` (alias `LuaPreprocessor`), `PostProcessor` (alias `LuaPostprocessor`), `LuaAgent`, `LuaMCPServer`, `LuaDevice`, `LuaDeviceTrigger`, `LuaVoice`, `LuaVoiceTool`, `defineVoice`, `defineDevice`, `defineDeviceTrigger`, `defineTrigger`, `ToolFlag`, `BasketStatus`, `OrderStatus`, `env`, `CHANNEL_SEND_CHANNELS`, the API objects (`User` … `Lua`), the instance classes (`JobInstance`, `UserDataInstance`, `DataEntryInstance`, `ProductInstance`, `BasketInstance`, `OrderInstance`), and the workflow builder values (see workflows.md).
+- **`defineTool`, `defineSkill`, `defineWebhook`, `defineJob`, `definePreProcessor`, `definePostProcessor`, `defineMCPServer` do NOT exist as exports.** The only `define*` helpers are `defineTrigger`, `defineDevice`, `defineDeviceTrigger`, `defineVoice`, `defineWorkflow` and ⏳ (lua-cli 3.49.0+) `defineBrowser`. Tools, skills, webhooks, jobs, processors and MCP servers use `new LuaX({...})` or `class X implements LuaTool`.
+- **Value exports** (usable at runtime): `LuaSkill`, `LuaWebhook`, `LuaTrigger`, `LuaJob`, `PreProcessor` (alias `LuaPreprocessor`), `PostProcessor` (alias `LuaPostprocessor`), `LuaAgent`, `LuaMCPServer`, `LuaDevice`, `LuaDeviceTrigger`, `LuaVoice`, `LuaVoiceTool`, `defineVoice`, `defineDevice`, `defineDeviceTrigger`, `defineTrigger`, ⏳ `LuaBrowser` / `defineBrowser` (3.49.0+), `ToolFlag`, `BasketStatus`, `OrderStatus`, `env`, `CHANNEL_SEND_CHANNELS`, the API objects (`User` … `Lua`), the instance classes (`JobInstance`, `UserDataInstance`, `DataEntryInstance`, `ProductInstance`, `BasketInstance`, `OrderInstance`), and the workflow builder values (see workflows.md).
 - **Type-only exports** (use with `import type`): `LuaTool`, `LuaWebhookConfig`, `LuaTriggerConfig`, `TriggerContext`, `LuaJobConfig`, `JobSchedule`, `PreProcessorConfig`, `PreProcessorResult`, `PostProcessorConfig`, `PostProcessorResponse`, `LuaAgentConfig`, `LuaAgentModel`, `LuaMCPServerConfig`, `LuaDeviceConfig`, `LuaDeviceTriggerConfig`, `LuaVoiceConfig`, `LuaVoiceToolConfig`, `LuaVoiceToolCtx`, `PersonaText`, `ChatMessage`, `ChatHistoryMessage`, `Channel`, `LuaRequest`, `UserLookupOptions`, `AiGenerateInput`, `AiGenerateOutput`, `LuaQuery`, `AgentModelSettings`, `IntegrationPassthroughRequest/Response`, `ChannelSendInput/Output`, `EmailSendInput`, `WhatsAppTemplateSendInput`, `DeliveryView`, `DirectoryResolveResult`, and the workflow types.
-- **Runtime model**: the compiler strips every `lua-cli` import and rewrites `new LuaX(...)` to bare object literals. `User`, `Data`, `AI`, `Agents`, `Jobs`, `Workflows`, `Channels`, `Lua`, `env` … are **globals injected by the sandbox at runtime**; the imported objects exist for type-checking and `lua test`. Never store state in module scope — the VM does not persist between invocations.
+- **Runtime model**: the compiler strips every `lua-cli` import and rewrites `new LuaX(...)` to bare object literals. `User`, `Data`, `AI`, `Agents`, `Jobs`, `Workflows`, `Channels`, `Lua`, `env`, ⏳ `Browser` … are **globals injected by the sandbox at runtime**; the imported objects exist for type-checking and `lua test`. Never store state in module scope — the VM does not persist between invocations.
 
 ---
 
@@ -44,11 +45,11 @@ examples/             # only with `lua init --with-examples` — skills/, skills
 dist-v2/              # `lua compile` output: manifest.json + artifacts/<kind>/… (gitignored)
 ```
 
-**Primitives are compiled only if they are referenced from the `LuaAgent` config arrays** in `src/index.ts` (the compiler traverses `skills`, `webhooks`, `triggers`, `jobs`, `workflows`, `preProcessors`, `postProcessors`, `mcpServers`, `devices`, `deviceTriggers`, `voices`, following imports). A file that is never imported into the agent is never compiled. Entry-file search order: `index.ts`, `src/index.ts`, `agent.ts`, `src/agent.ts`.
+**Primitives are compiled only if they are referenced from the `LuaAgent` config arrays** in `src/index.ts` (the compiler traverses `skills`, `webhooks`, `triggers`, `jobs`, `workflows`, `preProcessors`, `postProcessors`, `mcpServers`, `devices`, `deviceTriggers`, `voices`, ⏳ `browsers`, following imports). A file that is never imported into the agent is never compiled. Entry-file search order: `index.ts`, `src/index.ts`, `agent.ts`, `src/agent.ts`.
 
 Conventions from the template: `src/skills/<name>.skill.ts` (default-exports `new LuaSkill`), `src/skills/tools/<PascalCase>Tool.ts` (class `implements LuaTool`), `src/jobs/<PascalCase>Job.ts`, `src/webhooks/<PascalCase>Webhook.ts`, `src/preprocessors/<camelCase>.ts`, `src/postprocessors/<camelCase>.ts`, `src/triggers/<name>.trigger.ts`, `src/workflows/<name>.ts` (graph) or `src/workflows/<name>.workflow.script.js` (script form). Names in source are kebab-case or snake_case.
 
-`lua.skill.yaml` rows the CLI writes: `agent { agentId, orgId }`, `skills[] { name, version, skillId }`, `webhooks[]`, `triggers[]`, `jobs[] { …, schedule? }`, `workflows[]`, `preprocessors[]`, `postprocessors[]`, `mcpServers[] { name, mcpServerId }` (no version), `devices[]`, `deviceTriggers[]`, `voices[]`, `backup { lastHash, lastPushedAt, activeVersion }`, `git { enabled, autoPush? }` (written by `lua git connect`), and the user-authored `template:` section for marketplace templates (see cli-reference.md).
+`lua.skill.yaml` rows the CLI writes: `agent { agentId, orgId }`, `skills[] { name, version, skillId }`, `webhooks[]`, `triggers[]`, `jobs[] { …, schedule? }`, `workflows[]`, `preprocessors[]`, `postprocessors[]`, `mcpServers[] { name, mcpServerId }` (no version), `devices[]`, `deviceTriggers[]`, `voices[]`, ⏳ `browsers[] { name, browserId }` (no version — §17), `backup { lastHash, lastPushedAt, activeVersion }`, `git { enabled, autoPush? }` (written by `lua git connect`), and the user-authored `template:` section for marketplace templates (see cli-reference.md).
 
 ---
 
@@ -75,8 +76,17 @@ export interface LuaAgentConfig {
   batching?: { firstMessageDelayMs?; debounceWindowMs? /* 0 = off */; maxBatchMessages?; serializeProcessing? };
   governance?: { mode: 'sdk' | 'api'; preset?: 'security'; injection?: { threshold; ml?; mlThreshold? };
                  rules?: { blockTools?: string[]; requireToolApproval?: string[]; tokenBudget? }; serverUrl? };
-  browser?: boolean | { engine?: 'auto' | 'browser-use' | 'agent-browser'; allowedDomains?: string[]; credentials?: string[]; maxSessionMinutes? };
+  // ⏳ lua-cli 3.49.0+ (`maxDownloadMb` / `allowedMimeTypes` / `allowScripts` 3.58.0) — §17, browser.md
+  browser?: boolean | BrowserSwitchConfig;   // true = platform defaults; the object adds policy
+  browsers?: LuaBrowser[];                   // named browsers, picked per call with `browser: '<name>'`
 }
+
+// BrowserSwitchConfig (src/types/skill.ts) — the same settings a LuaBrowser takes, without a name:
+//   engine?: 'auto' | 'browser-use' | 'agent-browser';  fallback?: 'browser-use' | 'none';  proxyCountry?: string;
+//   allowedDomains?: string[];  confirmActions?: string[];  logContent?: 'summary' | 'full' | 'none';
+//   screenshots?: 'always' | 'onError' | 'never';  maxSessionMinutes?: number;  idleTimeoutSeconds?: number;
+//   maxConcurrentSessions?: number;  maxDownloadMb?: number;  allowedMimeTypes?: string[];  allowScripts?: boolean;
+//   persist?: boolean;  credentials?: string[];   // persist + credentials are stored but NOT enforced yet
 ```
 
 - **There is no `welcomeMessage`, `channels`, or `tools` field.** Tools live inside skills.
@@ -84,7 +94,7 @@ export interface LuaAgentConfig {
 - `model` omitted ⇒ the CLI sends no model and the platform applies its server-side default — `PLATFORM_DEFAULT_MODEL = 'alibaba/qwen3.8-flash'` (`@lua/shared-types` `model-registry.ts`, overridable on the server by `LUA_DEFAULT_MODEL`); lua-cli never names it (`lua models list --json` shows `currentModel`, printed as `(platform default)` when unset; `lua models unset` reverts to it). **Model fallback is conditional, not absent** (lua-core `src/mastra/common/models.ts` `modelFromString`, `src/mastra/common/fallback-chain.ts` `planLegs`, `src/mastra/common/services/execute.model-resolver.service.ts`): **(1)** a model code that is not in the server's approved registry is **silently swapped for the platform default** at resolve time (`fallback: { requestedModel, fallbackModel: defaultModel, reason: 'model not in approved list' }`) — a typo in `model` does not error, the turn runs on the default; `AI.generate({ model })` goes through the same gate (`ai-generation.service.ts`). **(2)** A **cross-model fallback chain** for provider transients (429 / 5xx / transport errors) exists but is an operator-side opt-in that is off by default: when on, a turn's legs are the registry's per-model `fallbackChain` (or, for the platform default only, an operator-configured list), with the platform default appended as a last resort when the pinned model runs on another provider; the list is capped at 3 legs, each gated by a per-model circuit breaker; a BYOK (org-owned key) primary never gets a chain, `azure`/`bedrock` models are never legs, and a leg is dropped when it is unapproved, is the primary itself, or repeats an earlier leg. With the chain off — or once every leg fails — the provider refusal reaches lua-cli as exit 12 `provider rejected`. The SDK exposes none of this: builders cannot read or configure the chain, so do not design around it. Valid codes come from `lua models list --json` (server catalog; examples today: `openai/gpt-5.4`, `openai/gpt-5.4-mini`, `anthropic/claude-sonnet-5`, `anthropic/claude-opus-5`, `google/gemini-3.8-flash`, `alibaba/qwen3.8-max`). A model **resolver function** runs per request in the full sandbox (`(req) => req.channel === 'whatsapp' ? 'openai/gpt-5.4-mini' : 'anthropic/claude-sonnet-5'`). `lua models set --model <code>` edits the literal in `src/index.ts` and PATCHes the agent.
 - `modelSettings` is validated at construction: `temperature` 0..2, `topP` 0..1, `maxOutputTokens` ≥ 1, finite numbers for `topK`, `presencePenalty`, `frequencyPenalty`, `seed`; `stopSequences: string[]`; `reasoning: { effort?: 'off'|'minimal'|'low'|'medium'|'high'|'max'; show?: boolean }`.
 - `governance` never stores a token — API mode reads `GOVERNANCE_API_KEY` from env at runtime. `lua governance add` scaffolds `src/governance.ts` interactively.
-- `browser: true` costs money per session; off by default.
+- `browser: true` costs money per session; off by default. Attaching at least one `LuaBrowser` to `browsers` turns it on too, so `browser: true` is not needed as well. Settings never merge: a call naming a browser gets that browser's settings only. Full reference — the settings, saved logins, files, page scripts, approvals, limits and error codes: **`browser.md`** (§17 has the shape); the slash is `/lua-browser`.
 - Pushed with `lua push agent` (alias `lua push persona`; also part of `lua push all`): routing description, persona, model / model resolver, modelSettings, batching, browser, voice links — **all of it live at once** except, ⏳ from lua-cli 3.44.0, the persona: 3.44.0 pushes it with `publish: false`, prints `Persona vN staged — NOT activated`, and it goes live through `lua deploy persona --set-version <n>` (or `lua version create --persona-version <n>` → `lua version promote`, which since 3.44.0 re-points the persona to the version's pin) — cli-reference.md §4-5. Below 3.44.0 the persona is **not staged**: the push creates a persona version that lua-agents persists as `published` and writes straight onto `subAgent.persona` (`persona.service.ts` `createPersonaVersion` → `persistPersona(…, 'published')` → `updateAgentPersona`), and lua-core reads `subAgent.persona` on every turn (`prompt.service.ts`). `lua deploy persona --set-version <n>` re-points the served persona to an earlier version (the rollback verb); `lua version promote` never changes the served persona (it only flips persona-version status flags) — cli-reference.md §5. Treat `lua push agent` as a production change.
 - ⚠ **The agent push is a full overwrite, not a merge** (`src/primitives/agent.handler.ts`): a `LuaAgent` with no `model` and no resolver sends `model: null` → "Model configuration cleared"; missing `modelSettings` / `batching` / `voices` are likewise sent as null and cleared on the server. So if someone set the model in the dashboard and `src/index.ts` doesn't name one, the next `lua push all` / `lua push agent` silently reverts the agent to the platform default. `lua sync --check` reports this as model drift beforehand; fix by writing the value into `new LuaAgent({ model: '…' })` (or `lua models set --model <code>`) before pushing.
 
@@ -489,6 +499,7 @@ Channels.listDeliveries({ userId?, status?, channel?, since?, limit? /* ≤200 *
 | preprocessor / postprocessor | yes | `lua push preprocessor|postprocessor --name x` | `lua deploy preprocessor|postprocessor …` (scoped promote) |
 | persona (part of agent) | integer versions | `lua push agent` | below lua-cli 3.44.0 **live on push** (the version is persisted `published` and served at once), `lua deploy persona --set-version <n> --force` re-points to an earlier version (rollback) and `lua version promote` does not change the served persona; ⏳ from 3.44.0 the push **stages** it — `lua deploy persona --set-version <n> --force` makes it live, and `lua version promote` re-points it to the version's pin (`lua version create --persona-version <n>`) |
 | mcp-server | **no** (upsert by name) | `lua push mcp` | `lua mcp activate <name>` |
+| ⏳ browser (`LuaBrowser`) | **no** (upsert by name) | `lua push browser --name x` + `lua push agent` (the `browsers` list) | **the push** — the profile is upserted in place, so a browser the agent already lists uses the new settings on its next session; not in agent versions (promote neither ships nor rolls one back — push the previous settings). `lua browsers delete` removes it (§17, browser.md) |
 | device | yes | `lua push device` | **the push** — live on the next turn; not in agent versions (devices.md §5) |
 | device-trigger | yes | `lua push device-trigger` | publishing the version: `lua push device-trigger --name <n> --auto-deploy` in the user's own terminal (the plugin never runs `--auto-deploy`); not in agent versions |
 | voice | yes | `lua push voice` | agent version promote (`lua version create` → `lua version promote <n>`); not a `lua deploy` type |
@@ -565,8 +576,40 @@ Channel constraints the architect should plan for: WhatsApp → template strateg
 | "Known SaaS (Linear, HubSpot, Gmail, Stripe, GitHub …)" | `lua integrations connect` → auto-provisioned MCP (+ `Integrations.passthrough` for raw calls) |
 | "My own MCP server" | `LuaMCPServer` |
 | "Classify / summarise inside code" | `AI.generate` for prose; a typed judgment the code branches on (odds, a choice, a score, with probabilities) → `Decisions.ask`, or a versioned `LuaDecision` + `Decisions.run` when several places ask it or it must be tunable without a redeploy (decisions.md, `/lua-decisions`) |
+| "Read a page that needs JavaScript, or drive a site that has no API" | `Browser.read` for one page · the step-by-step commands when you know the clicks · `Browser.execute({ task })` when you can only describe the outcome — all three off until `browser: true` or a `LuaBrowser` (§17, browser.md; ⏳ lua-cli 3.49.0) |
 | "Hand off to another agent" | `Agents.invoke` |
 | "Proactive message / email / WhatsApp template" | `Channels.*` (`User.get(id).send` reaches the user's last chat channel — never email) |
 | "Phone call" | `LuaVoice` + `Voice.call` |
 | "Hardware / local machine" | `defineDevice` / `defineDeviceTrigger` |
 | "Package the agent for other orgs" | marketplace agent template (`lua marketplace template …`, cli-reference.md) |
+
+---
+
+## 17. ⏳ `LuaBrowser` / `defineBrowser` and the `browser` switch — a real web browser
+
+⏳ **lua-cli 3.49.0 or later** (saved logins 3.57.0; files and page scripts 3.58.0). The full reference — every setting, `Browser.read` / `execute` / the step-by-step commands, saved logins, files, page scripts, approvals, limits, error codes and the CLI verbs — is **`browser.md`**; the slash is `/lua-browser`. This section is the shape and the rules a builder must not get wrong.
+
+```ts src/browsers/supplier.ts
+import { defineBrowser } from 'lua-cli';          // identical to `new LuaBrowser({...})`
+
+export const supplierPortal = defineBrowser({
+  name: 'supplier-portal',                         // ^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$ — the constructor throws otherwise
+  description: 'Checks stock on the supplier site',
+  allowedDomains: ['supplier.example.com'],        // worth having on every browser
+  confirmActions: ['submit'],                      // anything that submits, pays or sends
+  fallback: 'none',
+  maxSessionMinutes: 30,
+});
+```
+
+```ts src/index.ts
+new LuaAgent({ /* … */ browsers: [supplierPortal] });   // attaching one turns the browser on
+await Browser.read(url, { browser: 'supplier-portal', waitFor: 'networkidle' });
+```
+
+- **Three ways in, cheapest first**: `Browser.read(url, options?)` (one page in its own session, no model calls) → the step-by-step commands sharing a `sessionKey` (`navigate`, `fill`, `click`, `get`, … then `close`) → `Browser.execute({ task, startUrl, schema, maxSteps, maxCostUsd })` (a model call per step). `lua browser read` / `lua browser run` are the same two from the terminal.
+- **`Browser.read` throws** (`name: 'BrowserError'`, a typed `code`). `Browser.execute` and every step-by-step command **return** `{ engine, data?, error?, code? }` / a result with `status` and `stopReason` — they never throw, so code that only try/catches misses their failures.
+- Available in tools, jobs, webhooks, triggers, device triggers, processors, web routes and workflow code steps — **not** in a tool `condition`, a model or MCP resolver, or `lua test` (`BROWSER_UNAVAILABLE`). There is no `lua test` type for a browser.
+- **Where it runs**: a chat turn with the desktop app connected uses the person's own browser; everything else uses the Lua cloud browser (fresh, no logins, deleted at the end). `engine` and `fallback` decide whether a blocked page may be retried on Browser-Use — `allowedDomains`, `fallback: 'none'` and `engine: 'agent-browser'` each switch that retry off.
+- **Settings do not merge**, a call with no `browser` name uses the agent's `browser` when it sets one and otherwise the first entry in `browsers`, and an unknown name is `BROWSER_PROFILE_NOT_FOUND`. `persist` and `credentials` are stored but not enforced — a browser signs in with a **saved login** (`Secrets.request({ kind: 'browser-login' })` from a live turn, then `Browser.login`), never with a password in code.
+- **Not versioned**: `lua push browser --name <n>` upserts the profile and `lua push agent` links it (§13). `lua compile` checks every setting and refuses `allowScripts: true` without a real domain in `allowedDomains`, two browsers with one name, and an entry in `browsers` that is not a `LuaBrowser`.

@@ -98,8 +98,14 @@ setSub('workflows',    ['list', 'view', 'versions', 'deploy', 'activate', 'deact
 setSub('test',         ['skill', 'webhook', 'job', 'preprocessor', 'postprocessor', 'workflow',
                         // lua-cli 3.42.0 (Lua Apps): one route of a web app.
                         'webapp']);
+// lua-cli 3.49.0 (`src/utils/aliases.ts` `push.type`): `browser` upserts one LuaBrowser profile
+// (alias `browsers`). It is NOT a `lua deploy` type — a browser is not versioned.
 setSub('push',         ['skill', 'agent', 'persona', 'webhook', 'trigger', 'job', 'preprocessor', 'postprocessor', 'mcp',
-                        'device', 'device-trigger', 'voice', 'workflow', 'webapp', 'decision', 'backup', 'all']);
+                        'device', 'device-trigger', 'voice', 'workflow', 'webapp', 'decision', 'browser', 'backup', 'all']);
+// lua-cli 3.49.0 (BAC-2418): the two terminal verbs of the agent's cloud browser. `lua browsers`
+// (plural) is a different command — `browsers.action` is list | delete.
+setSub('browser',      ['read', 'run']);
+setSub('browsers',     ['list', 'delete']);
 // lua-cli 3.42.0 (Lua Apps): scaffold and run a web app.
 setSub('apps',         ['new', 'dev', 'preview', 'delete', 'upgrade']); // preview: lua-cli 3.51.0, delete: 3.48.0, upgrade: 3.54.0
 setSub('deploy',       ['skill', 'webhook', 'trigger', 'job', 'preprocessor', 'postprocessor', 'webapp', 'persona', 'all']); // webapp: lua-cli 3.49.0

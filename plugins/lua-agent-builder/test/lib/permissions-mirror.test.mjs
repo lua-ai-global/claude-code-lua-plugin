@@ -222,6 +222,12 @@ describe('permission layer (lib/permissions-template.json) under Claude Code sem
       "lua decisions run triage --message 'hi' --model liquid/d1 --json",
       'lua logs --ci --json --type decisions --limit 20',
       'lua push decision --name triage --ci --force',
+      // Browser (1.15.0, lua-cli 3.49.0): a read opens one cloud session, prints the page and
+      // closes it — nothing at the other end changes, so it runs like `lua decisions run`.
+      'lua browser read https://heylua.ai/pricing --wait-for networkidle',
+      'lua browser read https://heylua.ai/pricing --selector main --format html -e production --json',
+      'lua browsers list',
+      'lua logs --ci --json --type browser --limit 20',
       // Devices (1.7.0): the read verbs /lua-devices emits, and the device log sources.
       'lua devices list --ci',
       'lua devices list --ci --group printers',
@@ -278,6 +284,13 @@ describe('permission layer (lib/permissions-template.json) under Claude Code sem
       'lua drains resume drn_9f31a7c04b2e615d8a03cc71 --json',
       'lua decisions publish triage 1.0.1 --force',
       'lua decisions delete triage --force',
+      // Browser (1.15.0): a run acts on a real third-party site (click, fill, submit), spends model
+      // budget up to --max-cost and with --login acts as the person there. Deleting a named browser
+      // is a mutation. Neither is a production verb (the tokenizer returns null, asserted below).
+      'lua browser run "Find the monthly price of the Pro plan" --start-url https://heylua.ai/pricing',
+      'lua browser run "Read my newest notifications" --login linkedin --max-cost 0.25',
+      'lua browsers delete --browser-name supplier-portal',
+      'lua browsers rm supplier-portal',
       'lua drains rotate-secret drn_9f31a7c04b2e615d8a03cc71 --json',
       'lua drains rotate-secret drn_9f31a7c04b2e615d8a03cc71 --finalize --json',
       // lua-cli 3.44.0: the bucket-ownership confirm and the batch replay change drain state too.
@@ -325,6 +338,10 @@ describe('permission layer (lib/permissions-template.json) under Claude Code sem
       'lua push device_trigger --ci --force --name opened',
       'lua push devicetrigger --ci --force --name opened',
       'lua push devicetriggers --ci --force --name opened',
+      // A browser is not versioned: `lua push browser` upserts the profile by name, so for a browser
+      // the agent already lists it rewrites the live policy for the next session. Both push spellings.
+      'lua push browser --ci --force --name supplier-portal',
+      'lua push browsers --ci --force --name supplier-portal',
       // `--ci` binds anywhere on the line, so `lua logs --ci export` also matches `lua logs --ci*`.
       'lua logs --ci export --since 31d --include-content --yes --out ./x',
       // /lua-qa full: the production consent stamp is confirmed by Claude Code itself, although every other
