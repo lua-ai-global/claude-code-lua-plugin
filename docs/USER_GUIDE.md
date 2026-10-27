@@ -51,6 +51,8 @@ If you just want to start: [Installation](#installation) → [Your first agent](
 
 `/lua-doctor` checks all of these and offers consent-gated fixes. Platforms: macOS 14+, Ubuntu 22.04+, Windows 11; CI runs the suite on all three with Node 18 and 20.
 
+New in 1.16.0: **web-app audit.** `/lua-audit [app]` reads a web app's routes, pages and the files they import, then reports every custom access condition (who may see or do what beyond the sign-in the gateway already requires, and whether it is enforced on the server, only in the UI, or both) and every access-control or security finding — each with severity, `file:line`, what will happen in production and a suggested fix. It never changes code: say "fix 2" to have it changed. `/lua-new webapp` offers it when an app is built, and in a project with web apps Claude offers it after a non-trivial web-app change.
+
 New in 1.15.0: **the cloud browser.** When the work is on a website with no API — a price, stock, a portal, a page that only renders after JavaScript — the agent can drive a real Chrome browser: the person's own desktop browser in a chat, and the Lua cloud browser everywhere else. `/lua-browser read <url>` opens one page and prints it, `/lua-browser run "<task>"` gives the browser a task and shows every step, and `/lua-browser list|delete` manages the agent's named browsers. A read runs at once; a run confirms once through the Bash prompt, because it clicks, types and can submit on a real site and spends model budget up to its `--max-cost`. `/lua-new browser <name>` scaffolds a `LuaBrowser` locked to its own sites (`allowedDomains`) with `confirmActions: ['submit']` on anything that submits, pays or sends, and `/lua-push browser` ships it. A password never reaches the plugin or the agent: a browser signs in with a **saved login** the person fills in on a Lua page, at the access level they choose, and a code or a bot check becomes a private link to them. `lua logs --type browser` is where the browser says which engine ran, which host it refused and which wall stopped it. Needs lua-cli 3.49.0; saved logins 3.57.0; downloads, PDFs, uploads and page scripts 3.58.0.
 
 New in 1.14.0: **web-app pages on the new Lua design.** `lua apps new` now scaffolds pages on `@lua-ai-global/ui` 0.3 (the look Lua Workspace uses) and `@lua-ai-global/app-client` 0.1, which applies the shell's light/dark, density and the person's accent to the page by itself. The builder writes pages with the design's colour tokens only (and no theme code on app-client 0.1), and looks each component up in the new `ui` MCP server (`https://ui.lua.dev/mcp`, the public component catalog) before using it. For an app made earlier it names `lua apps upgrade <name>` for you to run. Needs lua-cli 3.55.0.
@@ -165,7 +167,7 @@ Chat-composed workflows can't be deployed from the CLI (`WORKFLOW_DYNAMIC`); `/l
 
 ## Slash commands reference
 
-22 slash commands; each asks at most one question (`x-lua-multi-step: true` marks `/lua-doctor`, `/lua-auth`, `/lua-init`).
+25 slash commands; each asks at most one question (`x-lua-multi-step: true` marks `/lua-doctor`, `/lua-auth`, `/lua-init`).
 
 | Slash | Wraps | Notes |
 |---|---|---|
@@ -178,6 +180,7 @@ Chat-composed workflows can't be deployed from the CLI (`WORKFLOW_DYNAMIC`); `/l
 | `/lua-architect <goal>` | subagent | plan + next-step menu |
 | `/lua-new <type> [name]` | subagent → `lua compile`, `lua test` | 16 primitive types (incl. `workflow-script`, `webapp`, `decision` and ⏳ `browser`) |
 | `/lua-test [type]` | `lua test --ci <type> --name … --input …` | failures → debug subagent |
+| `/lua-audit [app]` | the `lua-auditor` subagent (Read, Grep, Glob only) — no `lua` command | read-only web-app access-control and security audit; offered by `/lua-new webapp` and after non-trivial web-app changes |
 | `/lua-workflow <verb>` | `lua workflows …`, `lua test workflow` | read-only verbs run at once (⏳ incl. `policy models\|autonomy get`, `models`); start/approve/signal/resume/cancel (⏳ `clear-gate`, `policy … set`, `recompose`) confirm once; deploy → `/lua-deploy` |
 | `/lua-chat` | `lua chat --ci -e … -m … -t` | always an explicit thread |
 | `/lua-logs` | `lua logs --ci --type … --json` | the real 18-source `--type` list (`mastra` is not valid); ⏳ 3.38.0 `--since` / `--until` (ISO instant or `15m`/`2h`/`7d`, resolved by the server's clock), `--environment production\|sandbox`, `--follow` (polls ~2 s, refuses `--page`) |
@@ -202,6 +205,7 @@ Chat-composed workflows can't be deployed from the CLI (`WORKFLOW_DYNAMIC`); `/l
 |---|---|---|
 | `lua-architect` | `/lua-architect` | Read, Glob, Grep, Bash (read-only lua verbs), WebFetch, platform MCP (list/get agent, deployment status), docs MCP |
 | `lua-skill-builder` | `/lua-new` | Read, Write, Edit, Glob, Grep, Bash (`lua compile`, `lua test`, `lua sync --check`, `lua voice list`), WebFetch, docs MCP |
+| `lua-auditor` | `/lua-audit`, the audit offer in `/lua-new webapp` | Read, Grep, Glob — nothing else, so an audit can never change code or run a command |
 | `lua-debug` | `/lua-test` failures | Read, Edit, Grep, Glob, Bash (compile/test/status/logs, git log/diff), WebFetch, docs MCP |
 | `lua-deploy-pilot` | `/lua-deploy` | Read, Bash (compile, status, push, the prefixed production verbs, logs, git), platform MCP (deployment status, versions) |
 | `lua-qa` | `/lua-qa` (quick; the mechanics role in full) | Read, Write, Grep, Glob, Bash (chat, status, logs, offline workflow tests, the QA helpers), platform MCP (get agent, tail logs, deployment status) |
