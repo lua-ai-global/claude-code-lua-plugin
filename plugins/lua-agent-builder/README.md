@@ -21,7 +21,7 @@ New login runs in your own terminal (`lua auth configure`) — the plugin never 
 plugins/lua-agent-builder/
 ├── .claude-plugin/plugin.json   # plugin manifest
 ├── .mcp.json                    # lua-platform (local stdio) + lua-docs (https://docs.heylua.ai/mcp) + ui (https://ui.lua.dev/mcp)
-├── commands/                    # 24 slash commands
+├── commands/                    # 25 slash commands
 ├── agents/                      # 10 subagents (architect, skill-builder, debug, deploy-pilot, qa, qa-cartographer, qa-player, qa-grader, qa-analyst, qa-reporter)
 ├── hooks/                       # 12 Node ESM hooks + hooks.json
 ├── lib/
@@ -49,6 +49,7 @@ plugins/lua-agent-builder/
 | `/lua-architect <goal>` | Plan an agent end-to-end (subagent) |
 | `/lua-new <type> [name]` | Scaffold + register + compile + test a tool, skill, webhook, trigger, job, preprocessor, postprocessor, mcp, device, device-trigger, voice, workflow, workflow-script, web app, decision or ⏳ browser (subagent) |
 | `/lua-test [type]` | `lua test --ci skill\|webhook\|job\|preprocessor\|postprocessor\|workflow\|webapp`; a web-app route that writes (POST/PUT/PATCH/DELETE) runs against live Data only after your one confirmation; failures go to the debug subagent |
+| `/lua-audit [app]` | Read-only access-control and security audit of a web app: every custom access condition in its routes and pages (server, UI only or both) and every finding (UI-only gates, client-supplied identity, missing ownership checks, secrets in the page bundle, loose schemas, a widened CSP, XSS, …) with severity, `file:line`, what happens in production and a suggested fix. Never changes code; `/lua-new webapp` offers it when an app is built |
 | `/lua-workflow <verb>` | Offline workflow runs with scripted approvals/signals; list/status/watch; start/approve/signal/resume/cancel with one confirmation |
 | `/lua-chat` | One-shot `lua chat --ci -e <env> -m … -t` on an isolated thread |
 | `/lua-logs` | `lua logs --ci --json` with the real 18-source `--type` list and ⏳ the 3.38.0 read window (`--since` / `--until` / `--environment` / `--follow`) |

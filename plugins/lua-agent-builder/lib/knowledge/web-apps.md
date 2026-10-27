@@ -149,6 +149,7 @@ Wall clock 30 s by default (60 s cap) → `WALL_TIMEOUT` · request body **1 MB*
 | Page shows nothing / CSP errors in the browser console | a CDN script, remote stylesheet or font, or `fetch` to another origin | bundle via npm; call the third party from a route; or add the origin to `pages.csp` |
 | Page loops back to sign-in / `lua:auth:expired` | `lua.start()` never called, or the page stored and reused an old token | `void lua.start()` once in `main.tsx`; never persist tokens |
 | Page ignores the Workspace accent or dark mode | hardcoded colours (palette classes, hex), or theme code in the page fighting app-client | semantic tokens only; drop the theme lines (`lua apps upgrade <name>` removes the template's) |
+| Not sure who can call a route, or a page hides an action its route still allows | the access check lives only in the page, or nowhere | `/lua-audit <name>` lists every custom access condition and security finding (read-only) |
 | A ui component / export is missing (`Failed to resolve import "@lua-ai-global/ui/…"`) | the installed ui is older than the catalog (the `ui` MCP server shows the latest) | the user runs `lua apps upgrade <name>`, then `lua apps dev <name>` to look the pages over |
 | `Staged but NOT live yet` and the app still shows the old version | a push only stages | `/lua-deploy` → `webapp` (3.49.0+: scoped deploy; below: an agent version) |
 | `APP_DISABLED` | an admin switched the app off | admin console → agent → Apps |

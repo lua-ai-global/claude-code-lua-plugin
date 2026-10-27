@@ -47,6 +47,9 @@ export function decide(input, opts = {}) {
   const lines = [
     `[lua] agent: ${agentId}`,
     orgId ? `[lua] org:   ${orgId}` : null,
+    existsSync(join(cwd, 'src', 'apps'))
+      ? '[lua] web apps: after a non-trivial web-app change (a route, access logic, a page calling a write route), offer /lua-audit <app>; never run it unasked.'
+      : null,
   ].filter(Boolean);
 
   return { warn: lines.join('\n') };

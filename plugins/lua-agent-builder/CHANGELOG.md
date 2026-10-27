@@ -2,6 +2,21 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.16.0 — 2026-10-27
+
+**`/lua-audit`: a read-only access-control and security audit for web apps.**
+
+### New
+
+- **`/lua-audit [app]`** reads a web app's `app.ts`, its `web/src` pages and every project file they import (shared helpers, allowlist files such as `emails.json`), then prints one English report per app: **1. Custom access control** — every condition in the app's own code that decides who may see or do something beyond the gateway's sign-in (`auth.*` checks, allow/deny lists, per-record rules, UI shown by viewer), each marked enforced on the **server**, **UI only** or **both**; **2. Security findings** — UI-only gates, client-supplied identity, missing ownership checks, over-returned data, secrets in `app.ts` or the page bundle, the `fetch` escape hatch, loose write schemas, a widened `pages.csp`, XSS, token storage, SSRF, `auth.roles`/`auth.scopes` gates that `lua test` cannot exercise, `Data.shared` writes, plus anything else that lets a viewer see or change what they should not. Each finding carries a severity, `file:line`, what will happen in production and a suggested fix. With no name it audits every app under `src/apps/`.
+- It **never changes code** and never runs `lua test webapp` (write routes hit live `Data`): it uses Read, Grep and Glob only, masks secret values, and ends with "say **fix N**" so the user decides what to change.
+
+### Changed
+
+- **`/lua-new webapp`** asks once, after the builder finishes, whether to audit the new app now (Step 4).
+- **`hooks/inject-context.mjs`** adds one line in projects with `src/apps/`: after a non-trivial web-app change, offer `/lua-audit <app>`, never run it unasked.
+- **`web-apps.md` §9** points at `/lua-audit` for "who can call this route?".
+
 ## 1.15.0 — 2026-10-25
 
 **The cloud browser: `/lua-browser`, `/lua-new browser` and a browser knowledge file** (lua-cli 3.49.0; saved logins 3.57.0; files and page scripts 3.58.0; BAC-2268).

@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from '@jest/globals';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { decide } from '../../hooks/inject-context.mjs';
@@ -44,6 +44,14 @@ describe('inject-context decide()', () => {
     const result = decide(null, { cwd: tmpDir });
     expect(result?.warn).toContain('[lua] agent: solo-bot');
     expect(result?.warn).not.toContain('[lua] org:');
+    expect(result?.warn).not.toContain('/lua-audit');
+  });
+
+  test('offers /lua-audit only when the project has web apps (src/apps/)', () => {
+    writeFileSync(join(tmpDir, CONFIG), 'agent:\n  agentId: app-bot\n');
+    mkdirSync(join(tmpDir, 'src', 'apps'), { recursive: true });
+    const result = decide(null, { cwd: tmpDir });
+    expect(result?.warn).toContain('offer /lua-audit <app>; never run it unasked');
   });
 
   test('returns null when agentId is missing', () => {

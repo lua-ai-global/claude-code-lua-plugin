@@ -37,3 +37,7 @@ Use the **Agent tool** with `subagent_type: "lua-skill-builder"` and a prompt co
 If the subagent reports a compile failure it could not fix, tell the user to run `/lua-test` — that slash dispatches the debug subagent with the failing output.
 
 Per §3.7 the subagent MUST NOT call AskUserQuestion.
+
+## Step 4 — offer the audit (webapp only)
+
+When the builder finished a `webapp`, AskUserQuestion once: "Audit `<name>` for access control and security now? It only reads the code." (options: `Yes, audit now`, `Later — /lua-audit <name>`). On yes, use the **Skill tool** with `skill: "lua-agent-builder:lua-audit"` and `args: "<name>"`.
