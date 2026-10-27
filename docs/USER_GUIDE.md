@@ -167,7 +167,7 @@ Chat-composed workflows can't be deployed from the CLI (`WORKFLOW_DYNAMIC`); `/l
 
 ## Slash commands reference
 
-22 slash commands; each asks at most one question (`x-lua-multi-step: true` marks `/lua-doctor`, `/lua-auth`, `/lua-init`).
+25 slash commands; each asks at most one question (`x-lua-multi-step: true` marks `/lua-doctor`, `/lua-auth`, `/lua-init`).
 
 | Slash | Wraps | Notes |
 |---|---|---|
@@ -180,7 +180,7 @@ Chat-composed workflows can't be deployed from the CLI (`WORKFLOW_DYNAMIC`); `/l
 | `/lua-architect <goal>` | subagent | plan + next-step menu |
 | `/lua-new <type> [name]` | subagent → `lua compile`, `lua test` | 16 primitive types (incl. `workflow-script`, `webapp`, `decision` and ⏳ `browser`) |
 | `/lua-test [type]` | `lua test --ci <type> --name … --input …` | failures → debug subagent |
-| `/lua-audit [app]` | Read, Grep, Glob only — no `lua` command | read-only web-app access-control and security audit; offered by `/lua-new webapp` and after non-trivial web-app changes |
+| `/lua-audit [app]` | the `lua-auditor` subagent (Read, Grep, Glob only) — no `lua` command | read-only web-app access-control and security audit; offered by `/lua-new webapp` and after non-trivial web-app changes |
 | `/lua-workflow <verb>` | `lua workflows …`, `lua test workflow` | read-only verbs run at once (⏳ incl. `policy models\|autonomy get`, `models`); start/approve/signal/resume/cancel (⏳ `clear-gate`, `policy … set`, `recompose`) confirm once; deploy → `/lua-deploy` |
 | `/lua-chat` | `lua chat --ci -e … -m … -t` | always an explicit thread |
 | `/lua-logs` | `lua logs --ci --type … --json` | the real 18-source `--type` list (`mastra` is not valid); ⏳ 3.38.0 `--since` / `--until` (ISO instant or `15m`/`2h`/`7d`, resolved by the server's clock), `--environment production\|sandbox`, `--follow` (polls ~2 s, refuses `--page`) |
@@ -205,6 +205,7 @@ Chat-composed workflows can't be deployed from the CLI (`WORKFLOW_DYNAMIC`); `/l
 |---|---|---|
 | `lua-architect` | `/lua-architect` | Read, Glob, Grep, Bash (read-only lua verbs), WebFetch, platform MCP (list/get agent, deployment status), docs MCP |
 | `lua-skill-builder` | `/lua-new` | Read, Write, Edit, Glob, Grep, Bash (`lua compile`, `lua test`, `lua sync --check`, `lua voice list`), WebFetch, docs MCP |
+| `lua-auditor` | `/lua-audit`, the audit offer in `/lua-new webapp` | Read, Grep, Glob — nothing else, so an audit can never change code or run a command |
 | `lua-debug` | `/lua-test` failures | Read, Edit, Grep, Glob, Bash (compile/test/status/logs, git log/diff), WebFetch, docs MCP |
 | `lua-deploy-pilot` | `/lua-deploy` | Read, Bash (compile, status, push, the prefixed production verbs, logs, git), platform MCP (deployment status, versions) |
 | `lua-qa` | `/lua-qa` (quick; the mechanics role in full) | Read, Write, Grep, Glob, Bash (chat, status, logs, offline workflow tests, the QA helpers), platform MCP (get agent, tail logs, deployment status) |

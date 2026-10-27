@@ -10,16 +10,17 @@
 // top-level `agentName` or `model` — those queries returned nothing every
 // turn and the hook silently emitted nothing for real projects.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
+import { isHeadless } from '../lib/headless.mjs';
 
 /**
  * Iteration-13 audit: prefers `input.cwd` (Claude Code hook payload field —
  * the user's actual CWD at prompt time) over `process.cwd()`.
  *
  * @param {{cwd?: string}|null} input — Claude Code hook payload
- * @param {{cwd?: string}} [opts] — test override; takes precedence over input.cwd
+ * @param {{cwd?: string, env?: Record<string, string|undefined>}} [opts] — test override; takes precedence over input.cwd
  */
 export function decide(input, opts = {}) {
   const cwd = opts.cwd ?? input?.cwd ?? process.cwd();
@@ -47,12 +48,22 @@ export function decide(input, opts = {}) {
   const lines = [
     `[lua] agent: ${agentId}`,
     orgId ? `[lua] org:   ${orgId}` : null,
-    existsSync(join(cwd, 'src', 'apps'))
+    !isHeadless(opts.env ?? process.env) && hasWebApp(cwd)
       ? '[lua] web apps: after a non-trivial web-app change (a route, access logic, a page calling a write route), offer /lua-audit <app>; never run it unasked.'
       : null,
   ].filter(Boolean);
 
   return { warn: lines.join('\n') };
+}
+
+/** A web app is a `src/apps/<name>/app.ts` (what /lua-audit audits). */
+function hasWebApp(cwd) {
+  const appsDir = join(cwd, 'src', 'apps');
+  try {
+    return readdirSync(appsDir).some((name) => existsSync(join(appsDir, name, 'app.ts')));
+  } catch {
+    return false;
+  }
 }
 
 /* istanbul ignore next */

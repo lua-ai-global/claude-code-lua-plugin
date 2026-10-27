@@ -47,11 +47,13 @@ describe('inject-context decide()', () => {
     expect(result?.warn).not.toContain('/lua-audit');
   });
 
-  test('offers /lua-audit only when the project has web apps (src/apps/)', () => {
+  test('offers /lua-audit only when the project has a web app (src/apps/<name>/app.ts)', () => {
     writeFileSync(join(tmpDir, CONFIG), 'agent:\n  agentId: app-bot\n');
-    mkdirSync(join(tmpDir, 'src', 'apps'), { recursive: true });
-    const result = decide(null, { cwd: tmpDir });
-    expect(result?.warn).toContain('offer /lua-audit <app>; never run it unasked');
+    mkdirSync(join(tmpDir, 'src', 'apps', 'board'), { recursive: true });
+    expect(decide(null, { cwd: tmpDir })?.warn).not.toContain('/lua-audit');
+    writeFileSync(join(tmpDir, 'src', 'apps', 'board', 'app.ts'), '');
+    expect(decide(null, { cwd: tmpDir, env: {} })?.warn).toContain('offer /lua-audit <app>; never run it unasked');
+    expect(decide(null, { cwd: tmpDir, env: { LUA_PLUGIN_HEADLESS: '1' } })?.warn).not.toContain('/lua-audit');
   });
 
   test('returns null when agentId is missing', () => {
