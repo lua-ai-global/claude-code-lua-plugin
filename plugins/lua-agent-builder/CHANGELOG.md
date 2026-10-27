@@ -2,6 +2,54 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.17.0 — 2026-10-27
+
+Two parts: **live build session mode** (from the `feat/lbs/plugin-session-mode` branch, which Lua session pods pinned while it was unmerged) and **the lua-cli 3.62.0 `lua test` / `lua push` / `lua compile` behaviour** in the builder's prompts (LUA-1855).
+
+**Live build session mode** (`LUA_BUILD_SESSION=1`; Live Build Sessions spec v3 B22, as superseded by B23 "every `lua` command works in a session"). A Lua session pod runs one long-lived Claude Code process that a builder drives from Lua Desktop; the pod sets `LUA_BUILD_SESSION=1` and the plugin adapts. **With the variable unset nothing changes** except one security fix (below, "Changed (all modes)"): every other hook answer is as in 1.16.0 and the three new hooks are silent (`test/hooks/session-mode.test.mjs`). See `docs/BUILD_SESSION.md` and `lib/knowledge/build-session.md`.
+
+### New
+
+- **`lib/session-commands.mjs`**: the B23 command classes (`direct_read`, `session_write`, `approval`, `secret`, `unavailable`), vendored from lua-core-services `shared-types/src/build-sessions/commands.ts` (commit `7c53151b` on `feat/live-build-sessions`, keeping the case-insensitive and alias rows of `b4be3b9b`) because this public repo cannot depend on the private monorepo. `test/lib/session-commands.test.mjs` carries the shared spec's tables verbatim as a parity fixture.
+- **`lib/session-mode.mjs`**: the session switch (checked before headless, which the pod also sets), the `lua-session` tool ids (`stage_for_test`, `test_chat`, `preview_webapp`, `request_release`, `update_memory`, `share_file`, `request_action`, `request_secret`) and the routing texts.
+- **`lib/tokenizer.mjs` `findLuaInvocations`**: an advisory list of every lua argv in a Bash command, using the gate's lexer and command positions. The gate itself (`classifyProductionCommand`) is unchanged.
+- **`hooks/session-guard.mjs`** (PreToolUse, `Bash(*lua*)`): in a session it blocks the unavailable commands (`SESSION_COMMAND_UNAVAILABLE`) and secret values on a command line (`SESSION_SECRET_DENIED`, naming `request_secret`; a device credential is issued to the user in Desktop). Approval-class commands are not blocked: the session's proxy turns them into a Desktop card. The hook adds context so a pending answer (a Bash timeout, exit 10, a 403 `pending_user_approval`) is treated as pending, never retried. Non-secret `lua env sandbox|staging` edits (the local `.env`) pass silently.
+- **`hooks/session-context.mjs`** (SessionStart): the session brief.
+- **`hooks/session-untrusted-output.mjs`** (PostToolUse, `Bash(*lua*)`): in a session, after a lua read whose output carries runtime text (`lua logs`, `lua workflows runs|job-logs`, `lua integrations info`, `lua devices logs`, `lua drains deliveries`, sandbox `lua chat`, `lua test`, `lua evals run`), adds an UNTRUSTED DATA note (spec B15/B23). A PostToolUse hook cannot rewrite a Bash result, so it is a banner after the output, not a fence; the fence belongs in the session proxy and lua-cli.
+- **`lib/knowledge/build-session.md`**: the session table, the tools, how to wait on a decision, releases and rollback, and what each slash command and hook does in a session.
+- Every slash command except `/lua-docs` has a `## Build session` section before its first step. `/lua-deploy`: stage, `test_chat` / `preview_webapp`, then `request_release` (no pilot, no deploy verb). `/lua-version create`: `stage_for_test`. `/lua-chat` and `/lua-qa` quick mode always test the session test version (`test_chat` or sandbox chat, never production; `full` is not available in a session). `/lua-env`: secret-shaped keys go to `request_secret`, production config and deletes to `request_action`. The mutations of `/lua-integrations`, `/lua-drains`, `/lua-devices`, `/lua-decisions`, `/lua-template`, `/lua-workflow` and `/lua-init` go to `request_action`. `/lua-auth` and `/lua-update` are not available. The rest skip the auth preflight, ask in the reply instead of the question tool, and run subagent playbooks inline. `test/lib/session-docs.test.mjs` keeps the sections present and their tool names real.
+
+### Changed (session mode only)
+
+- `confirm-deploy`: the prefix is void and every gated verb stays blocked (`DEPLOY_DENIED_SESSION`). Deploy and promote name `request_release`; activations and template releases name `request_action`.
+- `block-auto-deploy`, `block-auth-configure`, `block-device-secret`: still block, with session wording.
+- `block-device-secret` in a session blocks every device-credential form, `--out <file>` included (the out file would sit in the pod), and the session classifier matches the lua-cli verb aliases `credentials` / `key` and action words in any case, like lua-cli `normalizeArg`.
+- `check-lua-auth`, `check-lua-version`: skipped, and no probe is spawned. `post-deploy-smoke`: never pings production.
+- `detect-project`: no `/lua-doctor` pointer. `inject-context`: one `[lua] live build session` line.
+- `--operations <list>` (a value-taking `lua devices` option) no longer hides the verb after it: a credential verb after an `--operations` list is `secret` and blocked in a session, not an approval warning (F011).
+- `lua build-session` is not available inside a session except `lua build-session status` (shared table rows `build-session.read` / `build-session`): Claude cannot start, end, send to or approve the release of sessions from the pod.
+- `scripts/lint-mcp-refs.mjs`: knows the host-provided `lua-session` server (bare `mcp__lua-session__…` names, not in `.mcp.json`).
+
+### Changed (all modes)
+
+- `block-device-secret` also recognises lua-cli run by package name or entry file (`npx lua-cli …`, `npx lua-cli@<v> …`, `node …/lua-cli/dist/index.js …`), not only the `lua` / `heylua` / `lua-ai` binaries. Outside a session this adds a block on the printing form of those spellings (the device secret would land in the conversation); their `--out <file>` form still passes there, as for `lua`.
+
+### Changed (session mode, on merging with 1.15.0 and 1.16.0)
+
+- `/lua-audit` and `/lua-browser` (new on `main` since the branch was cut) get their `## Build session` sections: the audit runs the `lua-auditor` playbook inline, read-only; `browsers list` runs directly and `browser read|run` and `browsers delete` go to `request_action`, as the shared B23 table classes them (`browser.write` / `browsers.write` approval rows). `build-session.md` §6 has both rows.
+- `inject-context`: the session line and the 1.16.0 `/lua-audit` offer both stay; the offer is skipped in a session as it is headless.
+- The session brief and `build-session.md` §1 say there is no `lua new` command and no `lua-docs` program (sessions ran both): a new primitive is files written through `/lua-new`, docs come from the lua-docs MCP. `build-session.md` names `lua integrations info` (lua-cli has no `inspect`; `lint-knowledge-commands` flagged it).
+
+### lua-cli 3.62.0: `lua test`, `lua push`, `lua compile` (LUA-1855)
+
+lua-cli 3.62.0 is not on npm yet when this ships (newest 3.61.1), so every point is marked ⏳ 3.62.0 and the older behaviour stays documented beside it.
+
+- **`lua test --ci` never prompts** (LUA-1822): a missing kind, `--name`, or a tool's `--input` is exit 2 listing what exists; `--name <skill>` is exit 2 listing that skill's tools (exit 3 `not_found` now means an unknown tool and lists every tool with its skill); `-m/--message` feeds a preprocessor/postprocessor test. The old "no `--name` renders a picker and exits 0 having tested nothing" stays documented for older CLIs. `agents/lua-skill-builder.md` step 5 always passes `--input` (`'{}'` for no fields) and reads the exit-2 list instead of guessing; `agents/lua-debug.md`, `commands/lua-test.md`, `cli-reference.md` §4 and `primitives.md` §14 say the same.
+- **Offline doubles** (`lua test --offline`, `LUA_TEST_DOUBLES`; always on in a live build session): what each family does (in-memory `Data`/`Products`/`Baskets`/`Orders`, stub `AI.generate`, recorded `Channels`/`Team`/`User.Inbox`/`Workflows.start`, refused `Integrations`) and that other platform APIs stay live. The skill builder adds `--offline` for a tool that writes or sends. `/lua-test`'s live-data gate for web-app write routes is unchanged.
+- **`lua compile` type-checks** the bundled code: a warning by default (count and first 10), `--strict-types` / `LUA_TYPE_CHECK=error` fails, `--no-type-check` / `LUA_TYPE_CHECK=off` skips, always fatal in a session. Also strict skill tools (a string in `tools` is an error, even with `/* @lua-ignore-ref */`), destructuring a field a job/webhook argument lacks, and (in a session) a skill with no tools. The skill builder fixes reported type errors in its compile loop and never passes `--no-type-check`.
+- **`lua push <kind> <name>`** is accepted as `--name <name>` (`cli-reference.md` §4); the plugin keeps emitting `--name`, which every version accepts.
+- `primitives.md` §23 notes that 3.62.0 fixes the `--with-examples` code and types `User.get()` as returning a user.
+
 ## 1.16.0 — 2026-10-27
 
 **`/lua-audit`: a read-only access-control and security audit for web apps.**

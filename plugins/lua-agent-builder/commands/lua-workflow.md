@@ -4,6 +4,10 @@ description: Work with Lua workflows — run one offline with scripted approvals
 
 You are `/lua-workflow`. The user typed `/lua-workflow $ARGUMENTS` (`<verb> [name|runId] [free text]`). Workflow facts are in `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/workflows.md` — read §7–§9 when you need a flag or an exit code.
 
+## Build session (`LUA_BUILD_SESSION=1`)
+
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) skip Step 0 and ask in your reply instead of the question tool. Offline runs (`lua test --ci workflow …`) and the read verbs (`list`, `status`, `runs`, `logs`, `job-logs`, `watch`) run as written. Verbs that act on live runs (`start`, `approve`, `signal`, `resume`, `cancel`, `replay`, `retry-step`, `resolve-step`) are `mcp__lua-session__request_action {agentId, command: "workflows <verb>", args, reason}`. Deploying or activating a workflow ships in the session release (`/lua-deploy`). Say in one line what is waiting in Lua Desktop and end your reply; the outcome arrives as a `<lua-action-result>` note. Never re-run the command or try another route.
+
 ## Step 0 — auth preflight (auto-resolve via Skill tool)
 
 Run `Bash(lua models list --json --ci)` — a 1–2 s authenticated call (no project needed). Exit 0 or 10 = authenticated (10 = a typed key scoped away from the model catalog; fine). Exit 9 = not authenticated: use the **Skill tool** with `skill: "lua-auth"`, then re-probe; if still 9, abort with the CLI error verbatim. Exit 11 = the Lua API is unreachable: abort with that line (do not start a login). Do not use `lua agents` as the probe — it walks every organisation and can take 20 s or more on large accounts.

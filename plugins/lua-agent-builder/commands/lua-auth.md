@@ -5,6 +5,10 @@ x-lua-multi-step: true
 
 You are `/lua-auth`. The user wants to authenticate with the Lua platform.
 
+## Build session (`LUA_BUILD_SESSION=1`)
+
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) this slash is not available: Lua access comes from the session itself and there is nothing to sign in to. Say so in one line and stop. If a lua command failed with an auth error, report that error to the user.
+
 ## Step 1: keep a working credential
 
 Run `Bash(lua models list --json --ci)` — a 1–2 s authenticated call. Exit 0 or 10 (a typed key scoped away from the catalog route) means the credential works: then run `Bash(lua agents --json --ci)` (allow 20 s or more on accounts with many organisations), summarise the accessible organizations and agents (names and ids only) and stop. Do not replace, rotate, print, or rewrite the credential that worked. Exit 11 means the Lua API is unreachable — report that and stop; a login would not help. `Bash(lua status --json --ci)` additionally shows `auth.source` (`environment` | `stored` | `renewable session`) and `auth.credentialClass` if the user wants to know which credential is in use.

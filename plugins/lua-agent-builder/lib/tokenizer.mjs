@@ -958,6 +958,68 @@ export function classifyProductionCommand(command, { analyze = analyzeScript, bu
   return { label, slash, prefixed };
 }
 
+// ── Invocation listing (live build sessions, 1.15.0) ───────────────────────
+
+/**
+ * @param {string} src
+ * @param {number} depth
+ * @param {Array<{argv: string[], dynamic: boolean}>} out
+ */
+function collectInvocations(src, depth, out) {
+  checkBudget();
+  if (depth > MAX_DEPTH) return;
+  const { segments, subs } = lex(src);
+  for (const seg of segments) {
+    const words = seg.words;
+    const names = words.map(nameOf);
+    const positions = commandPositions(words);
+    for (const j of positions) {
+      const inv = invocationAt(words, j, j > 0);
+      if (!inv || inv.dynamicHead) continue;
+      out.push({ argv: inv.args.map((w) => w.text), dynamic: inv.args.some((w) => w.dynamic) });
+    }
+    // A string handed to a shell (`bash -c '…'`, `ssh host '…'`, a heredoc fed to `sh`) is code too.
+    const runsStrings =
+      positions.some((j) => SCRIPT_RUNNERS.has(names[j])) || names.some((nm) => SHELLS.has(nm));
+    if (!runsStrings) continue;
+    words.forEach((w, k) => { if (k > 0 && /[\s;&|`$()]/.test(w.text)) collectInvocations(w.text, depth + 1, out); });
+    for (const body of [...seg.heredocs, ...seg.herestrings]) collectInvocations(body, depth + 1, out);
+  }
+  for (const sub of subs) collectInvocations(sub, depth + 1, out);
+}
+
+/**
+ * Every lua-cli invocation in a Bash command, as the argv AFTER the binary
+ * (`cd x && lua env production --list` → `[{argv: ['env', 'production', '--list'], …}]`).
+ * Uses the same lexer and command-position rules as the production gate:
+ * chains, groups, `$( )`, wrappers and launchers, and strings run by a shell.
+ * A binary the shell computes at runtime is skipped; `dynamic` marks an argv
+ * with a computed word in it.
+ *
+ * This is an ADVISORY listing for the build-session hook: it never decides
+ * whether a production verb may run (that is classifyProductionCommand's job,
+ * which fails closed). Over-long input, a spent budget or an internal error
+ * returns what was found so far (possibly nothing).
+ *
+ * @param {unknown} command
+ * @param {{budgetMs?: number}} [opts] — test seam
+ * @returns {Array<{argv: string[], dynamic: boolean}>}
+ */
+export function findLuaInvocations(command, { budgetMs = TIME_BUDGET_MS } = {}) {
+  if (typeof command !== 'string' || command.length > MAX_COMMAND_LENGTH || !MENTIONS_LUA.test(command)) return [];
+  const out = [];
+  deadline = performance.now() + budgetMs;
+  ticks = 0;
+  try {
+    collectInvocations(command, 0, out);
+  } catch {
+    // Advisory only: keep what was found.
+  } finally {
+    deadline = Infinity;
+  }
+  return out;
+}
+
 /**
  * True iff the command runs a gated production verb and every such verb
  * carries the LUA_DEPLOY_CONFIRMED=1 prefix in its canonical shape.

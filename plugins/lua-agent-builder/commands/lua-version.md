@@ -4,6 +4,10 @@ description: Agent versions — atomic snapshots of the whole staged agent. List
 
 You are `/lua-version`. The user typed `/lua-version $ARGUMENTS` (`<verb> [args]`). Agent versioning facts: `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/cli-reference.md` §4–5.
 
+## Build session (`LUA_BUILD_SESSION=1`)
+
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) skip Step 0. `list`, `show`, `diff` and `status` run as written. `create` is not needed to test: call `mcp__lua-session__stage_for_test` (a private session version). `promote <v>` ships through `/lua-deploy` (a release) or, to roll back, `mcp__lua-session__request_action {agentId, command: "version promote", args: ["<v>"], reason}`; `delete <v>` is a `request_action` too. Say in one line what is waiting in Lua Desktop and end your reply; the outcome arrives as a `<lua-action-result>` note. Never re-run the command or try another route.
+
 ## Step 0 — auth preflight (auto-resolve via Skill tool)
 
 Run `Bash(lua models list --json --ci)` — a 1–2 s authenticated call (no project needed). Exit 0 or 10 = authenticated (10 = a typed key scoped away from the model catalog; fine). Exit 9 = not authenticated: use the **Skill tool** with `skill: "lua-auth"`, then re-probe; if still 9, abort with the CLI error verbatim. Exit 11 = the Lua API is unreachable: abort with that line (do not start a login). Do not use `lua agents` as the probe — it walks every organisation and can take 20 s or more on large accounts.

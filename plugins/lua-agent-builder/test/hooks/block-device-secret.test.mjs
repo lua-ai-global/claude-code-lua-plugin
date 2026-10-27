@@ -23,6 +23,11 @@ describe('block-device-secret decide()', () => {
     'lua devices credential --ci --device-name pico --out=/dev/fd/1',
     'lua devices credential --ci --device-name pico --out /dev/tty',
     'lua devices credential --ci --device-name pico --out "/proc/self/fd/1"',
+    // F011: lua-cli by package name or entry file, not only the `lua` binary.
+    'npx lua-cli devices credential --device-name pico',
+    'npx -y lua-cli@3.53.0 devices --operations commands credential --device-name pico',
+    'node node_modules/lua-cli/dist/index.js devices --operations commands credential',
+    'node "/usr/lib/node_modules/lua-cli/dist/index.js" devices key --device-name pico',
   ])('blocks %s', (command) => {
     const result = decide({ tool_input: { command } });
     expect(result?.block).toBe(true);
@@ -42,6 +47,9 @@ describe('block-device-secret decide()', () => {
     'lua devices test --ci --device-name keypad --command read_key',
     'lua devices list --ci',
     'lua auth key --force',
+    'npx lua-cli devices credential --device-name pico --out .env.device',
+    'node node_modules/lua-cli/dist/index.js devices list',
+    'npm install lua-cli && echo devices key',
     'git commit -m "document lua devices"',
     'echo key',
   ])('allows %s', (command) => {
@@ -60,6 +68,60 @@ describe('block-device-secret decide()', () => {
     expect(headless.block).toBe(true);
     expect(headless.reason).toContain('DEVICE_SECRET_DENIED');
     expect(headless.reason).not.toMatch(/\/lua-/);
+  });
+});
+
+describe('block-device-secret in a live build session', () => {
+  const SESSIONS = [{ LUA_BUILD_SESSION: '1' }, { LUA_BUILD_SESSION: '1', LUA_PLUGIN_HEADLESS: '1' }];
+
+  // Every credential spelling lua-cli accepts (`credentials` / `key` aliases, any case), with and without a real
+  // `--out` file: in a session the value must never land in the pod, so `--out` is no exemption.
+  test.each([
+    'lua devices credential thermo',
+    'lua devices credential thermo --out .dev.env',
+    'lua devices credentials thermo --out .dev.env',
+    'lua devices key thermo --out .dev.env',
+    'lua devices CREDENTIAL thermo --out .dev.env',
+    'lua devices Key thermo --out=.dev.env',
+    "lua devices credentials --ci --device-name pico --out '.env.device.pico'",
+    'cd agent && lua devices key --ci --device-name pico --out ./device/.env.device',
+    // F011: `--operations <list>` before the verb, and lua-cli run by package name or entry file.
+    'lua devices --operations commands credential',
+    'npx lua-cli devices --operations commands credential',
+    'npx lua-cli devices --operations commands credential d1 --out .dev.env',
+    'node node_modules/lua-cli/dist/index.js devices --operations commands credential',
+  ])('blocks %s', (command) => {
+    for (const env of SESSIONS) {
+      const result = decide({ tool_input: { command } }, env);
+      expect([command, result?.block]).toEqual([command, true]);
+      expect(result.reason).toContain('Lua Desktop');
+    }
+  });
+
+  test('help stays allowed by this hook (session-guard owns the session help answer)', () => {
+    for (const env of SESSIONS) expect(decide({ tool_input: { command: 'lua devices key --help' } }, env)).toBeNull();
+  });
+
+  test('flags off: the --out form is still allowed exactly as before', () => {
+    for (const env of [{}, { LUA_BUILD_SESSION: '0' }, { LUA_BUILD_SESSION: '' }, { LUA_PLUGIN_HEADLESS: '1' }]) {
+      for (const command of [
+        'lua devices credential thermo --out .dev.env',
+        'lua devices credentials thermo --out .dev.env',
+        'lua devices key thermo --out .dev.env',
+        'lua devices CREDENTIAL thermo --out .dev.env',
+      ]) {
+        expect([command, decide({ tool_input: { command } }, env)]).toEqual([command, null]);
+      }
+    }
+  });
+
+  test('as a spawned hook: exits 2 for the --out form in a session', async () => {
+    const r = await runHook(
+      'block-device-secret.mjs',
+      { tool_name: 'Bash', tool_input: { command: 'lua devices key thermo --out .dev.env' } },
+      { env: { LUA_BUILD_SESSION: '1', LUA_PLUGIN_HEADLESS: '1' } }
+    );
+    expect(r.exitCode).toBe(2);
   });
 });
 

@@ -6,6 +6,10 @@
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
 import { spawnLua } from '../lib/lua-cli.mjs';
 import { isHeadless, HEADLESS_NOTE } from '../lib/headless.mjs';
+import { isBuildSession } from '../lib/session-mode.mjs';
+
+// Live build session (LUA_BUILD_SESSION=1, 1.15.0): skipped entirely, no probe is spawned. The session image
+// pins lua-cli (spec B22), so an upgrade hint could not be acted on, and `lua update` is not available there.
 
 // Pinned minimum lua-cli version. The plugin's commands, agents and knowledge
 // files describe the lua-cli 3.38.0 surface: the 3.33.0 base (workflows,
@@ -68,6 +72,7 @@ export function compareSemver(a, b) {
  *   pointer and no install instruction — the image, not the run, owns lua-cli.
  */
 export function decide(versionResult, env = process.env) {
+  if (isBuildSession(env)) return null;
   const headless = isHeadless(env);
   if (versionResult.exitCode !== 0) {
     return {
@@ -102,6 +107,7 @@ export function decide(versionResult, env = process.env) {
 // dedicated unit coverage; this 2-line composer is covered transitively.
 /* istanbul ignore next */
 async function decideWithSpawn() {
+  if (isBuildSession()) return null;
   const result = await spawnLua(['--version'], { timeoutMs: 5000 });
   return decide(result);
 }

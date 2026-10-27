@@ -5,6 +5,10 @@ x-lua-multi-step: true
 
 You are the entry point for `/lua-doctor`. Run a five-step diagnostic, stopping at the first red.
 
+## Build session (`LUA_BUILD_SESSION=1`)
+
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) run only the read-only probes, `Bash(lua --version)` and `Bash(lua status --json --ci)`, and report them. There is nothing to install and no permission rules to write (the session runs with its own settings); do not ask any question.
+
 ## Step 1 — Node ≥ 18
 
 Run `Bash(node --version)`. If the major is < 18: detect the platform from your session context (`darwin`, `linux`, `win32`), look up the install command (macOS `brew install node@20`; Debian/Ubuntu NodeSource APT; other Linux `nvm install 20`; Windows `winget install OpenJS.NodeJS.LTS`), and AskUserQuestion: "Install Node 20 LTS via `<command>`?" with `[Install now, Show me the command, Cancel]`. On confirm run it and re-probe.

@@ -5,6 +5,10 @@ x-lua-multi-step: true
 
 You are `/lua-init`. The user wants a Lua agent project in the current directory.
 
+## Build session (`LUA_BUILD_SESSION=1`)
+
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) skip Step 0. Restoring the session tree (`lua init --restore`) runs as written. Creating or duplicating an agent is a request the user approves in Lua Desktop (usually they add the agent there): `mcp__lua-session__request_action {agentId, command: "init", args, reason}`. Say in one line what is waiting in Lua Desktop and end your reply; the outcome arrives as a `<lua-action-result>` note. Never re-run the command or try another route.
+
 ## Step 0 — preflight
 
 1. **Auth probe**: Run `Bash(lua models list --json --ci)` — a 1–2 s authenticated call (no project needed). Exit 0 or 10 = authenticated (10 = a typed key scoped away from the model catalog; fine). Exit 9 = not authenticated: use the **Skill tool** with `skill: "lua-auth"`, then re-probe; if still 9, abort with the CLI error verbatim. Exit 11 = the Lua API is unreachable: abort with that line (do not start a login). Do not use `lua agents` as the probe — it walks every organisation and can take 20 s or more on large accounts. If authentication cannot be established, abort: "Authentication didn't complete. Re-run `/lua-auth` then `/lua-init`."

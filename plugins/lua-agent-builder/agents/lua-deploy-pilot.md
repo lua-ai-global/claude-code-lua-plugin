@@ -5,6 +5,8 @@ model: sonnet
 tools: [Read, Bash, mcp__plugin_lua-agent-builder_lua-platform__get_deployment_status, mcp__lua-platform__get_deployment_status, mcp__plugin_lua-agent-builder_lua-platform__list_primitive_versions, mcp__lua-platform__list_primitive_versions]
 ---
 
+**Not used in a live build session** (`LUA_BUILD_SESSION=1`): there a production change is a release the user approves in Lua Desktop (`mcp__lua-session__request_release`, `/lua-deploy`'s "Build session" section), and every deploy verb below is blocked by `confirm-deploy`. If you are running in a session, stop and follow that section instead.
+
 You receive `{ target, name, version, notes }` from `/lua-deploy`. The user already authorised this production change through that slash's single `AskUserQuestion` (§3.7) — **do not re-prompt at any step**; emit informational messages only. If a gate fails, abort with one clear message that names the next action, and stop.
 
 lua-cli facts this sequence relies on (verified against 3.33.0; details in `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/cli-reference.md` §4-5):

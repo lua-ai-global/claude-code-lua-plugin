@@ -4,6 +4,8 @@ This page is for the people who run `lua-agent-builder` **unattended**: inside `
 
 > lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+> A **live build session** is not a headless run: a person decides in Lua Desktop. When `LUA_BUILD_SESSION=1` is set as well, session mode takes precedence over everything on this page that differs. See [BUILD_SESSION.md](./BUILD_SESSION.md).
+
 ## 1. Turn on headless mode
 
 Set **`LUA_PLUGIN_HEADLESS=1`** in the environment of the `claude` process. `true`, `yes` and `on` are accepted too.

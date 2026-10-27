@@ -4,6 +4,17 @@ description: Manage agent environment variables — list, set or delete a key in
 
 You are `/lua-env`. The user typed `/lua-env $ARGUMENTS` (`[sandbox|staging|production] [list | set <KEY> | delete <KEY>]`). Facts: `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/cli-reference.md` §4 (the `lua env` row) and `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/primitives.md` §12 `env(key)` (how a value is read locally vs deployed).
 
+## Build session (`LUA_BUILD_SESSION=1`)
+
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md` §3) skip Steps 0 and 1 and never ask for a value. Parse `$ARGUMENTS`; ask in your reply only for what is missing (environment, action, key) and stop. Then:
+
+- `list` → `Bash(lua env <env> --ci --list)` runs directly; report key names only.
+- `set` of a secret-shaped key (`…_KEY`, `…_TOKEN`, `…_SECRET`, `PASSWORD`, credentials) or of any value the user has not given you as plain config → `mcp__lua-session__request_secret {name: "<KEY>", purpose: "<why the agent needs it>", env: "<env>"}`. The user types the value in Lua Desktop and it never reaches you; the session guard blocks a secret value on a command line.
+- `set` of non-secret `production` config the user gave you (e.g. `LOG_LEVEL=debug`) → `mcp__lua-session__request_action {agentId, command: "env production", args: ["-k", "<KEY>", "-v", "<value>"], reason}`; `delete` → the same with `args: ["-k", "<KEY>", "--delete"]`.
+- `sandbox` (alias `staging`) non-secret set or delete only edits the workspace `.env` that `lua test` reads: run it as in Step 2.
+
+Say in one line what is waiting in Lua Desktop and end your reply; the outcome arrives as a `<lua-action-result>` note. Never re-run the command or try another route.
+
 ## Step 0 — auth preflight (auto-resolve via Skill tool)
 
 Run `Bash(lua models list --json --ci)` — a 1–2 s authenticated call (no project needed). Exit 0 or 10 = authenticated (10 = a typed key scoped away from the model catalog; fine). Exit 9 = not authenticated: use the **Skill tool** with `skill: "lua-auth"`, then re-probe; if still 9, abort with the CLI error verbatim. Exit 11 = the Lua API is unreachable: abort with that line (do not start a login). Do not use `lua agents` as the probe — it walks every organisation and can take 20 s or more on large accounts.

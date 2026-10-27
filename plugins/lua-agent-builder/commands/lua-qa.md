@@ -6,6 +6,14 @@ x-lua-multi-step: true
 
 You are `/lua-qa`. The user wants a QA pass. lua-cli is a TypeScript agent framework, not the Lua programming language.
 
+## Build session (`LUA_BUILD_SESSION=1`)
+
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) `/lua-qa` is always **quick mode against the session test version**, never production:
+
+1. No question. Scope: all conversations and every workflow, budget 5 minutes, unless `$ARGUMENTS` names a target. `full` is not available in a session (its gates need the question tool, its roles need subagents): say so in one line and run quick mode.
+2. `mcp__lua-session__stage_for_test`, then follow `${CLAUDE_PLUGIN_ROOT}/agents/lua-qa.md` (its quick-mode body and its "Build session" note) inline: skip its Step 0, run every conversation turn through `mcp__lua-session__test_chat {message, threadId}` (or `lua chat --ci -e sandbox -m '<msg>' -t qa-<id>-<ts>`), never `-e production`, and no environment note.
+3. Workflows (offline `lua test --ci workflow`) and the log scan run as written. Present the report as in Quick step 3; a fix path that says `/lua-deploy` is a release request in a session.
+
 ## Step 0 - mode
 
 Read `$ARGUMENTS`. Only a leading `full` selects **Full mode**. Everything else is **Quick mode**, with no extra question: bare `/lua-qa`, `/lua-qa quick`, `/lua-qa <tool or workflow name>` and `/lua-qa quick <name>` behave exactly like the 1.7.0 `/lua-qa`. After the leading mode word (if any), the rest is a tool or workflow name. When quick mode finishes, mention once that `/lua-qa full` runs the complete suite (`/lua-qa full smoke` for a 30-minute check).
