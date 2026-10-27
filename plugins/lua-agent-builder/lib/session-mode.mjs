@@ -1,4 +1,4 @@
-// Live build session mode (1.15.0). See lib/knowledge/build-session.md and docs/BUILD_SESSION.md.
+// Live build session mode (1.17.0). See lib/knowledge/build-session.md and docs/BUILD_SESSION.md.
 //
 // A live build session runs this plugin inside a Lua session pod: one long-lived Claude Code process that a Lua
 // builder drives from Lua Desktop. The pod sets `LUA_BUILD_SESSION=1` (lua-core-services shared-types
@@ -347,6 +347,7 @@ export function sessionStartBrief(env = process.env) {
     `- Making code live is a release: ${RELEASE} (never \`lua deploy\` / \`lua version promote\`). Test first with ${STAGE} + ${TEST_CHAT}.`,
     `- Secret values are typed by the user in Desktop: ${SECRET} {name, purpose, env}. Never ask for one in chat.`,
     '- Not available: `lua auth|login|logout|configure`, `lua admin`, `lua docs` (use the lua-docs MCP), `lua update`, `lua destroy`.',
+    '- There is no `lua new` command and no `lua-docs` program: a new primitive is files you write (the knowledge file below says how), and docs come from the lua-docs MCP tools. `lua test` runs Data, AI, Channels and the other platform calls on offline doubles here (always pass `--name` and `--input`), and `lua compile` fails on a type error.',
     `- Slash commands follow their "Build session" section; the full table is ${SESSION_KNOWLEDGE_PATH}. Ask questions in your reply and stop instead of using an interactive question tool, and follow subagent playbooks inline.`,
   ].join('\n');
 }
