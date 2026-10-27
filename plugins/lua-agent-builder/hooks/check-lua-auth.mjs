@@ -30,7 +30,7 @@ import { spawnLua } from '../lib/lua-cli.mjs';
 import { isHeadless, HEADLESS_NOTE } from '../lib/headless.mjs';
 import { isBuildSession } from '../lib/session-mode.mjs';
 
-// Live build session (LUA_BUILD_SESSION=1, 1.15.0): skipped entirely, no probe is spawned. The session's Lua
+// Live build session (LUA_BUILD_SESSION=1, 1.17.0): skipped entirely, no probe is spawned. The session's Lua
 // access comes from the pod (spec B22), there is nothing to sign in to, and `/lua-auth` is not available there.
 
 export const AUTH_PROBE_ARGS = ['models', 'list', '--json', '--ci'];

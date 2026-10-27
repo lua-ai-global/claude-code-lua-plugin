@@ -1,4 +1,4 @@
-// PreToolUse hook for every Bash call: the live-build-session routing of lua commands (1.15.0, spec v3 B23).
+// PreToolUse hook for every Bash call: the live-build-session routing of lua commands (1.17.0, spec v3 B23).
 //
 // Outside a session (LUA_BUILD_SESSION unset) it returns null at once: no lexing, no output, nothing changes.
 //

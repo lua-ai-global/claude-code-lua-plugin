@@ -56,6 +56,15 @@ describe('inject-context decide()', () => {
     expect(decide(null, { cwd: tmpDir, env: { LUA_PLUGIN_HEADLESS: '1' } })?.warn).not.toContain('/lua-audit');
   });
 
+  test('a session pod (LUA_BUILD_SESSION=1 + LUA_PLUGIN_HEADLESS=1) gets the session line and no /lua-audit offer', () => {
+    writeFileSync(join(tmpDir, CONFIG), 'agent:\n  agentId: app-bot\n');
+    mkdirSync(join(tmpDir, 'src', 'apps', 'board'), { recursive: true });
+    writeFileSync(join(tmpDir, 'src', 'apps', 'board', 'app.ts'), '');
+    const warn = decide(null, { cwd: tmpDir, env: { LUA_BUILD_SESSION: '1', LUA_PLUGIN_HEADLESS: '1' } })?.warn;
+    expect(warn).toContain('[lua] live build session');
+    expect(warn).not.toContain('/lua-audit');
+  });
+
   test('returns null when agentId is missing', () => {
     writeFileSync(join(tmpDir, CONFIG), 'agent:\n  orgId: "no-agent-here"\n');
     expect(decide(null, { cwd: tmpDir })).toBeNull();

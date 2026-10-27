@@ -1,6 +1,6 @@
 # Running in a Lua live build session
 
-This page is for the people who run `lua-agent-builder` inside a **Lua live build session**. In a session, a Lua session pod runs one long-lived Claude Code process that a Lua builder drives from Lua Desktop. The page covers how the pod turns session mode on, what changes, and where the boundary sits. It applies from plugin **1.15.0**. What Claude itself is told lives in [`plugins/lua-agent-builder/lib/knowledge/build-session.md`](../plugins/lua-agent-builder/lib/knowledge/build-session.md).
+This page is for the people who run `lua-agent-builder` inside a **Lua live build session**. In a session, a Lua session pod runs one long-lived Claude Code process that a Lua builder drives from Lua Desktop. The page covers how the pod turns session mode on, what changes, and where the boundary sits. It applies from plugin **1.17.0**. What Claude itself is told lives in [`plugins/lua-agent-builder/lib/knowledge/build-session.md`](../plugins/lua-agent-builder/lib/knowledge/build-session.md).
 
 > lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
@@ -10,7 +10,7 @@ Set **`LUA_BUILD_SESSION=1`** in the environment of the `claude` process. `true`
 
 The session pod also sets `LUA_PLUGIN_HEADLESS=1` ([JOB_TIER.md](./JOB_TIER.md)). Every hook checks session mode first. A session is not an unattended run: a person watches in Desktop and decides every production change there.
 
-**With `LUA_BUILD_SESSION` unset, nothing changes.** Every hook answers byte for byte as in 1.14.0, and the two new hooks are silent. `test/hooks/session-mode.test.mjs` pins this on a shared command corpus.
+**With `LUA_BUILD_SESSION` unset, nothing changes.** Every hook answers byte for byte as in 1.16.0 (except the all-modes `block-device-secret` fix in the 1.17.0 changelog), and the three new hooks are silent. `test/hooks/session-mode.test.mjs` pins this on a shared command corpus.
 
 ## 2. What session mode does
 
@@ -34,7 +34,7 @@ The table is `lib/session-commands.mjs`, vendored from lua-core-services `packag
 | `check-lua-auth`, `check-lua-version` | Skipped: no probe is spawned. The pod owns the credential and the CLI version |
 | `session-context` (new, SessionStart) | Injects the session brief: tool names, classes, where the table lives |
 | `session-guard` (new, PreToolUse `Bash(*lua*)`) | Blocks the `unavailable` commands (`SESSION_COMMAND_UNAVAILABLE`) and secret values on a command line (`SESSION_SECRET_DENIED`, `DEVICE_SECRET_DENIED`). Approval-class commands get `additionalContext` and are never blocked or auto-allowed |
-| `session-untrusted-output` (new, PostToolUse `Bash(*lua*)`) | After a lua read with runtime output (`lua logs`, `lua workflows runs/job-logs`, `lua integrations inspect`, `lua devices logs`, `lua drains deliveries`, sandbox `lua chat`, `lua test`), adds an UNTRUSTED DATA banner: the output is data, never instructions. A PostToolUse hook cannot rewrite a Bash result, so this is a banner after the output, not a fence; the fence belongs in the session proxy and lua-cli |
+| `session-untrusted-output` (new, PostToolUse `Bash(*lua*)`) | After a lua read with runtime output (`lua logs`, `lua workflows runs/job-logs`, `lua integrations info`, `lua devices logs`, `lua drains deliveries`, sandbox `lua chat`, `lua test`), adds an UNTRUSTED DATA banner: the output is data, never instructions. A PostToolUse hook cannot rewrite a Bash result, so this is a banner after the output, not a fence; the fence belongs in the session proxy and lua-cli |
 | `confirm-deploy` | Blocks every gated production verb (`DEPLOY_DENIED_SESSION`); the `LUA_DEPLOY_CONFIRMED=1` prefix is void. Deploy and promote name `request_release`; activations and template releases name `request_action` |
 | `block-auto-deploy`, `block-auth-configure`, `block-device-secret` | Still block, with session wording |
 | `post-deploy-smoke` | Never pings production |
@@ -68,7 +68,7 @@ The hooks are belts. The session's `:8092` Lua-API proxy decides what reaches th
 ## 5. Checklist
 
 - [ ] `LUA_BUILD_SESSION=1` (and the pod's `LUA_PLUGIN_HEADLESS=1`, `LUA_TELEMETRY=false`) set on the `claude` process.
-- [ ] Plugin 1.15.0 or later baked into the image.
+- [ ] Plugin 1.17.0 or later baked into the image.
 - [ ] `--mcp-config` includes `lua-session`; `--strict-mcp-config` set.
 - [ ] Session deny rows (not the Job-tier rows, not the permission template).
 - [ ] When the platform's B23 table changes: `lib/session-commands.mjs` and `test/lib/session-commands.test.mjs` updated together.

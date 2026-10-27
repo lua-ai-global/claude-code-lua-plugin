@@ -8,7 +8,7 @@ import { spawnLua } from '../lib/lua-cli.mjs';
 import { isHeadless, HEADLESS_NOTE } from '../lib/headless.mjs';
 import { isBuildSession } from '../lib/session-mode.mjs';
 
-// Live build session (LUA_BUILD_SESSION=1, 1.15.0): skipped entirely, no probe is spawned. The session image
+// Live build session (LUA_BUILD_SESSION=1, 1.17.0): skipped entirely, no probe is spawned. The session image
 // pins lua-cli (spec B22), so an upgrade hint could not be acted on, and `lua update` is not available there.
 
 // Pinned minimum lua-cli version. The plugin's commands, agents and knowledge

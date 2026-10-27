@@ -1,4 +1,4 @@
-// 1.15.0 — live build session mode (LUA_BUILD_SESSION=1, spec v3 B22/B23). Three invariants:
+// 1.17.0 — live build session mode (LUA_BUILD_SESSION=1, spec v3 B22/B23). Three invariants:
 //   1. flags off (LUA_BUILD_SESSION unset, '0', '') every hook answers exactly as before;
 //   2. session mode never REMOVES a block: whatever is blocked interactively or headless is blocked in a session
 //      (and the LUA_DEPLOY_CONFIRMED=1 prefix is void there); session mode only rewords, skips the laptop probes

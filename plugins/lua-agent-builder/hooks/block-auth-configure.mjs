@@ -3,7 +3,7 @@ import { isBuildSession, SESSION_AUTH_REASON } from '../lib/session-mode.mjs';
 
 /**
  * @param {{tool_input?: {command?: string}}|null} input
- * @param {Record<string, string|undefined>} [env] — defaults to process.env (build-session switch, 1.15.0)
+ * @param {Record<string, string|undefined>} [env] — defaults to process.env (build-session switch, 1.17.0)
  */
 export function decide(input, env = process.env) {
   const command = input?.tool_input?.command ?? '';

@@ -82,7 +82,7 @@ const REGISTRY = {
   ui: new Set(['list-all-documentation', 'get-documentation', 'get-documentation-for-story']),
 };
 
-// 1.15.0: servers the plugin does NOT ship but a host passes with --mcp-config, so the prose may name them. They
+// 1.17.0: servers the plugin does NOT ship but a host passes with --mcp-config, so the prose may name them. They
 // are absent from .mcp.json by design and always appear under their BARE name (mcp__<server>__<tool>), never the
 // plugin-prefixed one. `lua-session` is the live-build-session server (lua-core-services shared-types
 // BUILD_SESSION_MCP_TOOL_NAMES, mirrored in lib/session-mode.mjs).

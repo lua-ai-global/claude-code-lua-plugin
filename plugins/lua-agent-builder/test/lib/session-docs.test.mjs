@@ -1,4 +1,4 @@
-// 1.15.0 — the prompts' build-session paths stay complete and consistent.
+// 1.17.0 — the prompts' build-session paths stay complete and consistent.
 
 import { describe, test, expect } from '@jest/globals';
 import { readdirSync, readFileSync } from 'node:fs';

@@ -1,4 +1,4 @@
-// 1.15.0 — live build session mode (spec v3 B22/B23): the shared library behind the session-mode hooks.
+// 1.17.0 — live build session mode (spec v3 B22/B23): the shared library behind the session-mode hooks.
 
 import { describe, test, expect } from '@jest/globals';
 import { existsSync } from 'node:fs';

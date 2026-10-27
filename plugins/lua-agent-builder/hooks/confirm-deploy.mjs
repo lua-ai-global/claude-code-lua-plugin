@@ -26,7 +26,7 @@
 // every production verb is blocked and the block names no slash command.
 // It remains a belt; in the Lua Job tier the Lua-API proxy is the boundary.
 //
-// 1.15.0: in a live build session (LUA_BUILD_SESSION=1, checked BEFORE the
+// 1.17.0: in a live build session (LUA_BUILD_SESSION=1, checked BEFORE the
 // headless switch because the session pod sets both) the prefix is void too
 // and every production verb stays blocked: the second line behind the
 // session's Lua-API proxy. The reason routes the model to the session flow

@@ -54,7 +54,7 @@ export function decide(input, opts = {}) {
 
   const detected = agentId ? `✓ Lua agent project detected: ${agentId}.` : '✓ Lua agent project detected.';
   const env = opts.env ?? process.env;
-  // A live build session (1.15.0) gets no /lua-doctor pointer either: the pod owns the environment.
+  // A live build session (1.17.0) gets no /lua-doctor pointer either: the pod owns the environment.
   return {
     warn: isHeadless(env) || isBuildSession(env) ? detected : `${detected} Run /lua-doctor or /lua-test to begin.`,
   };

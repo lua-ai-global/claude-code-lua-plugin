@@ -1,4 +1,4 @@
-// SessionStart hook: the live-build-session brief (1.15.0, spec v3 B22/B23).
+// SessionStart hook: the live-build-session brief (1.17.0, spec v3 B22/B23).
 //
 // Outside a session (LUA_BUILD_SESSION unset) it returns null: no output. In a session it injects a short brief —
 // which lua commands run directly, that production changes are approved in Lua Desktop, the release and secret

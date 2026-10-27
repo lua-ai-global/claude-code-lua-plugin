@@ -18,7 +18,7 @@ export function decide(input, env = process.env) {
   const command = input?.tool_input?.command ?? '';
 
   if (hasAutoDeploy(command)) {
-    // Live build session (1.15.0): still blocked; the reason points at the release flow.
+    // Live build session (1.17.0): still blocked; the reason points at the release flow.
     if (isBuildSession(env)) return { block: true, reason: SESSION_AUTO_DEPLOY_REASON };
     return {
       block: true,

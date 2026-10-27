@@ -958,7 +958,7 @@ export function classifyProductionCommand(command, { analyze = analyzeScript, bu
   return { label, slash, prefixed };
 }
 
-// ── Invocation listing (live build sessions, 1.15.0) ───────────────────────
+// ── Invocation listing (live build sessions, 1.17.0) ───────────────────────
 
 /**
  * @param {string} src
