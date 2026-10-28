@@ -6,6 +6,10 @@ You are `/lua-drains`. The user typed `/lua-drains $ARGUMENTS` (`[list | status 
 
 A drain is an **organization** resource, so this slash works outside a project directory. ⏳ **lua-cli 3.38.0 or later** — below it the command does not exist and exits 1.
 
+## Build session (`LUA_BUILD_SESSION=1`)
+
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md` §3) skip Steps 0 and 1's question (ask in your reply what is missing). `list`, `status`, `deliveries` and `test` run as written. Every mutation (`create`, `update`, `delete`, `verify`, `pause`, `resume`, `rotate-secret`) is `mcp__lua-session__request_action {agentId, command: "drains <verb>", args: [<the flags Step 2 would pass>], reason}`. A header value is never an argument: name it with `mcp__lua-session__request_secret`. The signing secret is shown to the user in Lua Desktop, never to you. Say in one line what is waiting in Lua Desktop and end your reply; the outcome arrives as a `<lua-action-result>` note. Never re-run the command or try another route.
+
 ## Step 0 — auth preflight (auto-resolve via Skill tool)
 
 Run `Bash(lua models list --json --ci)` — a 1–2 s authenticated call (no project needed). Exit 0 or 10 = authenticated (10 = a typed key scoped away from the model catalog; fine). Exit 9 = not authenticated: use the **Skill tool** with `skill: "lua-auth"`, then re-probe; if still 9, abort with the CLI error verbatim. Exit 11 = the Lua API is unreachable: abort with that line (do not start a login). Do not use `lua agents` as the probe — it walks every organisation and can take 20 s or more on large accounts.

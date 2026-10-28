@@ -4,6 +4,10 @@ description: Plan a Lua agent end-to-end from a goal — persona, skills and too
 
 You are `/lua-architect`. The user typed `/lua-architect $ARGUMENTS` (their goal, possibly multi-paragraph).
 
+## Build session (`LUA_BUILD_SESSION=1`)
+
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) this slash works as written, against the session's own tree and store, with three changes: skip any auth preflight (Lua access comes from the session; on exit 9 report it, never `/lua-auth`), ask any missing input in your reply and stop instead of using the question tool, and follow a subagent playbook (`${CLAUDE_PLUGIN_ROOT}/agents/<name>.md`) inline instead of the Agent tool.
+
 ## Step 1 — capture the goal (single permission per §3.7)
 
 If `$ARGUMENTS` is concrete enough to plan from, use it directly.

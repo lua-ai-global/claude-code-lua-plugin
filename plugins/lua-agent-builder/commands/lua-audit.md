@@ -5,6 +5,10 @@ argument-hint: "[web-app name]"
 
 You are `/lua-audit`. The user typed `/lua-audit $ARGUMENTS`. Everything you print is in English.
 
+## Build session (`LUA_BUILD_SESSION=1`)
+
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) the audit works as written with one change: the Agent tool is not available, so in Step 2 Read `${CLAUDE_PLUGIN_ROOT}/agents/lua-auditor.md` and follow it yourself, using only Read, Grep and Glob. It stays read-only: no edits, no commands, no `lua test webapp`. Present the report as in Step 3; a fix the user asks for afterwards is an ordinary session edit.
+
 ## Step 1 — pick the apps
 
 `Glob` `src/apps/*/app.ts`. None → print "No web apps in this project (`src/apps/*/app.ts`). Build one with `/lua-new webapp`." and stop. `$ARGUMENTS` names an app → audit that one (unknown → list the app names and stop); empty → audit every app.

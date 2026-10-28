@@ -25,12 +25,21 @@
 // (LUA_PLUGIN_HEADLESS=1) the prefix is void: nobody is there to confirm, so
 // every production verb is blocked and the block names no slash command.
 // It remains a belt; in the Lua Job tier the Lua-API proxy is the boundary.
+//
+// 1.17.0: in a live build session (LUA_BUILD_SESSION=1, checked BEFORE the
+// headless switch because the session pod sets both) the prefix is void too
+// and every production verb stays blocked: the second line behind the
+// session's Lua-API proxy. The reason routes the model to the session flow
+// instead: a deploy or promote is a release (`request_release`), any other
+// production change an approval request (`request_action`) the user decides
+// in Lua Desktop.
 
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
 import {
   classifyProductionCommand, hasAutoDeploy, UNCLASSIFIABLE_LABEL, MAX_COMMAND_LENGTH,
 } from '../lib/tokenizer.mjs';
 import { isHeadless } from '../lib/headless.mjs';
+import { isBuildSession, sessionDeployBlockReason, SESSION_AUTO_DEPLOY_REASON } from '../lib/session-mode.mjs';
 
 const HEADLESS_REASON =
   'This is a headless run (LUA_PLUGIN_HEADLESS=1): nothing here can confirm a production change, so the ' +
@@ -47,9 +56,11 @@ const HEADLESS_REASON =
  */
 export function decide(input, env = process.env) {
   const command = input?.tool_input?.command ?? '';
+  const session = isBuildSession(env);
   const headless = isHeadless(env);
 
   if (hasAutoDeploy(command)) {
+    if (session) return { block: true, reason: SESSION_AUTO_DEPLOY_REASON };
     return {
       block: true,
       reason:
@@ -64,6 +75,9 @@ export function decide(input, env = process.env) {
   const classified = classifyProductionCommand(command);
 
   if (!classified) return null;          // Not a production verb — allow
+
+  // Session first (the pod sets LUA_PLUGIN_HEADLESS=1 too): prefix void, every gated verb blocked.
+  if (session) return { block: true, reason: sessionDeployBlockReason(classified.label) };
 
   if (headless) {
     return {

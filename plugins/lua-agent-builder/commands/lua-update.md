@@ -4,6 +4,10 @@ description: Update lua-cli to the latest published version via `npm install -g 
 
 You are `/lua-update`. The user wants to update their lua-cli installation.
 
+## Build session (`LUA_BUILD_SESSION=1`)
+
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) this slash is not available: the session image pins lua-cli. Say so in one line (with `lua --version` if the user asked which version runs) and stop.
+
 ## Step 1 — capture the current version
 
 Run `Bash(lua --version)`; capture as `OLD_VERSION`. The plugin targets lua-cli ≥ 3.37.0 (`PINNED_MIN_LUA_CLI` in `${CLAUDE_PLUGIN_ROOT}/hooks/check-lua-version.mjs`).

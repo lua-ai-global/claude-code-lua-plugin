@@ -82,6 +82,15 @@ const REGISTRY = {
   ui: new Set(['list-all-documentation', 'get-documentation', 'get-documentation-for-story']),
 };
 
+// 1.17.0: servers the plugin does NOT ship but a host passes with --mcp-config, so the prose may name them. They
+// are absent from .mcp.json by design and always appear under their BARE name (mcp__<server>__<tool>), never the
+// plugin-prefixed one. `lua-session` is the live-build-session server (lua-core-services shared-types
+// BUILD_SESSION_MCP_TOOL_NAMES, mirrored in lib/session-mode.mjs).
+const { SESSION_MCP_SERVER, SESSION_TOOL_NAMES } = await import('../lib/session-mode.mjs');
+const EXTERNAL_REGISTRY = {
+  [SESSION_MCP_SERVER]: new Set(SESSION_TOOL_NAMES),
+};
+
 // Tool-name validity (see the header): raw names ≤ 64, composed names ≤ COMPOSED_MAX.
 const RAW_TOOL_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const COMPOSED_MAX = 128;
@@ -165,6 +174,17 @@ for (const dir of SCAN_DIRS) {
       for (const match of content.matchAll(REF_RE)) {
         const [full, rawServer, tool] = match;
         const server = canonicalServer(rawServer);
+        if (EXTERNAL_REGISTRY[server]) {
+          if (rawServer !== server) {
+            console.error(`✗ ${file}: "${full}" — ${server} is passed by the host, not shipped by the plugin; use the bare form mcp__${server}__${tool}.`);
+            failed = true;
+          } else if (!EXTERNAL_REGISTRY[server].has(tool)) {
+            console.error(`✗ ${file}: references "${full}" but ${server} doesn't expose tool "${tool}"`);
+            console.error(`    Available on ${server}: ${[...EXTERNAL_REGISTRY[server]].join(', ')}`);
+            failed = true;
+          }
+          continue;
+        }
         if (!REGISTRY[server]) {
           console.error(`✗ ${file}: references unknown MCP server "${server}" in "${full}"`);
           failed = true;

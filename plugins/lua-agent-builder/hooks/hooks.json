@@ -17,6 +17,11 @@
             "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/check-lua-auth.mjs",
             "timeout": 20
+          },
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/session-context.mjs",
+            "timeout": 5
           }
         ]
       }
@@ -39,6 +44,12 @@
           {
             "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/confirm-deploy.mjs",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/session-guard.mjs",
+            "if": "Bash(*lua*)",
             "timeout": 10
           },
           {
@@ -100,6 +111,12 @@
             "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/post-compile-summary.mjs",
             "if": "Bash(*compile*)",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/session-untrusted-output.mjs",
+            "if": "Bash(*lua*)",
+            "timeout": 5
           }
         ]
       }
