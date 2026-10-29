@@ -2,6 +2,13 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.18.0 — 2026-10-29
+
+### New
+
+- **App Viewers in web apps** (`lib/knowledge/web-apps.md` §3, lua-cli 3.64.0+): `auth.accessLevel` (`'full'`, `'view_only'`, `'use'`), and `defineWebApp({ viewers: { write, chat, mode } })`, what an app asks for the people who sign in by phone or email to use only that app. With `write: true` they reach every write route as `'use'` with empty roles and scopes, so the builder is told, with an example, that each write route checks the record is the caller's (their `userId`, or their scope in the app's own roster) and answers 404 otherwise.
+- **`/lua-audit`** (`agents/lua-auditor.md`): lists `viewers` and `auth.accessLevel` branches under custom access control, and a new finding, **App Viewer writes without ownership** (14), always HIGH: `viewers.write: true` with a write route that changes a record without checking it is the caller's.
+
 ## 1.17.2 — 2026-10-29
 
 ### Fixed
