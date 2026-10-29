@@ -27,8 +27,9 @@ const MAX_OUTPUT_BYTES = 1_048_576;   // 1 MB per stream
  * @param {{timeoutMs?: number, env?: Record<string, string>}} [opts]
  * @returns {Promise<{exitCode: number|null, stdout: string, stderr: string, timedOut: boolean, probe?: object, classification?: 'STUCK_COMMAND'|'BROKEN_INSTALL'}>}
  */
-export async function spawnLua(args, { timeoutMs = DEFAULT_TIMEOUT_MS, env = {} } = {}) {
+export async function spawnLua(args, { timeoutMs = DEFAULT_TIMEOUT_MS, env = {}, cwd } = {}) {
   const child = spawn('lua', args, {
+    ...(cwd ? { cwd } : {}),
     env: { ...process.env, ...env },
     shell: false,
     windowsHide: true,

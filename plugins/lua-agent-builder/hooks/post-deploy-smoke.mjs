@@ -12,10 +12,41 @@
 // Registered for every Bash call with no `if` glob; non-matching commands
 // return null at once.
 
+import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
-import { classifyProductionCommand, SMOKE_LABELS } from '../lib/tokenizer.mjs';
+import { classifyProductionCommand, luaWorkingDirs, SMOKE_LABELS } from '../lib/tokenizer.mjs';
 import { isHeadless } from '../lib/headless.mjs';
 import { isBuildSession } from '../lib/session-mode.mjs';
+
+/**
+ * The agent project the deploy ran in: the shell's directory (`input.cwd`; the hook process's own directory is Claude
+ * Code's), moved by any literal `cd` before the lua command, then up to the nearest `lua.skill.yaml`. `lua chat` and
+ * `lua logs` read the agent from there; run anywhere else they exit 2 (`No lua.skill.yaml found`).
+ *
+ * @param {string} command
+ * @param {string} cwd
+ * @param {string} [home] — what `~` means (the user's home folder)
+ * @returns {string|null}
+ */
+export function deployProjectDir(command, cwd, home = homedir()) {
+  const cds = luaWorkingDirs(command);
+  if (!cds) return null;
+  let dir = cwd;
+  for (const d of cds) dir = resolve(dir, d === '~' || d.startsWith('~/') ? join(home, d.slice(1)) : d);
+  for (;;) {
+    if (existsSync(join(dir, 'lua.skill.yaml'))) return dir;
+    const up = dirname(dir);
+    if (up === dir) return null;
+    dir = up;
+  }
+}
+
+/** The CLI's own first error line (`✖ usage: …`), so a failed ping says why instead of guessing. */
+function firstLine(text) {
+  return text.split('\n').map((l) => l.trim()).find(Boolean)?.slice(0, 200) ?? '';
+}
 
 /** How far back the post-deploy log scan looks, in both spellings. */
 const SMOKE_WINDOW = '1m';
@@ -56,13 +87,29 @@ export async function decide(
     spawnLuaFn = (await import('../lib/lua-cli.mjs')).spawnLua;
   }
 
+  const cwd = deployProjectDir(command, input?.cwd ?? process.cwd());
+  if (!cwd) {
+    return {
+      warn: `⚠ Post-deploy smoke test (${classified.label}) skipped: could not tell which agent project the command ran in (no lua.skill.yaml there or above). Check the agent with \`lua chat -e production -m ping -t\` from its project folder.`,
+    };
+  }
+
   // Step 1: agent responsiveness check on a dedicated per-deploy thread so
   // the smoke ping doesn't pollute the agent's default production thread.
   const pingThread = `lua-plugin-smoke-${Date.now()}`;
-  const ping = await spawnLuaFn(['chat', '--ci', '-e', 'production', '-m', 'ping', '-t', pingThread], { timeoutMs: 20_000 });
-  if (ping.exitCode !== 0) {
+  const ping = await spawnLuaFn(['chat', '--ci', '-e', 'production', '-m', 'ping', '-t', pingThread], {
+    timeoutMs: 20_000,
+    cwd,
+  });
+  if (ping.timedOut) {
     return {
-      warn: `⚠ Post-deploy smoke test (${classified.label}): agent did not respond (exit=${ping.exitCode}). Check production logs.`,
+      warn: `⚠ Post-deploy smoke test (${classified.label}): agent did not answer within 20 s. Check production logs.`,
+    };
+  }
+  if (ping.exitCode !== 0) {
+    const why = firstLine(ping.stderr);
+    return {
+      warn: `⚠ Post-deploy smoke test (${classified.label}): the ping to the agent failed (exit=${ping.exitCode})${why ? `: ${why}` : ''}. Check production logs.`,
     };
   }
 
@@ -90,11 +137,11 @@ export async function decide(
   let windowedByServer = true;
   let logs = await spawnLuaFn(
     ['logs', '--ci', '--type', 'all', '--since', SMOKE_WINDOW, '--limit', '20', '--json'],
-    { timeoutMs: 10_000 }
+    { timeoutMs: 10_000, cwd }
   );
   if (logs.exitCode !== 0) {
     windowedByServer = false;
-    logs = await spawnLuaFn(['logs', '--ci', '--type', 'all', '--limit', '20', '--json'], { timeoutMs: 10_000 });
+    logs = await spawnLuaFn(['logs', '--ci', '--type', 'all', '--limit', '20', '--json'], { timeoutMs: 10_000, cwd });
   }
   if (logs.exitCode !== 0) return null;
 

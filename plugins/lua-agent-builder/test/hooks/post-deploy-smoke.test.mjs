@@ -1,5 +1,27 @@
-import { describe, test, expect } from '@jest/globals';
-import { decide } from '../../hooks/post-deploy-smoke.mjs';
+import { describe, test, expect, beforeAll, afterAll } from '@jest/globals';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { decide, deployProjectDir } from '../../hooks/post-deploy-smoke.mjs';
+import { luaWorkingDirs } from '../../lib/tokenizer.mjs';
+
+// The smoke check runs in the agent project the deploy ran in (a folder with lua.skill.yaml): every test below starts
+// in one, unless it says otherwise.
+let root;
+let project;
+let startDir;
+beforeAll(() => {
+  root = mkdtempSync(join(tmpdir(), 'smoke-'));
+  project = join(root, 'agents', 'shop');
+  mkdirSync(join(project, 'src'), { recursive: true });
+  writeFileSync(join(project, 'lua.skill.yaml'), 'agent:\n  agentId: a1\n');
+  startDir = process.cwd();
+  process.chdir(project);
+});
+afterAll(() => {
+  process.chdir(startDir);
+  rmSync(root, { recursive: true, force: true });
+});
 
 function fakeSpawn(scripted) {
   let i = 0;
@@ -50,7 +72,7 @@ describe('post-deploy-smoke decide()', () => {
       { exitCode: 1, stdout: '', stderr: 'connection refused', timedOut: false },
     ]);
     const result = await decide({ tool_input: { command } }, { spawnLuaFn });
-    expect(result?.warn).toContain('agent did not respond');
+    expect(result?.warn).toContain('the ping to the agent failed (exit=1): connection refused');
     expect(spawnLuaFn.calls).toHaveLength(1);
   });
 
@@ -93,7 +115,7 @@ describe('post-deploy-smoke decide()', () => {
       { tool_input: { command: 'LUA_DEPLOY_CONFIRMED=1 lua deploy skill' } },
       { spawnLuaFn }
     );
-    expect(result?.warn).toContain('agent did not respond');
+    expect(result?.warn).toContain('the ping to the agent failed');
     expect(result?.warn).toContain('exit=1');
   });
 
@@ -315,5 +337,93 @@ describe('post-deploy-smoke decide()', () => {
     );
     expect(result?.warn).toContain('1 error log entry');
     expect(spawnLuaFn.calls).toHaveLength(2);
+  });
+
+  // The deploy ran in an agent folder below the shell's directory (`cd agents/shop && lua version promote 3`). Claude
+  // Code runs the hook elsewhere, so `lua chat` there exited 2 ("No lua.skill.yaml found") and every promote was
+  // reported as "agent did not respond" while the agent answered.
+  test('runs the ping and the log scan in the project the deploy ran in, not the hook process folder', async () => {
+    const spawnLuaFn = fakeSpawn([
+      { exitCode: 0, stdout: 'pong', stderr: '', timedOut: false },
+      { exitCode: 0, stdout: logsResponse([]), stderr: '', timedOut: false },
+    ]);
+    const result = await decide(
+      { cwd: root, tool_input: { command: 'cd agents/shop && LUA_DEPLOY_CONFIRMED=1 lua version promote 3' } },
+      { spawnLuaFn }
+    );
+    expect(result).toBeNull();
+    expect(spawnLuaFn.calls.map(([, opts]) => opts.cwd)).toEqual([project, project]);
+  });
+
+  test('a command run from a subfolder of the project finds it above', async () => {
+    const spawnLuaFn = fakeSpawn([
+      { exitCode: 0, stdout: 'pong', stderr: '', timedOut: false },
+      { exitCode: 0, stdout: logsResponse([]), stderr: '', timedOut: false },
+    ]);
+    await decide({ cwd: join(project, 'src'), tool_input: { command: 'LUA_DEPLOY_CONFIRMED=1 lua deploy all' } }, { spawnLuaFn });
+    expect(spawnLuaFn.calls[0][1].cwd).toBe(project);
+  });
+
+  test('no project there or above: says the check was skipped and pings nothing', async () => {
+    const spawnLuaFn = fakeSpawn([]);
+    const result = await decide(
+      { cwd: root, tool_input: { command: 'LUA_DEPLOY_CONFIRMED=1 lua version promote 3' } },
+      { spawnLuaFn }
+    );
+    expect(result?.warn).toContain('skipped: could not tell which agent project');
+    expect(result?.warn).not.toContain('did not');
+    expect(spawnLuaFn.calls).toHaveLength(0);
+  });
+
+  test("a failed ping names the CLI's own reason", async () => {
+    const spawnLuaFn = fakeSpawn([
+      {
+        exitCode: 2,
+        stdout: '',
+        stderr: '\n✖ usage: No lua.skill.yaml found — run this command from a Lua project directory.\n',
+        timedOut: false,
+      },
+    ]);
+    const result = await decide({ tool_input: { command: 'LUA_DEPLOY_CONFIRMED=1 lua version promote 3' } }, { spawnLuaFn });
+    expect(result?.warn).toContain('(exit=2): ✖ usage: No lua.skill.yaml found');
+  });
+
+  test('a ping that times out says the agent did not answer', async () => {
+    const spawnLuaFn = fakeSpawn([{ exitCode: null, stdout: '', stderr: '', timedOut: true }]);
+    const result = await decide({ tool_input: { command: 'LUA_DEPLOY_CONFIRMED=1 lua version promote 3' } }, { spawnLuaFn });
+    expect(result?.warn).toContain('agent did not answer within 20 s');
+  });
+
+  test('a failed ping with no output still says it failed, with its exit code', async () => {
+    const spawnLuaFn = fakeSpawn([{ exitCode: 3, stdout: '', stderr: '\n  \n', timedOut: false }]);
+    const result = await decide({ tool_input: { command: 'LUA_DEPLOY_CONFIRMED=1 lua version promote 3' } }, { spawnLuaFn });
+    expect(result?.warn).toContain('the ping to the agent failed (exit=3). Check production logs.');
+  });
+
+  test('deployProjectDir: `cd`, `cd ~` and `cd ~/…` go through the home folder', () => {
+    expect(deployProjectDir('cd ~/agents/shop && lua deploy all', '/', root)).toBe(project);
+    expect(deployProjectDir('cd && lua deploy all', '/', project)).toBe(project);
+    expect(deployProjectDir('cd ~ && lua deploy all', '/', project)).toBe(project);
+  });
+
+  test('deployProjectDir: a computed or `cd -` target is unknown, never guessed', () => {
+    expect(deployProjectDir('cd "$AGENT" && lua deploy all', root)).toBeNull();
+    expect(deployProjectDir('cd - && lua deploy all', root)).toBeNull();
+    expect(deployProjectDir('cd agents/shop && lua deploy all', root)).toBe(project);
+  });
+});
+
+describe('luaWorkingDirs', () => {
+  test.each([
+    ['lua deploy all', []],
+    ['cd a && lua deploy all', ['a']],
+    ['cd a && cd b; lua version promote 3', ['a', 'b']],
+    ["cd 'my agent' && lua deploy all", ['my agent']],
+    ['cd a && lua deploy all && cd b', ['a']],
+    ['cd && lua deploy all', ['~']],
+    ['cd $X && lua deploy all', null],
+    ['cd a b && lua deploy all', null],
+  ])('%s → %j', (command, dirs) => {
+    expect(luaWorkingDirs(command)).toEqual(dirs);
   });
 });

@@ -1021,6 +1021,29 @@ export function findLuaInvocations(command, { budgetMs = TIME_BUDGET_MS } = {}) 
 }
 
 /**
+ * The literal `cd` targets a command runs, in order, before its first lua invocation (`cd agents/x && lua deploy`):
+ * where that lua command runs, relative to the shell's directory. `[]` = no `cd`; `null` = a `cd` whose target is
+ * computed or `-`, so the directory is unknown. Top-level segments only.
+ *
+ * @param {unknown} command
+ * @returns {string[]|null}
+ */
+export function luaWorkingDirs(command) {
+  if (typeof command !== 'string' || command.length > MAX_COMMAND_LENGTH) return null;
+  const dirs = [];
+  for (const seg of lex(command).segments) {
+    const words = seg.words;
+    if ([...commandPositions(words)].some((j) => invocationAt(words, j, j > 0))) return dirs;
+    if (nameOf(words[0] ?? { text: '', dynamic: true }) !== 'cd') continue;
+    const args = words.slice(1).filter((w) => w.text !== '--');
+    if (args.length === 0) dirs.push('~');
+    else if (args.length === 1 && !args[0].dynamic && args[0].text !== '-') dirs.push(args[0].text);
+    else return null;
+  }
+  return dirs;
+}
+
+/**
  * True iff the command runs a gated production verb and every such verb
  * carries the LUA_DEPLOY_CONFIRMED=1 prefix in its canonical shape.
  *
