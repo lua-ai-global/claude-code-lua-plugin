@@ -394,6 +394,18 @@ describe('post-deploy-smoke decide()', () => {
     expect(result?.warn).toContain('agent did not answer within 20 s');
   });
 
+  test('a failed ping with no output still says it failed, with its exit code', async () => {
+    const spawnLuaFn = fakeSpawn([{ exitCode: 3, stdout: '', stderr: '\n  \n', timedOut: false }]);
+    const result = await decide({ tool_input: { command: 'LUA_DEPLOY_CONFIRMED=1 lua version promote 3' } }, { spawnLuaFn });
+    expect(result?.warn).toContain('the ping to the agent failed (exit=3). Check production logs.');
+  });
+
+  test('deployProjectDir: `cd`, `cd ~` and `cd ~/…` go through the home folder', () => {
+    expect(deployProjectDir('cd ~/agents/shop && lua deploy all', '/', root)).toBe(project);
+    expect(deployProjectDir('cd && lua deploy all', '/', project)).toBe(project);
+    expect(deployProjectDir('cd ~ && lua deploy all', '/', project)).toBe(project);
+  });
+
   test('deployProjectDir: a computed or `cd -` target is unknown, never guessed', () => {
     expect(deployProjectDir('cd "$AGENT" && lua deploy all', root)).toBeNull();
     expect(deployProjectDir('cd - && lua deploy all', root)).toBeNull();

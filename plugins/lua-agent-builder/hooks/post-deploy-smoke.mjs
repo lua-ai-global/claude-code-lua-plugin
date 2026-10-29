@@ -27,13 +27,14 @@ import { isBuildSession } from '../lib/session-mode.mjs';
  *
  * @param {string} command
  * @param {string} cwd
+ * @param {string} [home] — what `~` means (the user's home folder)
  * @returns {string|null}
  */
-export function deployProjectDir(command, cwd) {
+export function deployProjectDir(command, cwd, home = homedir()) {
   const cds = luaWorkingDirs(command);
   if (!cds) return null;
   let dir = cwd;
-  for (const d of cds) dir = resolve(dir, d === '~' || d.startsWith('~/') ? join(homedir(), d.slice(1)) : d);
+  for (const d of cds) dir = resolve(dir, d === '~' || d.startsWith('~/') ? join(home, d.slice(1)) : d);
   for (;;) {
     if (existsSync(join(dir, 'lua.skill.yaml'))) return dir;
     const up = dirname(dir);
@@ -44,7 +45,7 @@ export function deployProjectDir(command, cwd) {
 
 /** The CLI's own first error line (`✖ usage: …`), so a failed ping says why instead of guessing. */
 function firstLine(text) {
-  return (text ?? '').split('\n').map((l) => l.trim()).find(Boolean)?.slice(0, 200) ?? '';
+  return text.split('\n').map((l) => l.trim()).find(Boolean)?.slice(0, 200) ?? '';
 }
 
 /** How far back the post-deploy log scan looks, in both spellings. */
