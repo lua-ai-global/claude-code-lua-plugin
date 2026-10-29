@@ -22,7 +22,8 @@ Skip `node_modules/`, build output, images and fonts.
 
 The **gateway** decides who may open the app at all: every request comes from a signed-in person of the organization with access to the agent, so `auth` is never anonymous. **Custom access control** is any condition in the app's own code that further decides who may see or do something. Find every one:
 
-- route or `fetch` handlers branching on `auth.*` (`roles`, `scopes`, `email`, `userId`, `orgId`, `name`);
+- route or `fetch` handlers branching on `auth.*` (`roles`, `scopes`, `email`, `userId`, `orgId`, `name`, `accessLevel`);
+- what the app asks for its App Viewers in `defineWebApp({ viewers })` (`write`, `chat`, `mode`): with `write: true` App Viewers (people outside the agent's team) reach every write route as `accessLevel: 'use'`;
 - allow/deny lists — a JSON or data file, a constant array, an `env()` value, or `Data` rows (e.g. an `admins` collection) checked against the viewer;
 - per-record rules — "only the creator may edit", "only rows of my shop";
 - page code that shows, hides or disables UI by who is viewing (`lua.api('GET', '/me')` results, role or email checks in components or page routes).
@@ -44,6 +45,7 @@ For each: `file:line`, the route or page, the rule in plain words ("only people 
 11. **SSRF** — outbound `fetch` to a URL or host taken from the request.
 12. **Untestable role gate** — a check on `auth.roles` / `auth.scopes`, which are empty under `lua test webapp`, so it cannot be verified locally and may deny everyone (or no one) once deployed.
 13. **`Data.shared` writes** — a route writing organization-wide data, reachable by every viewer of this app.
+14. **App Viewer writes without ownership** — `viewers.write: true` and a `POST`/`PUT`/`PATCH`/`DELETE` route that changes a record without checking it belongs to `auth.userId` or their scope in the app's roster (and answering 404 otherwise): every App Viewer can change anyone's records by changing an id. Always **HIGH**.
 
 Then anything else that lets a viewer see or change what they should not.
 
