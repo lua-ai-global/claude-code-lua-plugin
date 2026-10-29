@@ -2,6 +2,12 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.17.2 — 2026-10-29
+
+### Fixed
+
+- `post-deploy-smoke`: the check after a deploy or promote said "agent did not respond (exit=2)" every time the command ran in an agent folder other than the one Claude Code started in (`cd agents/shop && lua version promote 3`), although the agent answered. Claude Code runs a hook from its own directory, so the `lua chat` ping and the `lua logs` scan ran outside the project and lua-cli refused them (`No lua.skill.yaml found`). Both now run in the project the deploy ran in: the shell's directory (`cwd` in the hook input), moved by any literal `cd` before the lua command (`luaWorkingDirs` in `lib/tokenizer.mjs`), then up to the nearest `lua.skill.yaml`. When it cannot tell (a computed `cd`, no project there or above) the check says it was skipped instead of blaming the agent. A failed ping now names lua-cli's own reason, and a ping that times out says the agent did not answer within 20 s. `spawnLua` takes a `cwd`.
+
 ## 1.17.1 — 2026-10-29
 
 ### Fixed (session mode only)
