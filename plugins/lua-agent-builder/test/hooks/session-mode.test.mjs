@@ -144,7 +144,7 @@ describe('invariant 2: session mode never removes a block', () => {
 describe('confirm-deploy in a session: routes to the release or the action request', () => {
   test.each([
     ['LUA_DEPLOY_CONFIRMED=1 lua deploy skill --ci --name x --force', 'request_release'],
-    ['lua version promote 3', 'request_release'],
+    ['lua version promote 3', 'request_action'],
     ['LUA_DEPLOY_CONFIRMED=1 lua workflows deploy outreach -v latest', 'request_release'],
     ['LUA_DEPLOY_CONFIRMED=1 lua mcp activate fs', 'request_action'],
     ['lua workflows activate outreach', 'request_action'],
@@ -154,6 +154,13 @@ describe('confirm-deploy in a session: routes to the release or the action reque
     expect(result.reason).toContain(`mcp__lua-session__${tool}`);
     expect(result.reason).not.toContain('DEPLOY_DENIED_HEADLESS');
     expect(result.reason).not.toMatch(SLASH);
+  });
+
+  test('promote N puts an existing version back live: an action request naming the version, never a release', () => {
+    const result = confirmDeploy({ tool_input: { command: 'lua version promote 3' } }, SESSION);
+    expect(result.block).toBe(true);
+    expect(result.reason).toContain('command (e.g. "version promote")');
+    expect(result.reason).not.toContain('request_release');
   });
 
   test('--auto-deploy is blocked with the release route, not the headless or interactive text', () => {
