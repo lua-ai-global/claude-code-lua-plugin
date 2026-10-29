@@ -89,7 +89,7 @@ export async function decide(
   const cwd = deployProjectDir(command, input?.cwd ?? process.cwd());
   if (!cwd) {
     return {
-      warn: `⚠ Post-deploy smoke test (${classified.label}) skipped: could not tell which agent project the command ran in (no lua.skill.yaml there or above). Check the agent with \`lua chat -e production -m ping\` from its project folder.`,
+      warn: `⚠ Post-deploy smoke test (${classified.label}) skipped: could not tell which agent project the command ran in (no lua.skill.yaml there or above). Check the agent with \`lua chat -e production -m ping -t\` from its project folder.`,
     };
   }
 
