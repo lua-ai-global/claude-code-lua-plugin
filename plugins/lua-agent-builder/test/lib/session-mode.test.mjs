@@ -89,7 +89,7 @@ describe('sessionDeployBlockReason', () => {
 
   test('deploy and promote are releases; activations and template releases are action requests', () => {
     expect(RELEASE_LABELS.has('lua deploy')).toBe(true);
-    expect(RELEASE_LABELS.has('lua version promote')).toBe(true);
+    expect(RELEASE_LABELS.has('lua version promote')).toBe(false);
     expect(RELEASE_LABELS.has('lua workflows deploy')).toBe(true);
     expect(RELEASE_LABELS.has('lua mcp activate')).toBe(false);
     expect(RELEASE_LABELS.has('lua workflows activate')).toBe(false);

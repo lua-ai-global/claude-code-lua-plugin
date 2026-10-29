@@ -189,7 +189,7 @@ export const BUILD_SESSION_COMMAND_RULES = Object.freeze([
 
   // ── deploy / promote → the B12 release flow ──
   { id: 'deploy', path: ['deploy'], class: 'approval', risk: 'high', note: 'Becomes a release (B12).' },
-  { id: 'version.promote', path: ['version', 'promote'], class: 'approval', risk: 'high', note: 'Becomes a release.' },
+  { id: 'version.promote', path: ['version', 'promote'], class: 'approval', risk: 'high', note: 'Puts that version back live.' },
   { id: 'version.create', path: ['version', 'create'], class: 'approval', risk: 'medium', note: 'Use stage_for_test.' },
   { id: 'version.read', path: ['version'], verbs: ['list', 'show', 'diff', 'status'], bareOk: true, class: 'direct_read' },
 

@@ -2,6 +2,12 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.17.1 — 2026-10-29
+
+### Fixed (session mode only)
+
+- `confirm-deploy`: `lua version promote <N>` in a build session now names `request_action` (`command: "version promote"`, `args: ["<N>"]`) instead of `request_release`. A promote puts the existing version N back live on one card with nothing rebuilt; routed to `request_release` it became a release of the session's files instead (LUA-1861). `RELEASE_LABELS` now holds only the verbs the platform runs as a release (`lua deploy`, the per-primitive deploys, `lua persona production deploy`, `lua workflows deploy`). The knowledge doc, `docs/BUILD_SESSION.md` and the vendored command note say the same.
+
 ## 1.17.0 — 2026-10-27
 
 Two parts: **live build session mode** (from the `feat/lbs/plugin-session-mode` branch, which Lua session pods pinned while it was unmerged) and **the lua-cli 3.62.0 `lua test` / `lua push` / `lua compile` behaviour** in the builder's prompts (LUA-1855).

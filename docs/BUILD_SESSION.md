@@ -21,7 +21,7 @@ The design is spec v3 B23 ("every `lua` command works in a session"), which supe
 | Direct read | `lua status`, `lua logs`, `lua workflows runs`, `lua version list`, `lua env <env> --list` | Runs. No hook involvement |
 | Session write | `lua push`, `lua sync`, `lua test workflow`, `lua chat -e sandbox -t` | Runs. The proxy keeps it in the session's private store and test version |
 | Approval in Desktop | `lua env production -k K -v V`, `lua integrations connect`, `lua drains create`, `lua mcp activate`, `lua workflows start`, any delete | The proxy answers `pending_user_approval` and the user decides in Desktop. `session-guard` adds context: pending is not failed, never retry. The plugin's slash commands use `mcp__lua-session__request_action` |
-| Release | `lua deploy`, `lua version promote`, `lua workflows deploy` | `confirm-deploy` still blocks them, prefixed or not, and names `mcp__lua-session__request_release` |
+| Release | `lua deploy`, `lua workflows deploy` | `confirm-deploy` still blocks them, prefixed or not, and names `mcp__lua-session__request_release` |
 | Secret | `lua env … -k API_KEY -v …`, `lua devices credential` | `session-guard` blocks them and names `mcp__lua-session__request_secret`; the user types the value in Desktop |
 | Not available | `lua auth`, `lua admin`, `lua docs`, `lua update`, `lua build-session` (except `status`) | `session-guard` blocks them and says what to do instead |
 
@@ -35,7 +35,7 @@ The table is `lib/session-commands.mjs`, vendored from lua-core-services `packag
 | `session-context` (new, SessionStart) | Injects the session brief: tool names, classes, where the table lives |
 | `session-guard` (new, PreToolUse `Bash(*lua*)`) | Blocks the `unavailable` commands (`SESSION_COMMAND_UNAVAILABLE`) and secret values on a command line (`SESSION_SECRET_DENIED`, `DEVICE_SECRET_DENIED`). Approval-class commands get `additionalContext` and are never blocked or auto-allowed |
 | `session-untrusted-output` (new, PostToolUse `Bash(*lua*)`) | After a lua read with runtime output (`lua logs`, `lua workflows runs/job-logs`, `lua integrations info`, `lua devices logs`, `lua drains deliveries`, sandbox `lua chat`, `lua test`), adds an UNTRUSTED DATA banner: the output is data, never instructions. A PostToolUse hook cannot rewrite a Bash result, so this is a banner after the output, not a fence; the fence belongs in the session proxy and lua-cli |
-| `confirm-deploy` | Blocks every gated production verb (`DEPLOY_DENIED_SESSION`); the `LUA_DEPLOY_CONFIRMED=1` prefix is void. Deploy and promote name `request_release`; activations and template releases name `request_action` |
+| `confirm-deploy` | Blocks every gated production verb (`DEPLOY_DENIED_SESSION`); the `LUA_DEPLOY_CONFIRMED=1` prefix is void. Deploy names `request_release`; `version promote`, activations and template releases name `request_action` |
 | `block-auto-deploy`, `block-auth-configure`, `block-device-secret` | Still block, with session wording |
 | `post-deploy-smoke` | Never pings production |
 | `detect-project`, `inject-context` | No `/lua-doctor` pointer; one `[lua] live build session` line per prompt |

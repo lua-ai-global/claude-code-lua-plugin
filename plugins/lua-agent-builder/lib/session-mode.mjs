@@ -97,7 +97,6 @@ export const RELEASE_LABELS = new Set([
   'lua postprocessors deploy',
   'lua persona production deploy',
   'lua workflows deploy',
-  'lua version promote',
 ]);
 
 /** How a session waits on a Desktop decision (shared by the hooks and lib/knowledge/build-session.md). */
