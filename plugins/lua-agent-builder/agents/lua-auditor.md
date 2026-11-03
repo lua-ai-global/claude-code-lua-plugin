@@ -15,15 +15,18 @@ Read `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/web-apps.md` §3 and §4 (the route co
 - `src/apps/<name>/app.ts` — note `pages.root` (default `./web`); the page project is that folder.
 - In the page project: `Glob` `src/**/*.{ts,tsx,js,jsx,json,html,css}`, `index.html`, `vite.config.*`, `.env*` and `public/**/*.{js,json,html,txt}` — Vite inlines `VITE_*` variables and `define` values and ships `public/` as-is, so all of it reaches every viewer's browser.
 - Every project file these import — shared `src/` helpers, JSON or other data files used as lists (e.g. `emails.json`).
+- When the app sets `viewers.chat: true`: the agent's tools (`Grep` `src/` outside `src/apps/` for `Data.` and `Lua.request`), which run on App Viewers' pane turns too.
 
 Skip `node_modules/`, build output, images and fonts.
 
 ## 2. Custom access control
 
-The **gateway** decides who may open the app at all: every request comes from a signed-in person of the organization with access to the agent, so `auth` is never anonymous. **Custom access control** is any condition in the app's own code that further decides who may see or do something. Find every one:
+The **gateway** decides who may open the app at all: every request comes from a signed-in person, so `auth` is never anonymous — someone who can read the agent (`accessLevel: 'full'`), someone the app was shared with (`'view_only'`: `GET` routes only), or an **App Viewer**, a person outside the agent's team who signs in by phone or email to use only this app (`'view_only'`, or `'use'` on every route when the app asks `viewers.write`). **Custom access control** is any condition in the app's own code that further decides who may see or do something. Find every one:
 
 - route or `fetch` handlers branching on `auth.*` (`roles`, `scopes`, `email`, `userId`, `orgId`, `name`, `accessLevel`);
-- what the app asks for its App Viewers in `defineWebApp({ viewers })` (`write`, `chat`, `mode`): with `write: true` App Viewers (people outside the agent's team) reach every write route as `accessLevel: 'use'`;
+- what the app asks for its App Viewers in `defineWebApp({ viewers })` (`write`, `chat`, `mode`): with `write: true` App Viewers (people outside the agent's team) reach every write route as `accessLevel: 'use'`; with `chat: true` they talk to the agent in the pane, and the agent's own tools run for them;
+- App mode (`mode: 'app'`): every `Apps.viewers.add` / `.remove` call — the route, job or webhook it is in, and who reaches it. The platform itself refuses an add by anyone without full access and lets the app remove only people its code added;
+- tools branching on `Lua.request.appAccess` (`accessLevel: 'use'` = an App Viewer's pane turn) or `Lua.request.userId`;
 - allow/deny lists — a JSON or data file, a constant array, an `env()` value, or `Data` rows (e.g. an `admins` collection) checked against the viewer;
 - per-record rules — "only the creator may edit", "only rows of my shop";
 - page code that shows, hides or disables UI by who is viewing (`lua.api('GET', '/me')` results, role or email checks in components or page routes).
@@ -46,6 +49,8 @@ For each: `file:line`, the route or page, the rule in plain words ("only people 
 12. **Untestable role gate** — a check on `auth.roles` / `auth.scopes`, which are empty under `lua test webapp`, so it cannot be verified locally and may deny everyone (or no one) once deployed.
 13. **`Data.shared` writes** — a route writing organization-wide data, reachable by every viewer of this app.
 14. **App Viewer writes without ownership** — `viewers.write: true` and a `POST`/`PUT`/`PATCH`/`DELETE` route that changes a record without checking it belongs to `auth.userId` or their scope in the app's roster (and answering 404 otherwise): every App Viewer can change anyone's records by changing an id. Always **HIGH**.
+15. **App Viewer chat through unscoped tools** — `viewers.chat: true` and an agent tool that reads or changes `Data` rows without keeping to the asking person when `Lua.request.appAccess?.accessLevel === 'use'` (their `Lua.request.userId`, or their scope in the roster): an App Viewer can ask the agent for other people's records. Always **HIGH**.
+16. **App mode call that cannot work** — `Apps.viewers.add` outside a `POST`/`PUT`/`PATCH`/`DELETE` route (a `GET` route, a tool, a job, a webhook) throws `viewer_unavailable`; `Apps.viewers.add` / `.remove` without `viewers.mode: 'app'` throws `APP_MODE_OFF`. **LOW** (nobody gets in; the feature is broken).
 
 Then anything else that lets a viewer see or change what they should not.
 

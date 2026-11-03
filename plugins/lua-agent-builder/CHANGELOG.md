@@ -2,6 +2,18 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.19.0 — 2026-11-03
+
+### New
+
+- **App Viewers, as shipped** (`lib/knowledge/web-apps.md` §3 and §4, read from lua-cli 3.65.0 and app-client 0.1.1 on `main`): App mode (`viewers.mode: 'app'`) with `Apps.viewers.add` / `.remove` — adds only from a write route by a full-access person, removes also from a job or webhook, only people the app's code added, `excluded` after an admin's removal until an admin invites them again, per-person outcomes and the `AppViewersError` codes; App Viewer chat (`viewers.chat`), their own thread, the agent's own tools staying on their turns and `Lua.request.appAccess` to scope them; `lua.pane.open/close/ask/setContext` and `lua.chat.available()` in the page; `branding` (`accent`, `logo`, `icon` from 3.65.0) on the app's own sign-in page at `/a/<link name>`, the link name set in Workspace → App access. The compile refusal of a write route that never reads `auth` under `viewers.write`, and four troubleshooting rows.
+- **Routing** (`lib/knowledge/decision-trees.md`, `commands/lua-new.md`, `agents/lua-skill-builder.md`): "people outside the team sign in and keep their own records" now leads to App Viewers, a roster and the ownership check; `Lua.request.appAccess` in `lib/knowledge/primitives.md`.
+- **`/lua-audit`** (`agents/lua-auditor.md`): the gateway paragraph names App Viewers (it said every caller has access to the agent); it lists `Apps.viewers` calls and `Lua.request.appAccess` branches, reads the agent's tools when the app asks for chat, and adds **App Viewer chat through unscoped tools** (15, always HIGH) and **App mode call that cannot work** (16, LOW).
+
+### Fixed
+
+- `web-apps.md` said App Viewer chat and App mode were not available yet; both ship in lua-cli 3.64.0.
+
 ## 1.18.0 — 2026-10-29
 
 ### New

@@ -76,6 +76,9 @@ Do you need to shape the HTTP response, run arbitrary code, or update state with
 Does the person need to SEE many records at once, compare, sort, filter, or act on a list (approve, close, assign)?
 ├── Yes → web app (defineWebApp): a page over the same Data the tools write; routes run as the signed-in person (auth.userId)
 │         A chat on top too? Keep the tools — the app and the agent share Data collections.
+│         People outside the team (reps, field staff, residents) sign in by phone to use only this app and keep their own records?
+│         → App Viewers: defineWebApp({ viewers: { write, chat, mode } }), a roster collection, an ownership check (404) on every write,
+│           Apps.viewers.add/remove when the app itself adds people (mode: 'app'), branding + the /a/<link name> sign-in link (web-apps.md §3)
 └── No — one question, one answer, one action at a time → tools + persona (chat); add a web app later if a list view is asked for
 ```
 
