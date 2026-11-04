@@ -4,7 +4,7 @@
 
 import { describe, test, expect } from '@jest/globals';
 import {
-  classifyProductionCommand, isPrefixedDeploy, lex, UNRESOLVED_LABEL, UNCLASSIFIABLE_LABEL, MAX_COMMAND_LENGTH, TIME_BUDGET_MS,
+  classifyProductionCommand, classifyProductionCommandDetailed, mentionsLuaToken, isPrefixedDeploy, lex, UNRESOLVED_LABEL, UNCLASSIFIABLE_LABEL, MAX_COMMAND_LENGTH, TIME_BUDGET_MS,
 } from '../../lib/tokenizer.mjs';
 
 const bare = (label, slash = '/lua-deploy') => ({ label, slash, prefixed: false });
@@ -582,5 +582,89 @@ describe('lex()', () => {
 
   test('an unmatched ")" and a lone "$" do not throw', () => {
     expect(lex('a ) b $').segments.map((s) => s.words.map((w) => w.text))).toEqual([['a'], ['b', '$']]);
+  });
+});
+
+// 1.19.1 (F3, live build session QA): "mentions lua" is token-based. A `/lua/`
+// FOLDER in a path (every checkout under ~/Documents/lua/…) used to turn a
+// computed command (`$T $SID`) into `lua <unresolved command>`, also inside a
+// Python heredoc (still parsed as shell, whose quotes and braces then read as
+// `$BIN $VERB`). The token test reopens none of the bypasses below.
+describe('a lua folder in a path is not a lua command (F3)', () => {
+  const QA_HEREDOC =
+    "cd /Users/x/Documents/lua/builder-qa/fleets/01; python3 - <<'EOF'\nimport json\nfor l in open('session.jsonl'):\n" +
+    "    try: e=json.loads(l).get('event') or {}\n    except: continue\n" +
+    "    if e.get('type')=='data-lua-session-file-diff':\n        d=e['data']\n" +
+    "        for f in d.get('files',[]):\n            if 'package' in f['path']: print(d['agentId'][-8:], d['checkpointK'], f['path'])\nEOF";
+
+  test.each([
+    "cd /x/lua/y && T=./s.sh; $T $SID '{}'",
+    "cd /Users/s/Documents/lua/builder-qa/fleets && T=../../tools/add-fleet-agent.sh; $T $SID '{\"name\":\"x\"}'",
+    QA_HEREDOC,
+    "cd /x/lua/y && node - <<'EOF'\nconst a = `${x} ${y}`; console.log($a, $b)\nEOF",
+    'cd ~/Documents/lua/fleets; for f in a b; do S=$(cat $f/sid); $RUN $S --json; done',
+  ])('allows %s', (cmd) => {
+    expect(classifyProductionCommand(cmd)).toBeNull();
+  });
+
+  test.each([
+    'lua', '/usr/local/bin/lua', '$DIR/lua', './lua', 'lua.cmd', 'lua@3', 'npx lua-cli', 'HEYLUA',
+    'L=lua', '$(printf lua)', '$(which lua)', 'node_modules/lua-cli/dist/index.js', 'cd /x/lua', 'cd /x/lua/',
+  ])('%s mentions lua', (text) => {
+    expect(mentionsLuaToken(text)).toBe(true);
+  });
+
+  test.each([
+    'cd /Users/s/Documents/lua/builder-qa', '/x/lua/y/z.sh', 'data-lua-session-file-diff', 'git status', '', 'luac', 'lua_x',
+  ])('%s does not mention lua', (text) => {
+    expect(mentionsLuaToken(text)).toBe(false);
+  });
+
+  test.each([
+    ['L=lua; $L deploy all', 'lua deploy'],
+    ['$(printf lua) $(printf deploy)', UNRESOLVED_LABEL],
+    ['cd /x/lua && $L deploy all', 'lua deploy'],
+    ['X=$(which lua); $X version promote 3', 'lua version promote'],
+    ['"$DIR/lua" deploy all', 'lua deploy'],
+    ['npx lua deploy all', 'lua deploy'],
+    ['lua deploy all -- --help', 'lua deploy'],
+    ['lua deploy --name --help', 'lua deploy'],
+    ['cd /x/lua/y && LUA_DEPLOY_CONFIRMED=1 lua version promote 2 2>&1 | tail -2', 'lua version promote'],
+    // A literal lua anywhere: the computed `$T $SID` fails closed again, as before 1.19.1.
+    ['cd /x/lua/y && T=./s.sh; $T $SID; lua deploy all', UNRESOLVED_LABEL],
+    ['cd /x/lua/y && L=lua; $L $V all', UNRESOLVED_LABEL],
+  ])('blocks %s (lua is named, never askable)', (cmd, label) => {
+    expect(classifyProductionCommandDetailed(cmd)).toEqual({ label, slash: '/lua-deploy', prefixed: false, unresolvedHead: false });
+  });
+
+  test('python and node heredoc bodies are still searched as text', () => {
+    for (const cmd of [
+      'cd /x/lua/y; python3 - <<\'EOF\'\nimport os; os.system("lua deploy all")\nEOF',
+      'node <<EOF\nrequire("child_process").execSync("lua version promote 3")\nEOF',
+      'python3 <<< "import os; os.system(\'lua deploy all\')"',
+      'ruby <<EOF\nsystem("npx lua deploy all")\nEOF',
+    ]) {
+      expect({ cmd, c: classifyProductionCommand(cmd) }).toEqual({ cmd, c: expect.objectContaining({ prefixed: false }) });
+    }
+    // A heredoc fed to a shell is still parsed as shell.
+    expect(classifyProductionCommand('cd /x/lua/y; bash <<EOF\nL=lua; $L $V all\nEOF')).not.toBeNull();
+  });
+
+  // Architect review: interpreter heredoc bodies are still PARSED as shell too
+  // (backticks and `${…}` templates run a computed binary), so these stay gated.
+  test.each([
+    ["perl <<'EOF'\n$T=\"lua\"; print `$T deploy all`;\nEOF", false],
+    ["node <<'EOF'\nconst b=\"lua\"; require(\"child_process\").execSync(`${b} deploy all`)\nEOF", false],
+    ["ruby <<'EOF'\nputs `$L deploy all`\nEOF", true],
+  ])('an interpreter heredoc running a computed binary stays gated: %s', (cmd, unresolvedHead) => {
+    expect(classifyProductionCommandDetailed(cmd)).toEqual(expect.objectContaining({ prefixed: false, unresolvedHead }));
+  });
+
+  test('a computed binary with a literal verb and no lua token anywhere is unresolvedHead (the hook asks)', () => {
+    for (const cmd of ['$T deploy all', 'cd /x/lua/y && T=./s.sh; $T version promote 3', '"$BIN" deploy all']) {
+      expect({ cmd, c: classifyProductionCommandDetailed(cmd) }).toEqual({ cmd, c: expect.objectContaining({ prefixed: false, unresolvedHead: true }) });
+      // The public shape is unchanged for older callers.
+      expect(Object.keys(classifyProductionCommand(cmd)).sort()).toEqual(['label', 'prefixed', 'slash']);
+    }
   });
 });

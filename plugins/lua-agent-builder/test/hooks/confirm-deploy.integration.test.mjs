@@ -76,4 +76,29 @@ describe('confirm-deploy script entry (spawned)', () => {
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain('DEPLOY_DENIED_BARE');
   });
+
+  // 1.19.1 (F3): the ask envelope end to end (the wiring line is istanbul-ignored).
+  const INTERACTIVE = { LUA_PLUGIN_HEADLESS: '', LUA_BUILD_SESSION: '' };
+
+  test('unresolved binary under permission_mode default prints one ask envelope and exits 0', async () => {
+    const result = await runHook('confirm-deploy.mjs', {
+      tool_input: { command: '$T deploy all' }, permission_mode: 'default',
+    }, { env: INTERACTIVE });
+    expect(result.exitCode).toBe(0);
+    const lines = result.stdout.trim().split('\n');
+    expect(lines).toHaveLength(1);
+    const out = JSON.parse(lines[0]).hookSpecificOutput;
+    expect(out.hookEventName).toBe('PreToolUse');
+    expect(out.permissionDecision).toBe('ask');
+    expect(out.permissionDecisionReason).toMatch(/^DEPLOY_ASK_UNRESOLVED/);
+  });
+
+  test.each(['bypassPermissions', 'auto'])('unresolved binary under permission_mode %s exits 2 (fail closed)', async (mode) => {
+    const result = await runHook('confirm-deploy.mjs', {
+      tool_input: { command: '$T deploy all' }, permission_mode: mode,
+    }, { env: INTERACTIVE });
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain('DEPLOY_DENIED_BARE');
+    expect(result.stdout).not.toContain('"ask"');
+  });
 });

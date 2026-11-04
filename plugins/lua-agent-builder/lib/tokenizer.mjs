@@ -58,7 +58,14 @@
 //   * a word the shell computes at runtime — `$VAR`, `$(…)`, `${IFS}`,
 //     `$'\x6c…'`, an unquoted glob (`lu?`) or brace expansion (`{lua,}`) —
 //     in the binary or verb position cannot be resolved and is blocked when
-//     the command mentions lua (fail closed);
+//     the command mentions lua (fail closed). "Mentions lua" (1.19.1) is a
+//     TOKEN test: a lua-cli name as a whole word, a path's last segment
+//     (`$DIR/lua`, `./lua`, `lua.cmd`) or an entry point; a folder in the
+//     middle of a path (`cd ~/Documents/lua/fleet`) does not count. A
+//     computed binary followed by a LITERAL verb (`$L deploy all`) is always
+//     a hit; when nothing in the command mentions lua it is marked
+//     `unresolvedHead`, and the hook asks the user instead of blocking
+//     (interactive only: headless and build sessions still block);
 //   * `$(…)`, backticks and `<(…)` are parsed recursively, also inside
 //     double quotes and unquoted heredocs; heredoc bodies are skipped as text
 //     (`gh pr create --body "$(cat <<'EOF' … EOF)"` is not code); a string
@@ -218,8 +225,43 @@ export const SMOKE_LABELS = new Set([
 // test/hooks/confirm-deploy.timeout.test.mjs pin the bound.
 const RAW_TOKEN_SPLIT = /[^\w.@/\\-]+/;
 
-/** Does the text mention a lua binary at all? (Used to fail closed.) */
+/**
+ * Cheap substring pre-filter: false means the text cannot mention a lua
+ * binary, so there is nothing to search. NEVER a positive signal (1.19.1): it
+ * also matches a folder in a path (`~/Documents/lua/fleet`); use
+ * mentionsLuaToken() for "does this command mention lua".
+ */
 const MENTIONS_LUA = /(?<![\w-])(?:lua|heylua|lua-ai|lua-cli)(?![\w-])/i;
+
+/**
+ * Does one raw token name a lua-cli binary or package? Only its LAST path
+ * segment counts (`lua`, `/usr/bin/lua`, `$DIR/lua` → `DIR/lua`, `lua.cmd`,
+ * `lua@3`, `lua.sh`), or a lua-cli entry point (`…/lua-cli/dist/index.js`).
+ * A folder in the middle of a path (`/Users/s/Documents/lua/builder-qa`) does
+ * not.
+ */
+function tokenNamesLua(token) {
+  const t = token.replace(/[\\/]+$/, '');
+  const base = (t.split(/[\\/]/).pop() ?? '').toLowerCase();
+  if (base.split(/[.@]/).some((piece) => PACKAGES.has(piece))) return true;
+  return isLuaBinaryText(t, true);
+}
+
+/**
+ * Token-based "does this command mention lua" (1.19.1, F3). The command is
+ * split into the same raw tokens rawSearch() reads (quotes, `$`, `( )`, `=`,
+ * `;`, spaces… all split), so `L=lua`, `$(printf lua)`, `$(which lua)`,
+ * `"$DIR/lua"`, `npx lua-cli` and a `lua` inside any string or heredoc count,
+ * while `cd ~/Documents/lua/fleet` does not. Linear in the text.
+ *
+ * @param {unknown} text
+ * @returns {boolean}
+ */
+export function mentionsLuaToken(text) {
+  if (typeof text !== 'string' || !MENTIONS_LUA.test(text)) return false;
+  for (const t of text.split(RAW_TOKEN_SPLIT)) if (t && tokenNamesLua(t)) return true;
+  return false;
+}
 
 /** Unicode spaces bash does not split on; treated as separators anyway (fail closed). */
 const UNICODE_SPACE = new RegExp('[\\u00a0\\u1680\\u2000-\\u200b\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]');
@@ -854,6 +896,11 @@ function analyzeSegment(seg, ctx, pipedIntoRunner, hits) {
     }
   });
   for (const body of [...seg.heredocs, ...seg.herestrings]) {
+    // Parsed as shell AND searched as text, also when fed to
+    // python/node/ruby/perl/awk: their backticks and `${…}` templates run a
+    // command whose binary is computed (perl `\`$T deploy all\``), so the body
+    // is not text only. Python's quotes and braces no longer read as
+    // `$BIN $VERB` because "mentions lua" is a token test (1.19.1, F3).
     if (runsStrings || inline || awk) {
       analyzeScript(body, nested, hits);
       rawSearch(body, hits);
@@ -869,7 +916,8 @@ function analyzeSegment(seg, ctx, pipedIntoRunner, hits) {
     // `… | xargs lua`: the verb arrives on stdin and cannot be classified.
     const fedByXargs = names.slice(0, j).includes('xargs');
     // A computed binary with a computed verb (`$(printf lua) $(printf deploy)`)
-    // is blocked when the command mentions lua anywhere.
+    // is blocked when the command mentions lua anywhere (token-based, see
+    // mentionsLuaToken: a `/lua/` folder in a `cd` path does not count).
     let match = matchArgs(inv.args, !inv.dynamicHead || ctx.mentionsLua);
     if (!match && fedByXargs && !inv.dynamicHead) {
       match = { label: UNRESOLVED_LABEL, slash: '/lua-deploy', dynamic: true };
@@ -883,7 +931,7 @@ function analyzeSegment(seg, ctx, pipedIntoRunner, hits) {
         (j === 2 && words[0].text === 'env' && !words[0].quoted && isPrefixWord(words[1])));
     const prefixed =
       canonicalPrefix && !match.dynamic && !ctx.nested && !seg.pipeline && !seg.grouped;
-    hits.push({ label: match.label, slash: match.slash, prefixed });
+    hits.push({ label: match.label, slash: match.slash, prefixed, unresolvedHead: inv.dynamicHead });
   }
 }
 
@@ -921,7 +969,7 @@ function analyzeScript(src, ctx, hits) {
   }
 }
 
-const unclassifiable = () => ({ label: UNCLASSIFIABLE_LABEL, slash: '/lua-deploy', prefixed: false });
+const unclassifiable = () => ({ label: UNCLASSIFIABLE_LABEL, slash: '/lua-deploy', prefixed: false, unresolvedHead: false });
 
 /**
  * Classify a command. Returns null for commands that run no gated verb, or
@@ -938,9 +986,27 @@ const unclassifiable = () => ({ label: UNCLASSIFIABLE_LABEL, slash: '/lua-deploy
  * @param {{analyze?: Function, budgetMs?: number}} [opts] — test seams
  * @returns {{label: string, slash: string, prefixed: boolean}|null}
  */
-export function classifyProductionCommand(command, { analyze = analyzeScript, budgetMs = TIME_BUDGET_MS } = {}) {
+export function classifyProductionCommand(command, opts) {
+  const c = classifyProductionCommandDetailed(command, opts);
+  return c && { label: c.label, slash: c.slash, prefixed: c.prefixed };
+}
+
+/**
+ * classifyProductionCommand() plus `unresolvedHead` (1.19.1, F3): true only
+ * when every unconfirmed gated hit is a binary the shell computes at runtime
+ * (`$T deploy all`) AND nothing in the command mentions lua (token-based).
+ * confirm-deploy turns such a hit into an `ask` in an interactive session;
+ * headless and build sessions block it as before. A lua token anywhere
+ * (`L=lua`, `$(which lua)`, `"$DIR/lua"`, `npx lua`, `cd /x/lua`) keeps it a
+ * block everywhere.
+ *
+ * @param {unknown} command
+ * @param {{analyze?: Function, budgetMs?: number}} [opts] — test seams
+ * @returns {{label: string, slash: string, prefixed: boolean, unresolvedHead: boolean}|null}
+ */
+export function classifyProductionCommandDetailed(command, { analyze = analyzeScript, budgetMs = TIME_BUDGET_MS } = {}) {
   if (typeof command !== 'string') return null;
-  const mentionsLua = MENTIONS_LUA.test(command);
+  const mentionsLua = mentionsLuaToken(command);
   if (command.length > MAX_COMMAND_LENGTH) return mentionsLua ? unclassifiable() : null;
   const hits = [];
   deadline = performance.now() + budgetMs;
@@ -955,7 +1021,10 @@ export function classifyProductionCommand(command, { analyze = analyzeScript, bu
   }
   if (hits.length === 0) return null;
   const { label, slash, prefixed } = hits.find((h) => !h.prefixed) ?? hits[0];
-  return { label, slash, prefixed };
+  const unconfirmed = hits.filter((h) => !h.prefixed);
+  const unresolvedHead =
+    !mentionsLua && unconfirmed.length > 0 && unconfirmed.every((h) => h.unresolvedHead === true);
+  return { label, slash, prefixed, unresolvedHead };
 }
 
 // ── Invocation listing (live build sessions, 1.17.0) ───────────────────────
