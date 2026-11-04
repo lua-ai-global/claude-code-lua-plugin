@@ -2,7 +2,7 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
-## Unreleased (next: 1.19.1)
+## 1.19.1 — 2026-11-04
 
 ### Fixed
 
