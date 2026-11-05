@@ -2,6 +2,16 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.19.1 — 2026-11-04
+
+### Fixed
+
+- `confirm-deploy`: a folder named `lua` in a path no longer turns an ordinary command into a lua command (F3, live build session QA). `cd ~/Documents/lua/fleet && T=./tools/add.sh; $T $SID '{…}'` was blocked as `DEPLOY_DENIED_BARE: lua <unresolved command>`, because "the command mentions lua" was a substring test on the whole command, and with it any computed program followed by a computed argument counted as `lua <unresolved verb>`. "Mentions lua" is now a token test (`mentionsLuaToken` in `lib/tokenizer.mjs`): `lua`, `heylua`, `lua-ai` or `lua-cli` as a whole word, as a path's last segment (`$DIR/lua`, `./lua`, `lua.cmd`) or as a lua-cli entry point; a folder in the middle of a path does not count. `L=lua; $L deploy all`, `$(printf lua) $(printf deploy)`, `X=$(which lua); $X version promote 3`, `"$DIR/lua" deploy all`, `npx lua deploy all` and `lua deploy all -- --help` are still blocked.
+- `confirm-deploy`: a Python heredoc run from a `/lua/` folder (`cd ~/Documents/lua/x; python3 - <<'EOF' … EOF`) is no longer blocked. Heredoc and here-string bodies fed to Python, Node, Ruby, Perl or awk are still parsed as shell and searched as text, as before, because their backticks and `${…}` templates run commands (`perl <<'EOF'` … `` `$T deploy all` ``). Python's quotes and braces no longer read as `$BIN $VERB` there because "mentions lua" is now a token test (first bullet).
+- `confirm-deploy`: a program the shell computes at runtime run with a deploy verb (`$T deploy all`), in a command with no lua token anywhere, now asks you (`permissionDecision: "ask"`, `DEPLOY_ASK_UNRESOLVED`) instead of blocking, but only when Claude Code reports a `permission_mode` that shows the prompt to a person (`default`, `acceptEdits` or `plan`). Under `bypassPermissions` (`--dangerously-skip-permissions`), `dontAsk` or `auto` (a classifier settles prompts there, and the plugin cannot check that your Claude Code keeps it from approving a hook's ask), with no `permission_mode` (older Claude Code) or with any other value it stays blocked with `DEPLOY_DENIED_BARE`, as before (fail closed). A lua folder in the middle of a path does not count as a lua token, so `PATH=/x/lua/bin:$PATH; $T deploy all` or `cd /opt/lua-cli/bin && $T deploy all` also ask rather than block in those modes.
+- `confirm-deploy`: a command longer than 32 KB, or one whose analysis runs out of time, fails closed only when it has a lua token; one whose only `lua` is a folder in the middle of a path (`cd ~/Documents/lua/…`) is now allowed, as a command with no lua at all already was. Headless runs (`LUA_PLUGIN_HEADLESS=1`) and build sessions (`LUA_BUILD_SESSION=1`), where nobody can answer, still block it. `lua deploy --help` stays blocked.
+- `confirm-deploy`: known limit, fail closed: a path whose last segment is `lua` (`cd ~/Documents/lua && $A $B`) still counts as a lua token, so a computed program with a computed argument after it is still blocked there.
+
 ## 1.19.0 — 2026-11-03
 
 ### New

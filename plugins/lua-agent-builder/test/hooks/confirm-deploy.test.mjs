@@ -1,5 +1,5 @@
-import { describe, test, expect } from '@jest/globals';
-import { decide } from '../../hooks/confirm-deploy.mjs';
+import { describe, test, expect, jest } from '@jest/globals';
+import { decide, withAsk } from '../../hooks/confirm-deploy.mjs';
 
 describe('confirm-deploy decide()', () => {
   test('allows env-var-prefixed deploy', () => {
@@ -142,5 +142,104 @@ describe('confirm-deploy decide()', () => {
     expect(result?.block).toBe(true);
     expect(result.reason).toContain(`\`${label}\``);
     expect(decide({ tool_input: { command: `LUA_DEPLOY_CONFIRMED=1 ${command}` } })).toBeNull();
+  });
+});
+
+// 1.19.1 (F3): an unresolved binary with a literal verb and no lua token asks
+// interactively; headless and build sessions, where nobody can answer, block.
+describe('confirm-deploy: unresolved binary, no lua token (F3)', () => {
+  const CMD = 'cd /x/lua/y && T=./s.sh; $T deploy all';
+
+  test.each(['default', 'acceptEdits', 'plan'])('interactive, permission_mode %s → ask, not block', (mode) => {
+    for (const command of [CMD, '$T deploy all']) {
+      const r = decide({ tool_input: { command }, permission_mode: mode }, {});
+      expect(r?.block).toBeUndefined();
+      expect(r?.ask).toBe(true);
+      expect(r.reason).toMatch(/^DEPLOY_ASK_UNRESOLVED:/);
+    }
+  });
+
+  // Fail closed: a mode that may auto-accept an ask (`auto`: a classifier settles
+  // prompts, and older Claude Code may let it approve a hook ask), an older Claude
+  // Code that sends no permission_mode, or a value this hook does not know keeps
+  // the pre-1.19.1 block.
+  test.each([['bypassPermissions'], ['dontAsk'], ['auto'], [undefined], ['someFutureMode'], ['']])(
+    'interactive, permission_mode %s → block (DEPLOY_DENIED_BARE)', (mode) => {
+      const input = { tool_input: { command: '$T deploy all' } };
+      if (mode !== undefined) input.permission_mode = mode;
+      const r = decide(input, {});
+      expect(r?.block).toBe(true);
+      expect(r?.ask).toBeUndefined();
+      expect(r.reason).toMatch(/^DEPLOY_DENIED_BARE:/);
+    });
+
+  test('bypassPermissions blocks every probe that asks under default', () => {
+    for (const command of [
+      '$T deploy all', '$LUA_BIN version promote 3', 'B=$(echo bHVh | base64 -d); $B deploy all',
+      'a=l; b=ua; $a$b deploy all', 'sudo $T deploy all', 'env $T deploy all', 'xargs $T deploy all',
+    ]) {
+      expect(decide({ tool_input: { command }, permission_mode: 'default' }, {})?.ask).toBe(true);
+      const r = decide({ tool_input: { command }, permission_mode: 'bypassPermissions' }, {});
+      expect(r?.block).toBe(true);
+      expect(r?.ask).toBeUndefined();
+    }
+  });
+
+  test.each([
+    [{ LUA_PLUGIN_HEADLESS: '1' }, /^DEPLOY_DENIED_HEADLESS/],
+    [{ LUA_BUILD_SESSION: '1', LUA_PLUGIN_HEADLESS: '1' }, /./],
+    [{ LUA_BUILD_SESSION: '1' }, /./],
+  ])('%o → block', (env, reason) => {
+    const r = decide({ tool_input: { command: CMD }, permission_mode: 'default' }, env);
+    expect(r?.block).toBe(true);
+    expect(r?.ask).toBeUndefined();
+    expect(r.reason).toMatch(reason);
+  });
+
+  test.each([
+    'L=lua; $L deploy all',
+    '$(printf lua) $(printf deploy)',
+    'cd /x/lua && $L deploy all',
+    'X=$(which lua); $X version promote 3',
+    '"$DIR/lua" deploy all',
+    'npx lua deploy all',
+    'lua deploy all -- --help',
+    'cd /x/lua/y && LUA_DEPLOY_CONFIRMED=1 lua version promote 2 2>&1 | tail -2',
+  ])('interactive still blocks %s', (command) => {
+    const r = decide({ tool_input: { command }, permission_mode: 'default' }, {});
+    expect(r?.block).toBe(true);
+    expect(r?.ask).toBeUndefined();
+  });
+
+  test.each([
+    "cd /x/lua/y && T=./s.sh; $T $SID '{}'",
+    "cd /Users/x/Documents/lua/builder-qa/fleets/01; python3 - <<'EOF'\nimport json\nprint($a, ${b})\nEOF",
+  ])('allows %s', (command) => {
+    expect(decide({ tool_input: { command } }, {})).toBeNull();
+    expect(decide({ tool_input: { command } }, { LUA_PLUGIN_HEADLESS: '1' })).toBeNull();
+  });
+
+  test('withAsk writes the PreToolUse ask envelope and lets runHook exit 0', () => {
+    const out = [];
+    const r = withAsk((i) => decide(i, {}), (chunk) => out.push(chunk))({ tool_input: { command: 'T=./s.sh; $T deploy all' }, permission_mode: 'default' });
+    expect(r).toBeNull();
+    const env = JSON.parse(out.join(''));
+    expect(env.hookSpecificOutput).toEqual({
+      hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: expect.stringMatching(/^DEPLOY_ASK_UNRESOLVED/),
+    });
+    // Block and allow answers pass through untouched.
+    const blocked = withAsk((i) => decide(i, {}), (chunk) => out.push(chunk))({ tool_input: { command: 'lua deploy all' } });
+    expect(blocked?.block).toBe(true);
+    expect(withAsk(decide, () => { throw new Error('no write'); })({ tool_input: { command: 'git status' } })).toBeNull();
+  });
+
+  test('withAsk writes to stdout by default', () => {
+    const spy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      expect(withAsk(() => ({ ask: true, reason: 'r' }))({})).toBeNull();
+      expect(JSON.parse(spy.mock.calls[0][0]).hookSpecificOutput.permissionDecision).toBe('ask');
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
