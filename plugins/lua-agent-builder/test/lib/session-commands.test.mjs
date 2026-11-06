@@ -63,6 +63,12 @@ describe('B23 command classes (shared spec parity)', () => {
     'lua evals run suite',
     'lua chat -e sandbox -m hi',
     'lua chat -m hi',
+    'lua features disable --feature-name rag',
+    'lua features configure --feature-name outboundChannels --recipient-scope anyone',
+    'lua models set --model google/gemini-3.8-flash',
+    'lua models unset',
+    'lua models set google/gemini-3.8-flash',
+    'lua features disable rag',
   ])('%s → session_write', (cmd) => expect(cls(cmd)).toBe('session_write'));
 
   test.each([
@@ -168,6 +174,22 @@ describe('B23 command classes (shared spec parity)', () => {
   });
 });
 
+describe('webhook keys in a session (shared spec parity)', () => {
+  test.each([
+    'lua webhooks protect --webhook-name orders',
+    'lua webhooks rotate-key --webhook-name orders',
+    'lua webhooks revoke-key --webhook-name orders --key-id k1',
+    'lua webhooks unprotect --webhook-name orders --also-secret',
+  ])('%s is unavailable: a key is never routed through an approval the pod reads', (cmd) => {
+    expect(classifyLuaCommand(cmd.split(' '))).toMatchObject({ class: 'unavailable', ruleId: 'webhooks.keys' });
+  });
+
+  test('every other webhooks verb is classified as before', () => {
+    expect(classifyLuaCommand('lua webhooks activate w1'.split(' '))).toMatchObject({ class: 'approval' });
+    expect(classifyLuaCommand('lua webhooks view'.split(' '))).toMatchObject({ class: 'direct_read' });
+  });
+});
+
 describe('B23 fail-open guards (shared spec parity)', () => {
   test.each([
     ['lua push skill --auto-deploy', 'high'],
@@ -181,8 +203,6 @@ describe('B23 fail-open guards (shared spec parity)', () => {
     ['lua workflows run wf1', 'medium'],
     ['lua workflows replay r1', 'medium'],
     ['lua workflows schedules create', 'medium'],
-    ['lua models set', 'medium'],
-    ['lua features enable x', 'medium'],
     ['lua devices test', 'medium'],
     ['lua devices enable', 'medium'],
     ['lua triggers rotate-token t1', 'high'],

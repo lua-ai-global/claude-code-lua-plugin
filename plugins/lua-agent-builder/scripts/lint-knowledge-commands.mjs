@@ -79,7 +79,8 @@ setSub('mcp',          ['list', 'activate', 'deactivate', 'delete']);
 // lua-cli 3.45.0 adds `credential` (`devices.action`; aliases `credentials`, `key`).
 setSub('devices',      ['list', 'status', 'enable', 'disable', 'remove', 'test', 'test-trigger', 'credential']);
 setSub('jobs',         ['view', 'versions', 'deploy', 'activate', 'deactivate', 'trigger', 'history', 'delete']);
-setSub('webhooks',     ['view', 'versions', 'deploy', 'activate', 'deactivate', 'delete', 'list-events', 'subscribe', 'unsubscribe']);
+// lua-cli 3.65.0 adds the key actions `protect`, `rotate-key`, `revoke-key`, `unprotect`.
+setSub('webhooks',     ['view', 'versions', 'deploy', 'activate', 'deactivate', 'delete', 'list-events', 'subscribe', 'unsubscribe', 'protect', 'rotate-key', 'revoke-key', 'unprotect']);
 // lua-cli 3.38.0 (PRO-1798, log drains) — `src/utils/aliases.ts` `drains.action`.
 // `rotate-secret` keeps its hyphen: it is the route name too.
 setSub('drains',       ['list', 'status', 'deliveries', 'create', 'update', 'delete', 'test', 'verify',
