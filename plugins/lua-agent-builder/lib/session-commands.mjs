@@ -3,7 +3,8 @@
 // SOURCE OF TRUTH: lua-core-services `packages/shared-types/src/build-sessions/commands.ts`
 // (`BUILD_SESSION_COMMAND_RULES`, `classifyLuaCommand`) and `packages/shared-types/src/secret-scrub.ts`
 // (`WORKFLOW_SECRET_KEY_RE`), as of commit 7c53151b5171501383980f873536bd9ec52ea8b7 on `feat/live-build-sessions`
-// (`--operations` takes a value; the `build-session` rows). This mirror is deliberately STRICTER than that commit in
+// (`--operations` takes a value; the `build-session` rows), plus the `features.stage` / `models.stage` and
+// `webhooks.keys` rows of `main` 7c590f79b1d6b5845a21d7e808153d263e1cec17. This mirror is deliberately STRICTER than that commit in
 // one way, kept from lua-core-services b4be3b9b (branch `feat/lbs/plugin-session-mode`, not yet on the integration
 // branch): action words match case-insensitively and the `devices` credential aliases `credentials` / `key` are
 // listed, like lua-cli `normalizeArg`. This plugin is a public repository of plain ESM with no dependency on the private
@@ -230,6 +231,14 @@ export const BUILD_SESSION_COMMAND_RULES = Object.freeze([
   { id: 'persona.read', path: ['persona'], verbs: READ_VERBS, bareOk: true, class: 'direct_read' },
   { id: 'skills.read', path: ['skills'], verbs: READ_VERBS, bareOk: true, class: 'direct_read' },
   { id: 'webhooks.read', path: ['webhooks'], verbs: READ_VERBS, bareOk: true, class: 'direct_read' },
+  // A webhook key is shown once, to the owner: never routed through a session approval, whose result reaches the pod.
+  {
+    id: 'webhooks.keys',
+    path: ['webhooks'],
+    verbs: ['protect', 'rotate-key', 'revoke-key', 'unprotect'],
+    class: 'unavailable',
+    note: "Webhook keys belong to the agent's owner and are shown only to them. Tell the user to run this after the release.",
+  },
   { id: 'triggers.read', path: ['triggers'], verbs: READ_VERBS, bareOk: true, class: 'direct_read' },
   { id: 'jobs.read', path: ['jobs'], verbs: READ_VERBS, bareOk: true, class: 'direct_read' },
   { id: 'preprocessors.read', path: ['preprocessors'], verbs: READ_VERBS, bareOk: true, class: 'direct_read' },
@@ -240,6 +249,9 @@ export const BUILD_SESSION_COMMAND_RULES = Object.freeze([
   { id: 'production.read', path: ['production'], verbs: READ_VERBS, bareOk: true, class: 'direct_read' },
   { id: 'features.read', path: ['features'], verbs: READ_VERBS, bareOk: true, class: 'direct_read' },
   { id: 'models.read', path: ['models'], verbs: READ_VERBS, bareOk: true, class: 'direct_read' },
+  // Staged with the session (lua-api's session view) and released with it, never a live change.
+  { id: 'features.stage', path: ['features'], verbs: ['enable', 'disable', 'configure'], class: 'session_write' },
+  { id: 'models.stage', path: ['models'], verbs: ['set', 'unset'], class: 'session_write' },
   { id: 'governance.read', path: ['governance'], verbs: READ_VERBS, bareOk: true, class: 'direct_read' },
   { id: 'browsers.read', path: ['browsers'], verbs: READ_VERBS, bareOk: true, class: 'direct_read' },
   { id: 'agents.read', path: ['agents'], verbs: READ_VERBS, bareOk: true, class: 'direct_read' },
@@ -329,7 +341,11 @@ export function classifyLuaCommand(rawArgv) {
     if (destructive) {
       return { class: 'approval', ruleId: rule.class === 'approval' ? rule.id : `${rule.id}+delete`, risk: 'critical' };
     }
-    if ((rule.class === 'direct_read' || rule.class === 'session_write') && after.some((t) => MUTATING_TOKENS.includes(t))) {
+    // A rule's own verbs are what it classifies (`lua features disable` is staged); any other mutating word escalates.
+    if (
+      (rule.class === 'direct_read' || rule.class === 'session_write') &&
+      after.some((t) => MUTATING_TOKENS.includes(t) && !rule.verbs?.includes(t))
+    ) {
       return { class: 'approval', ruleId: `${rule.id}+mutating`, risk: tokenRisk(after) };
     }
     const out = { class: rule.class, ruleId: rule.id };

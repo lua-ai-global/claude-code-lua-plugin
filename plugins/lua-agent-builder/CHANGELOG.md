@@ -2,6 +2,20 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.19.2 — 2026-11-06
+
+### New
+
+- **Webhook keys** (lua-cli 3.65.0; `lib/knowledge/cli-reference.md`, `lib/knowledge/primitives.md`): `auth: 'key'` / `'public'` on `LuaWebhook`, the `X-Lua-Key` header and `?key=`, where a minted key is saved (`.lua/webhook-keys.env`, git-ignored, never printed without a terminal), `WebhookError` for a 4xx answer, and when a caller you control should use a key versus a vendor that signs with its own scheme.
+- `lua webhooks protect`, `rotate-key`, `revoke-key` and `unprotect` are `ask` rules in `lib/permissions-template.json`. They change who can call a live webhook at once, so Claude Code confirms each one. They are not deploy verbs, so `confirm-deploy` does not gate them, the same as the `lua integrations webhooks` and `lua devices` writes.
+
+### Fixed
+
+- Build-session mode (`lib/session-commands.mjs`) now matches the server's command table again. Three rows the server already had were missing:
+  - `lua features enable|disable|configure` and `lua models set|unset` are staged with the session (`session_write`), as lua-api has done since LUA-1864. A rule's own verbs no longer count as a mutating word.
+  - The four webhook key verbs are unavailable in a session (`webhooks.keys`): a key is shown only to the agent's owner, after the release.
+  - The parity tests carry the server's cases, plus the plain-argument forms `lua models set <code>` and `lua features disable <name>` (lua-cli 3.67.0).
+
 ## 1.19.1 — 2026-11-04
 
 ### Fixed
