@@ -11,6 +11,9 @@
 //     card in Lua Desktop and the CLI waits for the decision. The hook adds context so the model treats a pending
 //     answer as pending (no retry, no other route) and knows `request_action` / `request_release`;
 //   * reads and session-scoped writes → nothing.
+// 1.20.1: in a FLEET session (shell under /workspace/fleet) a lua project command without its own absolute
+// `cd /workspace/fleet/<agent> &&` is blocked (FLEET_FOLDER_UNPINNED): the Bash calls share one working directory
+// and a `cd` carries into the next call, so a bare `lua compile` beside another agent's call compiled that agent.
 // The production verbs confirm-deploy gates stay blocked there (second line); this hook never allows anything.
 // It is a belt: the session's :8092 proxy is the boundary.
 
@@ -18,11 +21,11 @@ import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs
 import { sessionCommandDecision } from '../lib/session-mode.mjs';
 
 /**
- * @param {{tool_input?: {command?: string}}|null} input
+ * @param {{tool_input?: {command?: string}, cwd?: string}|null} input
  * @param {Record<string, string|undefined>} [env] — defaults to process.env (build-session switch)
  */
 export function decide(input, env = process.env) {
-  return sessionCommandDecision(input?.tool_input?.command ?? '', env);
+  return sessionCommandDecision(input?.tool_input?.command ?? '', env, input?.cwd);
 }
 
 /* istanbul ignore next */

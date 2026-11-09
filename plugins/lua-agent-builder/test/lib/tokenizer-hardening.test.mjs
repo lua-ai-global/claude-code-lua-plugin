@@ -630,8 +630,8 @@ describe('a lua folder in a path is not a lua command (F3)', () => {
     ['lua deploy all -- --help', 'lua deploy'],
     ['lua deploy --name --help', 'lua deploy'],
     ['cd /x/lua/y && LUA_DEPLOY_CONFIRMED=1 lua version promote 2 2>&1 | tail -2', 'lua version promote'],
-    // A literal lua anywhere: the computed `$T $SID` fails closed again, as before 1.19.1.
-    ['cd /x/lua/y && T=./s.sh; $T $SID; lua deploy all', UNRESOLVED_LABEL],
+    // 1.20.1: `$T $SID` is not lua (T is bound to ./s.sh only); the literal `lua deploy all` beside it still blocks.
+    ['cd /x/lua/y && T=./s.sh; $T $SID; lua deploy all', 'lua deploy'],
     ['cd /x/lua/y && L=lua; $L $V all', UNRESOLVED_LABEL],
   ])('blocks %s (lua is named, never askable)', (cmd, label) => {
     expect(classifyProductionCommandDetailed(cmd)).toEqual({ label, slash: '/lua-deploy', prefixed: false, unresolvedHead: false });

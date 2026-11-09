@@ -22,7 +22,7 @@
 // LUA_BUILD_SESSION unset every hook behaves exactly as before.
 
 import { fileURLToPath } from 'node:url';
-import { findLuaInvocations, UNCLASSIFIABLE_LABEL, UNRESOLVED_LABEL } from './tokenizer.mjs';
+import { findLuaInvocations, luaInvocationDirs, UNCLASSIFIABLE_LABEL, UNRESOLVED_LABEL } from './tokenizer.mjs';
 import { classifyLuaCommand, flagValue, isSecretKeyName } from './session-commands.mjs';
 
 /**
@@ -268,15 +268,22 @@ function approvalNote(argv, c) {
  * line. An approval-class command is NOT blocked — the proxy turns it into a Desktop card — it gets context instead.
  * Production verbs that confirm-deploy gates stay blocked by confirm-deploy (second line).
  *
+ * In a FLEET session (1.20.1) a lua command must also say which agent folder it runs in, with its own absolute
+ * `cd /workspace/fleet/<agent> &&` (fleetFolderReason).
+ *
  * @param {unknown} command
  * @param {Record<string, string|undefined>} [env]
+ * @param {string} [cwd] — the hook input's `cwd` (Claude Code's shell directory when the call was made)
  * @returns {{block: true, reason: string}|{warn: string}|null}
  */
-export function sessionCommandDecision(command, env = process.env) {
+export function sessionCommandDecision(command, env = process.env, cwd = undefined) {
   if (!isBuildSession(env)) return null;
   const blocks = [];
   const warns = [];
-  for (const { argv } of findLuaInvocations(command)) {
+  const invocations = findLuaInvocations(command);
+  const folder = fleetFolderReason(command, invocations, cwd);
+  if (folder) blocks.push(folder);
+  for (const { argv } of invocations) {
     if (argv.length === 0) continue; // bare `lua` prints help
     const c = classifyLuaCommand(argv);
     if (c.class === 'unavailable') blocks.push(unavailableReason(argv, c));
@@ -286,6 +293,44 @@ export function sessionCommandDecision(command, env = process.env) {
   if (blocks.length) return { block: true, reason: [...new Set(blocks)].join('\n') };
   if (warns.length) return { warn: [...new Set(warns)].join('\n') };
   return null;
+}
+
+/** shared-types `BUILD_SESSION_POD_FLEET_DIR`: a fleet session runs here, one folder per agent. */
+export const FLEET_DIR = '/workspace/fleet';
+
+const inFleet = (dir) => typeof dir === 'string' && (dir === FLEET_DIR || dir.startsWith(`${FLEET_DIR}/`));
+
+/**
+ * 1.20.1 (build-session report: "parallel tool calls once compiled the wrong project folder"). A fleet session is ONE
+ * Claude Code process whose Bash calls share one working directory (lua-workflow-job session-loop.ts: `cwd` =
+ * /workspace/fleet), and Claude Code carries a `cd` from one call into the next. lua-cli finds the project only from
+ * the directory it starts in (`lua compile` → process.cwd()), so `lua compile --ci` sent next to
+ * `cd /workspace/fleet/b && …` compiles whichever folder the shell was left in. Nothing inside lua-cli is shared
+ * between the two runs; the directory is.
+ *
+ * So in a fleet session every lua command that works on a project names its folder in the same call: the last
+ * literal `cd` before EACH of them is an absolute path inside /workspace/fleet/<agent>. Help and version output need
+ * none.
+ *
+ * @param {unknown} command
+ * @param {Array<{argv: string[]}>} invocations
+ * @param {string|undefined} cwd
+ * @returns {string|null}
+ */
+function fleetFolderReason(command, invocations, cwd) {
+  const projectCommands = invocations.filter(({ argv }) => argv.length > 0 && !isHelpOrVersion(argv) && argv[0] !== 'build-session');
+  if (!projectCommands.length) return null;
+  const dirs = luaInvocationDirs(command);
+  if (!inFleet(cwd) && !dirs.some((d) => d && inFleet(d))) return null; // not a fleet session
+  const pinned = (d) => !!d && d.startsWith(`${FLEET_DIR}/`) && !!d.slice(FLEET_DIR.length + 1).replace(/\/+$/, '');
+  if (dirs.length && dirs.every(pinned)) return null;
+  const example = projectCommands[0].argv.slice(0, 2).join(' ');
+  return (
+    `FLEET_FOLDER_UNPINNED: in a fleet session every Bash call shares one working directory and a \`cd\` in one call ` +
+    `carries into the next, so \`lua ${example}\` would run in whichever agent folder the shell was left in ` +
+    `(${cwd ? `now ${cwd}` : 'unknown'}). Start the same command with the agent's absolute folder: ` +
+    `\`cd ${FLEET_DIR}/<agent> && lua ${example} …\`, one agent per command, also when you send several at once.`
+  );
 }
 
 /**

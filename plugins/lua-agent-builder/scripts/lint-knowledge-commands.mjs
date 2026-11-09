@@ -83,6 +83,7 @@ setSub('jobs',         ['view', 'versions', 'deploy', 'activate', 'deactivate', 
 setSub('webhooks',     ['view', 'versions', 'deploy', 'activate', 'deactivate', 'delete', 'list-events', 'subscribe', 'unsubscribe', 'protect', 'rotate-key', 'revoke-key', 'unprotect']);
 // lua-cli 3.38.0 (PRO-1798, log drains) — `src/utils/aliases.ts` `drains.action`.
 // `rotate-secret` keeps its hyphen: it is the route name too.
+setSub('shared-data',  ['list', 'create', 'update']);
 setSub('drains',       ['list', 'status', 'deliveries', 'create', 'update', 'delete', 'test', 'verify',
                         'pause', 'resume', 'rotate-secret']);
 setSub('preprocessors',  ['view', 'versions', 'deploy', 'activate', 'deactivate', 'delete']);

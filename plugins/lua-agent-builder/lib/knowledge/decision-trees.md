@@ -10,7 +10,7 @@ Quick-reference flowcharts the architect uses when mapping a user's task to prim
 What's the agent's primary job?
 ├── Answer questions / support users              → persona + 2-5 tools (+ Data for a knowledge table, or the RAG feature via `lua features enable --feature-name rag` + `lua resources`)
 ├── Take actions in external systems              → integrations (MCP auto-provisioned) + tools for derived logic + integration event subscriptions
-├── Run on a schedule with no chat                → LuaJob(s) for simple recurring work; a workflow with `schedule` when the job is multi-step
+├── Run on a schedule with no chat                → LuaJob(s) for simple recurring work that fits one run (`timeout` default 300 s, max 600 s); a workflow with `schedule` when it is multi-step or longer than one run (`foreach`, one step per chunk)
 ├── Orchestrate multi-step / long-running work    → createWorkflow (approvals, fan-out, retries, budgets, Job-tier code)
 ├── Talk on the phone                             → LuaVoice (+ the persona's `voice` variant, fast tools)
 ├── Control hardware / a local machine            → a device: self-describing client, or defineDevice + defineDeviceTrigger (devices.md §2; /lua-devices)
@@ -33,7 +33,7 @@ Package the finished agent for other orgs? → a marketplace **agent template** 
 4. Triggered by time?                                             → LuaJob (cron/interval/once); "remind this user in 1 h" → dynamic Jobs.create from a tool
 5. Several steps, approvals, fan-out, waiting on humans/signals, or > 10 minutes of work?   → createWorkflow
 6. Uniform transform of every message / reply?                    → PreProcessor / PostProcessor
-7. Composing with another agent?                                  → Agents.invoke (full turn) — or a workflow agentStep when it is one step of many
+7. Composing with another agent?                                  → hand it RECORDS: Data.shared outbox + ack (no model in the path; primitives.md, Hand-offs) · ask it to take a TURN: Agents.invoke (full turn) — or a workflow agentStep when it is one step of many
 8. One-shot LLM call inside code?                                 → AI.generate
 9. Proactive outbound (WhatsApp template, email, SMS, Teams)?     → Channels.* (or User.get(id).send for "their last chat channel" — it never reaches email)
 10. Phone call out?                                               → Voice.call
@@ -91,7 +91,7 @@ Not a web app: a public site for anonymous visitors (every route needs a signed-
 ```
 Tied to a specific user?                      → User.get(id) → .update({...}) / .patch({ set, unset })  (cross-channel profile)
 Agent-wide config, lookups, cache, vector search? → Data.create/get/search — declare `index` on the fields you filter (from a `lua test` run: the deployed runtime drops `index`, primitives.md §12)
-Shared by several agents of one org?          → Data.shared(name) — an org admin creates it and names readers/writers (POST /admin/orgs/:orgId/shared-collections); same methods as Data; offline every call rejects shared_data_unavailable_offline (primitives.md, Data.shared)
+Shared by several agents of one org?          → Data.shared(name) — an org admin creates it and names readers/writers (POST /admin/orgs/:orgId/shared-collections, or ⏳ `lua shared-data create`, an approval card in a build session); also the hand-off channel between agents (outbox + ack); same methods as Data; offline every call rejects shared_data_unavailable_offline (primitives.md, Data.shared)
 Cart / order / catalog and no external shop?  → Products / Baskets / Orders
 Binary (image, PDF, audio)?                   → CDN.upload → store the fileId in Data/User
 Run-scoped state inside a workflow?           → ctx.state.get/set (≤ 64 KB) and step outputs; large outputs → ctx.artefacts

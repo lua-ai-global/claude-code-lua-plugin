@@ -362,3 +362,63 @@ describe('findLuaInvocations (tokenizer, advisory listing)', () => {
     expect(findLuaInvocations(long, { budgetMs: -1 }).length).toBeLessThan(400);
   });
 });
+
+// 1.20.1: "parallel tool calls once compiled the wrong project folder". A fleet session's Bash calls share one
+// working directory and a `cd` carries into the next call, so each lua command must name its own agent folder.
+describe('sessionCommandDecision in a fleet session: each lua command names its agent folder', () => {
+  const FLEET = '/workspace/fleet';
+  test.each([
+    ['lua compile --ci', FLEET],
+    ['lua compile --ci', `${FLEET}/alpha`],
+    ['cd beta && lua compile --ci', FLEET],
+    ['cd ../beta && lua test skill --name t --input "{}" --ci', `${FLEET}/alpha`],
+    ['cd "$D" && lua push all --ci --force', FLEET],
+    ['cd /workspace/fleet && lua status --json --ci', FLEET],
+    ['cd /workspace/fleet/x; cd - && lua compile --ci', FLEET],
+  ])('%s (shell in %s) → blocked FLEET_FOLDER_UNPINNED', (command, cwd) => {
+    const d = sessionCommandDecision(command, SESSION, cwd);
+    expect(d?.block).toBe(true);
+    expect(d.reason).toMatch(/^FLEET_FOLDER_UNPINNED: .*cd \/workspace\/fleet\/<agent> && lua /);
+  });
+
+  test.each([
+    `cd ${FLEET}/alpha && lua compile --ci`,
+    `cd ${FLEET}/beta/ && lua compile --ci 2>&1 | tail -20`,
+    `cd ${FLEET}/alpha && lua compile --ci && cd ${FLEET}/beta && lua compile --ci`,
+    'lua --version',
+    'lua compile --help',
+    'git status && npm test',
+    'gh pr create --body "run lua compile in each agent folder"',
+  ])('%s → allowed', (command) => {
+    expect(sessionCommandDecision(command, SESSION, `${FLEET}/alpha`)?.block).toBeFalsy();
+  });
+
+  test('a single-agent session (/workspace/agent) and an unknown cwd outside the fleet are unchanged', () => {
+    expect(sessionCommandDecision('lua compile --ci', SESSION, '/workspace/agent')).toBeNull();
+    expect(sessionCommandDecision('cd sub && lua compile --ci', SESSION, '/workspace/agent')).toBeNull();
+    expect(sessionCommandDecision('lua compile --ci', SESSION)).toBeNull();
+    expect(sessionCommandDecision('lua compile --ci', {}, FLEET)).toBeNull();
+  });
+
+  test('a fleet folder named by the cd itself counts even when the hook gives no cwd', () => {
+    expect(sessionCommandDecision(`cd ${FLEET}/a && lua compile --ci`, SESSION)).toBeNull();
+    expect(sessionCommandDecision(`cd ${FLEET} && lua compile --ci`, SESSION)?.block).toBe(true);
+  });
+});
+
+describe('fleet folder guard: every lua command in a chain is checked', () => {
+  test.each([
+    'cd /workspace/fleet/a && lua compile --ci; cd ../b && lua compile --ci',
+    'cd /workspace/fleet/a && lua compile --ci && lua push all --ci --force; cd b; lua status',
+    'cd /workspace/fleet/a && lua compile --ci; cd "$B" && lua compile --ci',
+  ])('blocks %s', (command) => {
+    expect(sessionCommandDecision(command, SESSION, '/workspace/fleet')?.block).toBe(true);
+  });
+  test.each([
+    'cd /workspace/fleet/a && lua compile --ci; cd /workspace/fleet/b && lua compile --ci',
+    'cd /workspace/fleet/a && lua compile --ci && lua test skill --name t --input "{}" --ci',
+    'cd /workspace/fleet/a && (lua compile --ci 2>&1 | tail -3)',
+  ])('allows %s', (command) => {
+    expect(sessionCommandDecision(command, SESSION, '/workspace/fleet')?.block).toBeFalsy();
+  });
+});

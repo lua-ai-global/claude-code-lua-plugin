@@ -49,6 +49,8 @@ describe('B23 command classes (shared spec parity)', () => {
     'lua devices logs d1',
     'lua drains status',
     'lua drains deliveries x',
+    'lua shared-data',
+    'lua shared-data list --json',
     'lua marketplace template view t1',
     'lua marketplace template versions t1',
   ])('%s → direct_read', (cmd) => expect(cls(cmd)).toBe('direct_read'));
@@ -86,6 +88,8 @@ describe('B23 command classes (shared spec parity)', () => {
     'lua decisions delete d1',
     'lua drains create',
     'lua drains rotate-secret d1',
+    'lua shared-data create --name a_to_b --writers agent_a --readers agent_b',
+    'lua shared-data update a_to_b --writers agent_a --readers ""',
     'lua webhooks activate w1',
     'lua skills activate s1',
     'lua workflows start wf1',
@@ -174,6 +178,19 @@ describe('B23 command classes (shared spec parity)', () => {
   });
 });
 
+describe('the browser in a session (shared spec parity: action-routes.ts browser.execute / browser.run)', () => {
+  test('a browser run is unavailable: the run belongs to the user who starts it', () => {
+    const out = classifyLuaCommand('lua browser run Read-my-inbox --login linkedin'.split(' '));
+    expect(out).toMatchObject({ class: 'unavailable', ruleId: 'browser.execute' });
+    expect(out.note).toMatch(/--login <name>/);
+  });
+
+  test('a read, with or without a saved login, stays an approval', () => {
+    expect(classifyLuaCommand('lua browser read https://www.linkedin.com/messaging/ --login linkedin'.split(' '))).toMatchObject({ class: 'approval' });
+    expect(classifyLuaCommand('lua browser read https://example.com'.split(' '))).toMatchObject({ class: 'approval' });
+  });
+});
+
 describe('webhook keys in a session (shared spec parity)', () => {
   test.each([
     'lua webhooks protect --webhook-name orders',
@@ -230,7 +247,7 @@ describe('B23 fail-open guards (shared spec parity)', () => {
     'admin', 'agents', 'apps', 'auth', 'browser', 'browsers', 'build-session', 'channels', 'chat', 'compile', 'completion',
     'decisions', 'deploy', 'devices', 'docs', 'drains', 'env', 'evals', 'features', 'governance', 'init',
     'integrations', 'jobs', 'logs', 'marketplace', 'mcp', 'models', 'persona', 'postprocessors', 'preprocessors',
-    'production', 'push', 'resources', 'skills', 'source', 'status', 'sync', 'telemetry', 'test', 'triggers',
+    'production', 'push', 'resources', 'shared-data', 'skills', 'source', 'status', 'sync', 'telemetry', 'test', 'triggers',
     'update', 'version', 'voice', 'webhooks', 'workflows',
   ])('lua %s reaches a named rule, with and without an unknown verb', (cmd) => {
     expect(classifyLuaCommand(['lua', cmd]).ruleId).not.toBe('default');

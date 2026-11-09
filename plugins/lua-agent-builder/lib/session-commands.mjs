@@ -4,7 +4,8 @@
 // (`BUILD_SESSION_COMMAND_RULES`, `classifyLuaCommand`) and `packages/shared-types/src/secret-scrub.ts`
 // (`WORKFLOW_SECRET_KEY_RE`), as of commit 7c53151b5171501383980f873536bd9ec52ea8b7 on `feat/live-build-sessions`
 // (`--operations` takes a value; the `build-session` rows), plus the `features.stage` / `models.stage` and
-// `webhooks.keys` rows of `main` 7c590f79b1d6b5845a21d7e808153d263e1cec17. This mirror is deliberately STRICTER than that commit in
+// `webhooks.keys` rows of `main` 7c590f79b1d6b5845a21d7e808153d263e1cec17, and the `shared-data` rows of
+// `feat/agent-record-handoff` (lua-core-services, typed agent-to-agent hand-offs). This mirror is deliberately STRICTER than that commit in
 // one way, kept from lua-core-services b4be3b9b (branch `feat/lbs/plugin-session-mode`, not yet on the integration
 // branch): action words match case-insensitively and the `devices` credential aliases `credentials` / `key` are
 // listed, like lua-cli `normalizeArg`. This plugin is a public repository of plain ESM with no dependency on the private
@@ -240,6 +241,16 @@ export const BUILD_SESSION_COMMAND_RULES = Object.freeze([
     note: "Webhook keys belong to the agent's owner and are shown only to them. Tell the user to run this after the release.",
   },
   { id: 'triggers.read', path: ['triggers'], verbs: READ_VERBS, bareOk: true, class: 'direct_read' },
+  // lua-core action-routes.ts `browser.execute` is `unavailable`: a run belongs to the user who starts it, so the session
+  // could never read the result of the approver's run. `lua browser read` stays an approval (with --login it signs in as
+  // the approver with their own saved login).
+  {
+    id: 'browser.execute',
+    path: ['browser'],
+    verbs: ['run'],
+    class: 'unavailable',
+    note: 'A browser run belongs to the user who starts it, so a session cannot read its result. Use `lua browser read <url>` (add `--login <name>` for a page behind the person\'s saved login), an approval card.',
+  },
   { id: 'jobs.read', path: ['jobs'], verbs: READ_VERBS, bareOk: true, class: 'direct_read' },
   { id: 'preprocessors.read', path: ['preprocessors'], verbs: READ_VERBS, bareOk: true, class: 'direct_read' },
   { id: 'postprocessors.read', path: ['postprocessors'], verbs: READ_VERBS, bareOk: true, class: 'direct_read' },
@@ -266,6 +277,8 @@ export const BUILD_SESSION_COMMAND_RULES = Object.freeze([
     note: 'Credentials are issued to the user in Desktop, never into the pod.',
   },
   { id: 'drains.read', path: ['drains'], verbs: ['list', 'status', 'deliveries', 'show'], bareOk: true, class: 'direct_read' },
+  // org-shared Data collections (typed agent-to-agent hand-offs): list reads; create / update are cards (catch-all)
+  { id: 'shared-data.read', path: ['shared-data'], verbs: ['list'], bareOk: true, class: 'direct_read' },
   {
     id: 'marketplace.read',
     path: ['marketplace'],
@@ -284,7 +297,7 @@ export const BUILD_SESSION_COMMAND_RULES = Object.freeze([
   ...[
     'apps', 'evals', 'version', 'workflows', 'source', 'integrations', 'decisions', 'persona', 'skills', 'webhooks',
     'triggers', 'jobs', 'preprocessors', 'postprocessors', 'mcp', 'channels', 'resources', 'production', 'features',
-    'models', 'governance', 'browsers', 'browser', 'agents', 'devices', 'drains', 'marketplace', 'voice',
+    'models', 'governance', 'browsers', 'browser', 'agents', 'devices', 'drains', 'shared-data', 'marketplace', 'voice',
   ].map((cmd) => ({ id: `${cmd}.write`, path: [cmd], class: 'approval' })),
 ]);
 

@@ -2,7 +2,7 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
-## 1.19.3 — 2026-11-09
+## 1.20.2 — 2026-11-09
 
 ### Fixed
 
@@ -11,6 +11,80 @@ All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `
   - `lua test webapp` in a session runs as the synthetic user `lua:build-session-test-user` on the offline doubles;
   - the preview link is for the user.
 - **Routing descriptions in a session** (`build-session.md` §1 and §3, `lib/knowledge/primitives.md`). `lua push agent` stages an editable agent's `description` with the session; it goes live with the release, and a rollback restores it. On a read-only fleet member it becomes one approval card that names the agent and shows the old and new text. Both need the platform update of November 2026, marked ⏳ in the text.
+
+## 1.20.1 — 2026-11-09
+
+### Fixed
+
+- `confirm-deploy` no longer blocks long commands that only **mention** lua. Build-session report: "the guard hook blocked longer shell lines that mention lua, so commands had to be run one at a time".
+  - **Cause:** up to 1.20.0, a program the shell computes, run with a computed argument (`"$OPEN" "$URL"`, `$R/check.sh $R 8`, `${NODE:-node} "$X"`), counted as `lua <unresolved command>` whenever anything else in the line mentioned lua. That could be a PR body saying "Lua Studio", `grep -c "workspace.heylua.ai"`, `-R lua-ai-global/lua-cli`, `curl https://lua.dev`, or a heredoc writing a file that mentions `lua deploy`. Longer lines carry both more often.
+  - **Fix:** the question is now asked of the computed word itself (`mayRunLua` in `lib/tokenizer.mjs`). It may be lua when:
+    - its own text or substitution names lua (`$(which lua)`, `${L:-lua}`);
+    - it reads a variable bound to lua anywhere in the command (`L=lua`, `M=$L`, `for L in lua …`, `read L`);
+    - its name says so (`$LUA_BIN`).
+  - A computed folder with a literal program name (`$R/check.sh`, `"$(npm bin)/jest"`) is that program.
+- `confirm-deploy` is now shell-aware where it used to search text:
+  - A runner's arguments (`ssh host …`, `bash -c '…'`, `eval …`) are parsed as shell, so `bash -c 'echo Lua deploy notes'` runs `echo`.
+  - Only a pipe stage that runs its **stdin** as code (`… | sh`, `| bash -s`, `| xargs sh -c`, `| source /dev/stdin`) makes the other stages code. `… | sh -c "cat > note.txt"` and `… | xargs echo` do not.
+  - A heredoc counts as a script only when it is written to the file that runs. `cat > docs/RELEASE.md <<EOF` next to `./check.sh` is a document.
+  - `lua.dev`, `heylua.ai` and `lua.ai/pool` are hosts and labels, not lua tokens.
+- `confirm-deploy` still fails closed, and closes gaps 1.20.0 had:
+  - A command line held in a variable is expanded and read: `C="lua deploy all"; $C`, `eval "$C"`, `bash -c "$C"`, `ssh host "$C"`, `X=l; Y=ua; $X$Y …`.
+  - A computed program that may be lua is `lua <unresolved command>` when nothing readable comes after it (`C=$(build lua); eval "$C"`), when its unquoted value splits into a program and a verb (`C="$(printf lua) deploy"; $C all`), or when the command sets a custom `IFS`.
+  - A computed program the plugin can now show is lua (`a=l; b=ua; $a$b deploy all`) is blocked instead of asked.
+  - Still a known limit: a heredoc or `-c` string fed to Python, Node, Ruby or Perl is searched as text, so prose such as "lua deploy" there is still blocked.
+- New regression corpus (`test/fixtures/deploy-hook-corpus.mjs`, `test/lib/deploy-hook-corpus.test.mjs`):
+  - 207 false positives, all allowed now; 1.20.0 blocked 112 of them. They include the six reported examples verbatim, alone and next to a computed program.
+  - 26,496 generated true positives, all blocked: every gated verb spelling × 23 launchers × 18 shell contexts. 1.20.0 missed 1,600 of them, all through a variable or `ssh host $(which lua)`.
+  - 27 computed-program cases, all blocked.
+- `session-guard` (fleet build sessions): each lua command must name its agent folder, or it is blocked with `FLEET_FOLDER_UNPINNED`. Build-session report: "running lua compile for two agents at the same time picked up the other agent's folder".
+  - **Cause:** a fleet session is one Claude Code process, and its Bash calls share one working directory (`/workspace/fleet`). Claude Code carries a `cd` from one call into the next. lua-cli finds the project only from the directory it starts in.
+  - **Not the cause:** nothing inside lua-cli is shared between two compiles. Two projects compiled at once, 16 times as processes and also in one process, never crossed.
+  - **Fix:** in a fleet session, a lua command without its own absolute `cd /workspace/fleet/<agent> &&` is blocked, and the message shows the corrected command. `lib/knowledge/build-session.md` says the same.
+  - Single-agent sessions and laptops are unchanged.
+
+## 1.20.0 — 2026-11-09
+
+### New
+
+- **Hand-offs between agents go through `Data.shared`, never through an `Agents.invoke` prompt** (`lib/knowledge/primitives.md` § `Data.shared` › Hand-offs, `decision-trees.md`, `build-session.md`). A builder on a real fleet passed records by asking the receiving agent's model to copy JSON into a tool. A curly apostrophe changed on the way, the receiver's hash check refused the record, and the sender had already marked it sent, so it would have been lost. The knowledge now gives one pattern:
+  - two shared collections per arrow, one writer each: the outbox (`a_to_b`) and the receiver's acks (`b_acks`);
+  - a deterministic `idempotencyKey`, and the record as a `recordJson` string with a `contentHash` of exactly that string (`Data.update` merges objects);
+  - a sender-owned `state: 'pending' | 'delivered'` that the receiver filters on, page by page, so handled rows never starve new ones;
+  - the sender's states are `written → delivered`, and never `sent` before an `accepted` ack with the same key and hash;
+  - the receiver dedupes on key + hash, and each side runs a single poller (delivery is at least once);
+  - how to test it, since `lua test` and Try it cannot write a shared collection.
+
+  The intent table now separates "hand records to another agent" (`Data.shared`) from "ask another agent to take a turn" (`Agents.invoke`). The `Agents.invoke` section says it is not a data channel.
+- **⏳ `lua shared-data list|create|update`** (the lua-cli release after 3.67.0; lua-core-services `feat/agent-record-handoff`). An org admin manages a shared collection's readers and writers from the CLI. In a Live Build Session, `create` / `update` are approval cards, limited to the session's editable agents. Build-session mode (`lib/session-commands.mjs`) mirrors the server's new rows: `shared-data.read` (`list`, direct) and the `shared-data.write` catch-all (approval), with parity cases in `test/lib/session-commands.test.mjs`. `lua shared-data list` is allowed and `create` / `update` are `ask` rules in `lib/permissions-template.json`. They change which agents read an organization dataset; they are not deploy verbs, so `confirm-deploy` does not gate them.
+
+## 1.19.5 — 2026-11-09
+
+### Fixed
+
+- **A job's wall is 300 s unless it sets `timeout`** (`lib/knowledge/primitives.md` §6, `agents/lua-architect.md`, `agents/lua-skill-builder.md`, `lib/knowledge/decision-trees.md`). The knowledge said "one unit under ~10 min → `LuaJob`", and a builder planned 10-minute steps, then hit a 300 s wall: a job with no `timeout` is stored with 300 (`LUA_JOB_DEFAULT_TIMEOUT_SECONDS`) and the heavy-plane runner kills it at `min(timeout, 600 s)`. The rule is now to always set `timeout` (default 300 s, max 600 s) and to plan a run for about half of it, with file and line evidence.
+
+### New
+
+- **Long work in steps** (`lib/knowledge/workflows.md` §8): for a sweep, backfill or crawl longer than one job run, the default is one scheduled workflow with `foreach`, one step per chunk (stored progress, per-chunk retry, `ctx.once`, up to 600 s per chunk, a run budget of days), never a cursor job that resumes from `Data` every N minutes. It points at the `lua init` template's `examples/workflows/chunked-sweep.ts` and the Job tier for one indivisible unit over 600 s. `lua-architect` flags a job with no `timeout` and a cursor job as under-engineering.
+
+## 1.19.4 — 2026-11-09
+
+### New
+
+- **Keep web-app pages live** (`lib/knowledge/web-apps.md` §4a, with a Troubleshooting row). Nothing pushes a `Data` change to an open page: app-client 0.1.2 has no subscription, and `lua.chat.onTurnEnd` fires only for the page's own turns. So a page that loaded once kept showing old progress (a Lua Studio report: an agent at "part 2 of 8" for 30 minutes while it was at part 6). Pages that show status, progress, queues or counts now:
+  - re-read every 15 s while visible, at once on return and after a pane turn;
+  - back off on `CONCURRENCY_LIMIT`;
+  - keep the last data on screen during a re-read and show "Updated N s ago".
+  
+  §4a has a `useLive` hook, type-checked against `@lua-ai-global/app-client` 0.1.2. Build sessions get the same rule from lua-core's session rules.
+
+## 1.19.3 — 2026-11-08
+
+### Fixed
+
+- **Saved browser logins in a build session** (`lib/knowledge/build-session.md` "Saved browser logins in a session", `lib/knowledge/browser.md` §7). A session no longer sends the person out of the build to chat with the agent and type "connect LinkedIn": a session cannot chat with the live agent, Try it refuses browser logins, and the link the agent sends from a chat has no page behind it yet. In Lua Studio the builder raises the sign-in card (a fenced `lua-browser-login` block); the person signs in there, and the job counts as done only after a signed-in read worked (the card's check, or `lua browser read <url> --login <name>`, which signs in with the approver's own login). Try it cases no longer depend on the browser or the login; those are listed as "after connect".
+- `lua browser run` is unavailable in a session (`browser.execute`, as on the server: a run belongs to the user who starts it). The `/lua-browser` row no longer lists it as an approval.
 
 ## 1.19.2 — 2026-11-06
 
