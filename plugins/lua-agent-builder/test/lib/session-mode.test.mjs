@@ -305,6 +305,14 @@ describe('sessionStartBrief', () => {
     expect(brief).not.toMatch(SLASH);
   });
 
+  test('1.20.5: the live app data rule and the honest-claims rule (Lua Studio production test)', () => {
+    const brief = sessionStartBrief(SESSION);
+    expect(brief).toContain("The live app's data is the user's");
+    expect(brief).toContain('never changes or deletes a row a person acted on');
+    expect(brief).toContain('a preview link is not "opened"');
+    expect(brief).toContain('which agents ship now and which come later');
+  });
+
   test('without an id the brief still reads', () => {
     expect(sessionStartBrief(SESSION)).toContain('[lua] Live build session:');
   });

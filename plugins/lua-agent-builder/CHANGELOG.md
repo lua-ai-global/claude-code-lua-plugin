@@ -2,6 +2,39 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.20.5 — 2026-11-09
+
+### Fixed
+
+Builder-side findings from Lua Studio's 8-persona production test of 9 Nov 2026 (F8, F13's generated apps, and the builder's part of F1, F3 and F16).
+
+- **A release no longer resets what the user did in the live app** (`lib/knowledge/build-session.md` §1 and §5, `lib/knowledge/web-apps.md` §5a, the session brief in `lib/session-mode.mjs`). A user approved a payment run in the live app; the next release reshaped the sample runs, the approval was tied to the run's exact content, and it reset, right after the builder had said "your records stay".
+  - **Cause:** 1.20.4's rule that test data survives a restage was about the preview, and nothing said seed code must leave the live app's rows alone.
+  - **Now:** seed code inserts missing rows by a stable id and never updates or deletes a row a person acted on. Shape changes are additive, and decisions are keyed to the row id. A change that must reset user data is said before staging and as a "Resets:" line in the release summary.
+- **The builder's test records are not credited to the user** (build-session.md §1, web-apps.md §5a). `preview_webapp` route calls run as the owner's user id, so a route storing `createdBy: auth.userId` credited the user with the builder's test lead. A builder test record also fed a live headline ("0% (0 of 1)").
+  - Write routes stamp `source: 'builder-test'` when `auth.sessionId` starts with `build-session-test:` (or the user is `lua:build-session-test-user`).
+  - Headlines and KPIs leave those rows out.
+  - The builder credits the user only with what their `<preview-activity>` note or their own message shows.
+- **The builder claims only what a tool result shows** (build-session.md §1, `commands/lua-deploy.md`, session brief):
+  - a preview link is not "opened";
+  - a page is not "fixed" or "working again" until the user or a result shows it;
+  - "the plan is complete, press Build this" is said only when every hand-off starts at a role, which is what Studio's plan check needs.
+- **Web apps fit a phone and a narrow pane** (web-apps.md §4b). The bakery app was 429 px wide in a 390 px phone (a `w-fit` `TabsList`), the finance nav was clipped to "yment r", and the engineering app was 1,104 px wide in an 848 px pane. The rules: no fixed widths, tables as stacked rows below `md:`, tab rows and navs that wrap or scroll in their own box, and grids that start at one column.
+- **No more CSP errors from generated apps** (web-apps.md §4c). The 20 to 67 errors per run (255 in all) come from `<style>` elements added at run time without the page nonce:
+  - `sonner`'s `__insertCSS`, reached through `@lua-ai-global/ui/sonner` or the root barrel: 178 of the 255 errors. The blocked hashes are those of an empty `<style>` and of sonner 2.0.8's CSS (hash-verified).
+  - Most likely the ui chart's `ChartStyle` for the rest: per-app hashes, not matched, but the black chart series fit.
+  - Rule: import no toast, import components per path, colour chart series on the element.
+- **Release summary and Try it** (build-session.md §5, `commands/lua-deploy.md`). The summary says which agents ship now and which come later, what was and was not tested, and what it resets. Before `request_release`, the builder puts the preview in the App tab, says what to try and asks whether to release now, unless the user (or the opening build plan) already asked for the release.
+
+### Added
+
+- **`hooks/check-webapp-release.mjs` + `lib/webapp-check.mjs`:** a warn-only PreToolUse hook on `mcp__lua-session__stage_for_test` and `mcp__lua-session__request_release`, in a live build session only. The pod has no browser, so this is a static stand-in for a 390 × 844 screenshot. It reads the session's web apps and seed code and adds the findings as context, with file:line:
+  - toast or root-barrel imports, chart colour configs and HTML style strings;
+  - fixed widths over the phone, `w-fit` tab rows, clipped navs, unprefixed multi-column grids and tables with no phone layout;
+  - a missing viewport meta;
+  - seed code that updates or deletes rows.
+  It never blocks a release.
+
 ## 1.20.4 — 2026-11-09
 
 ### Fixed

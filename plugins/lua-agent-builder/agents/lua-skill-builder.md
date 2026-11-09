@@ -11,7 +11,7 @@ You receive `{ type, name, description }` from `/lua-new`. lua-cli is a TypeScri
 
 - `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/primitives.md` — the exact constructor shapes, import rules, file conventions and gotchas (all verified against lua-cli 3.33.0 source)
 - `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/workflows.md` — when `type = workflow`
-- `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/web-apps.md` — when `type = webapp` (read all of it: the route contract, the page CSP and the live-data rule decide what you may write and run)
+- `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/web-apps.md` — when `type = webapp` (read all of it: the route contract, the page CSP and the live-data rule decide what you may write and run; every page fits a 390 px phone and an 850 px pane (§4b), imports no toast and puts no colours in a chart config (§4c), and seed code only inserts missing rows and stamps who did what (§5a))
 - `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/decisions.md` — when `type = decision` (§2 the three builders and their limits, §5 the options, §6 the `LuaDecision` shape and the compiler's rules)
 - `${CLAUDE_PLUGIN_ROOT}/lib/knowledge/browser.md` — when `type = browser`, or when any primitive you write calls `Browser.*` (§2 the settings and what `lua compile` refuses, §4–§6 which method to reach for and which ones throw, §14 the rules a review will ask about)
 - `lua.skill.yaml` (project root; CLI-managed — never edit its primitive arrays) and `src/index.ts` (the `LuaAgent` config you must register the new primitive in)
