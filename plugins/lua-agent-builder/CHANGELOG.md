@@ -20,9 +20,9 @@ Builder-side findings from Lua Studio's 8-persona production test of 9 Nov 2026 
   - a page is not "fixed" or "working again" until the user or a result shows it;
   - "the plan is complete, press Build this" is said only when every hand-off starts at a role, which is what Studio's plan check needs.
 - **Web apps fit a phone and a narrow pane** (web-apps.md §4b). The bakery app was 429 px wide in a 390 px phone (a `w-fit` `TabsList`), the finance nav was clipped to "yment r", and the engineering app was 1,104 px wide in an 848 px pane. The rules: no fixed widths, tables as stacked rows below `md:`, tab rows and navs that wrap or scroll in their own box, and grids that start at one column.
-- **No more CSP errors from generated apps** (web-apps.md §4c). The 20 to 67 errors per run come from `<style>` elements added at run time without the page nonce:
-  - `sonner`'s `__insertCSS`, reached through `@lua-ai-global/ui/sonner` or the root barrel. The blocked hashes are those of an empty `<style>` and of sonner 2.0.8's CSS.
-  - The ui chart's `ChartStyle`. It also turns the series black.
+- **No more CSP errors from generated apps** (web-apps.md §4c). The 20 to 67 errors per run (255 in all) come from `<style>` elements added at run time without the page nonce:
+  - `sonner`'s `__insertCSS`, reached through `@lua-ai-global/ui/sonner` or the root barrel: 178 of the 255 errors. The blocked hashes are those of an empty `<style>` and of sonner 2.0.8's CSS (hash-verified).
+  - Most likely the ui chart's `ChartStyle` for the rest: per-app hashes, not matched, but the black chart series fit.
   - Rule: import no toast, import components per path, colour chart series on the element.
 - **Release summary and Try it** (build-session.md §5, `commands/lua-deploy.md`). The summary says which agents ship now and which come later, what was and was not tested, and what it resets. Before `request_release`, the builder puts the preview in the App tab, says what to try and asks whether to release now, unless the user (or the opening build plan) already asked for the release.
 
