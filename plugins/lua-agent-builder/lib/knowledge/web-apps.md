@@ -154,21 +154,21 @@ export function useLive<T>(path: string, everyMs = 15_000) {
   }, [path, everyMs]);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let stopped = false;
-    const tick = async () => {
+    let gen = 0; // one polling loop only: a restart bumps gen, and an older tick never re-arms
+    const tick = async (mine: number) => {
       if (document.visibilityState === 'visible') await load();
-      if (!stopped) timer = setTimeout(tick, wait.current);
+      if (mine === gen) timer = setTimeout(() => void tick(mine), wait.current);
     };
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
       clearTimeout(timer);
-      void tick();
+      void tick(++gen);
     };
-    void tick();
+    void tick(gen);
     document.addEventListener('visibilitychange', onVisible);
     const off = lua.chat.onTurnEnd(() => void load());
     return () => {
-      stopped = true;
+      gen++;
       clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisible);
       off();
