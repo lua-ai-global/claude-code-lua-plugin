@@ -240,6 +240,16 @@ export const BUILD_SESSION_COMMAND_RULES = Object.freeze([
     note: "Webhook keys belong to the agent's owner and are shown only to them. Tell the user to run this after the release.",
   },
   { id: 'triggers.read', path: ['triggers'], verbs: READ_VERBS, bareOk: true, class: 'direct_read' },
+  // lua-core action-routes.ts `browser.execute` is `unavailable`: a run belongs to the user who starts it, so the session
+  // could never read the result of the approver's run. `lua browser read` stays an approval (with --login it signs in as
+  // the approver with their own saved login).
+  {
+    id: 'browser.execute',
+    path: ['browser'],
+    verbs: ['run'],
+    class: 'unavailable',
+    note: 'A browser run belongs to the user who starts it, so a session cannot read its result. Use `lua browser read <url>` (add `--login <name>` for a page behind the person\'s saved login), an approval card.',
+  },
   { id: 'jobs.read', path: ['jobs'], verbs: READ_VERBS, bareOk: true, class: 'direct_read' },
   { id: 'preprocessors.read', path: ['preprocessors'], verbs: READ_VERBS, bareOk: true, class: 'direct_read' },
   { id: 'postprocessors.read', path: ['postprocessors'], verbs: READ_VERBS, bareOk: true, class: 'direct_read' },

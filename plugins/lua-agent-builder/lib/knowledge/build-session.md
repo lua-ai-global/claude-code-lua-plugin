@@ -89,7 +89,17 @@ Either way:
 | `/lua-doctor` | Only the read-only probes (`lua --version`, `lua status --json --ci`). Nothing to install, no permission rules to write (the session runs with its own settings) |
 | `/lua-docs` | Works (the lua-docs MCP) |
 | `/lua-audit` | Works: read-only. Follow `agents/lua-auditor.md` inline (Read, Grep and Glob only) and change nothing until the user says which finding to fix |
-| `/lua-browser` | `list` direct. `read`, `run` and `delete` are approval-class (the browser acts on, or reads through, real websites and spends budget) → `request_action {agentId, command: "browser read"\|"browser run"\|"browsers delete", args, reason}`. `push browser` is a session write |
+| `/lua-browser` | `list` direct. `read` and `delete` are approval-class (the browser reads through real websites and spends budget) → `request_action {agentId, command: "browser read"\|"browsers delete", args, reason}`. `browser read <url> --login <name>` (⏳ lua-cli with `--login` on read) signs in with the **approver's own** saved login and the page comes back to you: that is how you check a saved login works. `browser run` is **not available** in a session (a run belongs to the user who starts it). `push browser` is a session write |
+
+### Saved browser logins in a session
+
+A site the agent signs in to (LinkedIn, a supplier portal) uses the person's own saved login (`lib/knowledge/browser.md` §7). In a session:
+
+- **Never send the person out of the session** to chat with the agent ("open Lua Workspace and type connect LinkedIn"). A session cannot chat with the live agent, Try it refuses browser logins, and the private link an agent sends from a chat (`/logins/r/<token>`) has no page behind it yet.
+- **In Lua Studio, raise the sign-in card**: end your message with one fenced `lua-browser-login` block, `{"name": "linkedin", "site": "LinkedIn", "origins": ["https://www.linkedin.com"], "loginUrl": "https://www.linkedin.com/login", "access": "read", "why": "…", "checkUrl": "https://www.linkedin.com/messaging/", "job": "<job name>"}`. The person signs in on the card; Studio checks it with one signed-in read and tells you the result as their message. In Lua Desktop there is no card yet: say so in one line, and do not build on the login until it is connected.
+- **It is done only after a signed-in read worked**: the card's check, or `request_action {command: "browser read", args: ["<checkUrl>", "--login", "<name>"]}`. Report what came back (the page title, what it showed) before you say the job is done.
+- **Try it cases** must not depend on the browser or the login (both are refused in a test chat, which shows as "a platform call is not available in a test" and "changed tools not tested"). Test the tool's logic offline with `lua test`, and list the browser cases as **after connect**.
+- A job uses the login only once the person allows that job (the card's job button, or `Browser.allowJobLogin` on their own chat turn).
 
 ## 7. What the hooks do in a session
 
