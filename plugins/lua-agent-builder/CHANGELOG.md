@@ -2,7 +2,7 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
-## 1.19.3 — 2026-11-09
+## 1.19.4 — 2026-11-09
 
 ### New
 
@@ -12,6 +12,13 @@ All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `
   - keep the last data on screen during a re-read and show "Updated N s ago".
   
   §4a has a `useLive` hook, type-checked against `@lua-ai-global/app-client` 0.1.2. Build sessions get the same rule from lua-core's session rules.
+
+## 1.19.3 — 2026-11-08
+
+### Fixed
+
+- **Saved browser logins in a build session** (`lib/knowledge/build-session.md` "Saved browser logins in a session", `lib/knowledge/browser.md` §7). A session no longer sends the person out of the build to chat with the agent and type "connect LinkedIn": a session cannot chat with the live agent, Try it refuses browser logins, and the link the agent sends from a chat has no page behind it yet. In Lua Studio the builder raises the sign-in card (a fenced `lua-browser-login` block); the person signs in there, and the job counts as done only after a signed-in read worked (the card's check, or `lua browser read <url> --login <name>`, which signs in with the approver's own login). Try it cases no longer depend on the browser or the login; those are listed as "after connect".
+- `lua browser run` is unavailable in a session (`browser.execute`, as on the server: a run belongs to the user who starts it). The `/lua-browser` row no longer lists it as an approval.
 
 ## 1.19.2 — 2026-11-06
 
