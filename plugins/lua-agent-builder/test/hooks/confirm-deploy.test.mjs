@@ -176,13 +176,20 @@ describe('confirm-deploy: unresolved binary, no lua token (F3)', () => {
   test('bypassPermissions blocks every probe that asks under default', () => {
     for (const command of [
       '$T deploy all', '$LUA_BIN version promote 3', 'B=$(echo bHVh | base64 -d); $B deploy all',
-      'a=l; b=ua; $a$b deploy all', 'sudo $T deploy all', 'env $T deploy all', 'xargs $T deploy all',
+      'sudo $T deploy all', 'env $T deploy all', 'xargs $T deploy all',
     ]) {
       expect(decide({ tool_input: { command }, permission_mode: 'default' }, {})?.ask).toBe(true);
       const r = decide({ tool_input: { command }, permission_mode: 'bypassPermissions' }, {});
       expect(r?.block).toBe(true);
       expect(r?.ask).toBeUndefined();
     }
+  });
+
+  // 1.20.1: the classifier expands variables it can read, so a program it can show IS lua is a block, not an ask.
+  test.each(['a=l; b=ua; $a$b deploy all', 'L=lua; M=$L; $M deploy all'])('%s → block under default too', (command) => {
+    const r = decide({ tool_input: { command }, permission_mode: 'default' }, {});
+    expect(r?.block).toBe(true);
+    expect(r.reason).toMatch(/^DEPLOY_DENIED_BARE: `lua deploy`/);
   });
 
   test.each([

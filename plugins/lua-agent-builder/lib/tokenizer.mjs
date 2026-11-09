@@ -66,6 +66,18 @@
 //     a hit; when nothing in the command mentions lua it is marked
 //     `unresolvedHead`, and the hook asks the user instead of blocking
 //     (interactive only: headless and build sessions still block);
+//   * 1.20.1: a computed program with a computed verb (`$X "$Y"`) is a hit
+//     only when THAT word may be lua (mayRunLua: its own text or substitution
+//     names lua, it reads a variable bound to lua anywhere in the command or
+//     filled by `read`, or its name says lua), not when the command mentions
+//     lua somewhere else (a PR body, a URL, a heredoc written to a file). A
+//     variable whose values are all literal is expanded and read as code
+//     (`C="lua deploy all"; eval "$C"`), and a computed folder with a literal
+//     program name (`$R/check.sh`) is that program. A runner's argv
+//     (`ssh host …`, `bash -c '…'`) is parsed as shell, not searched as text,
+//     and only a pipe stage that reads STDIN as code makes the others code
+//     (`… | sh`, not `… | sh -c cat`). Hosts and labels (`lua.dev`,
+//     `heylua.ai`, `lua.ai/pool`) no longer count as a lua token;
 //   * `$(…)`, backticks and `<(…)` are parsed recursively, also inside
 //     double quotes and unquoted heredocs; heredoc bodies are skipped as text
 //     (`gh pr create --body "$(cat <<'EOF' … EOF)"` is not code); a string
@@ -234,16 +246,23 @@ const RAW_TOKEN_SPLIT = /[^\w.@/\\-]+/;
 const MENTIONS_LUA = /(?<![\w-])(?:lua|heylua|lua-ai|lua-cli)(?![\w-])/i;
 
 /**
+ * A lua-cli name as a program file: the bare name, a `@version` (`lua@3`, `lua-cli@latest`) or a launcher
+ * extension (`lua.cmd`, `heylua.exe`, `lua.sh`, `lua-cli.mjs`). 1.20.1: a host or a label is not a program
+ * (`lua.dev`, `workspace.heylua.ai`, `lua.ai/pool`), so a dot followed by anything else no longer counts.
+ */
+const PROGRAM_FILE = /^(lua|heylua|lua-ai|lua-cli)(?:@[\w.^~-]*|\.(?:cmd|exe|bat|ps1|sh|bash|js|mjs|cjs))?$/i;
+
+/**
  * Does one raw token name a lua-cli binary or package? Only its LAST path
  * segment counts (`lua`, `/usr/bin/lua`, `$DIR/lua` → `DIR/lua`, `lua.cmd`,
  * `lua@3`, `lua.sh`), or a lua-cli entry point (`…/lua-cli/dist/index.js`).
  * A folder in the middle of a path (`/Users/s/Documents/lua/builder-qa`) does
- * not.
+ * not, and neither does a host or label (`lua.dev`, `heylua.ai`, 1.20.1).
  */
 function tokenNamesLua(token) {
   const t = token.replace(/[\\/]+$/, '');
-  const base = (t.split(/[\\/]/).pop() ?? '').toLowerCase();
-  if (base.split(/[.@]/).some((piece) => PACKAGES.has(piece))) return true;
+  const base = t.split(/[\\/]/).pop() ?? '';
+  if (PROGRAM_FILE.test(base)) return true;
   return isLuaBinaryText(t, true);
 }
 
@@ -279,13 +298,13 @@ function checkBudget() {
 // ── Lexer ──────────────────────────────────────────────────────────────────
 
 /**
- * @typedef {{text: string, quoted: boolean, dynamic: boolean}} Word
+ * @typedef {{text: string, quoted: boolean, dynamic: boolean, subs?: string[]}} Word
  * @typedef {{words: Word[], sep: string|null, grouped: boolean, pipeline: boolean, pipeId: number,
- *            heredocs: string[], herestrings: string[]}} Segment
+ *            heredocs: string[], herestrings: string[], subs: string[], redirects: Word[]}} Segment
  */
 
 const newSegment = () => ({
-  words: [], sep: null, grouped: false, pipeline: false, pipeId: 0, heredocs: [], herestrings: [], subs: [],
+  words: [], sep: null, grouped: false, pipeline: false, pipeId: 0, heredocs: [], herestrings: [], subs: [], redirects: [],
 });
 
 /**
@@ -419,7 +438,13 @@ export function lex(src) {
   const n = src.length;
   let i = 0;
 
-  const addSub = (text) => { subs.push(text); seg.subs.push(text); };
+  // A substitution's body is also recorded on the word it sits in (`X=$(which lua)`, `"$(printf lua)"`), so the
+  // classifier can tell whether THAT word may name lua (1.20.1) without treating every quoted string as code.
+  const addSub = (text) => {
+    subs.push(text);
+    seg.subs.push(text);
+    if (word) (word.subs ??= []).push(text);
+  };
   const startWord = () => { if (!word) word = { text: '', quoted: false, dynamic: false }; return word; };
   const endWord = () => {
     if (!word) return;
@@ -429,6 +454,7 @@ export function lex(src) {
     delete w.brace;
     if (redirTarget) {
       if (redirTarget === 'herestring') seg.herestrings.push(w.text);
+      else seg.redirects.push(w);
       redirTarget = null;
       return;
     }
@@ -758,6 +784,21 @@ function commandPositions(words) {
   return [...out].sort((a, b) => a - b);
 }
 
+/** Characters that make a word's text computed by the shell (expansions, globs, braces). */
+const COMPUTED_CHARS = /[$`*?[{}]|[<>]\(/;
+
+/**
+ * The last path segment of a computed word when that segment is plain text (`$R/check.sh` → `check.sh`,
+ * `"$(npm bin)/jest"` → `jest`); null when the program name itself is computed (`$T`, `${D}/${B}`, `$D/lu?`).
+ */
+function literalBasename(text) {
+  if (text.includes("$'")) return null; // ANSI-C quoting can spell a slash and the name: `$'\x2fbin\x2flua'`
+  const slash = Math.max(text.lastIndexOf('/'), text.lastIndexOf('\\'));
+  if (slash < 0) return null;
+  const base = text.slice(slash + 1);
+  return base && !COMPUTED_CHARS.test(base) ? base : null;
+}
+
 /**
  * If a lua-cli invocation starts at word `j` (a command position), return its
  * arguments and whether the binary itself was computed at runtime; else null.
@@ -773,6 +814,10 @@ function invocationAt(words, j, afterLauncher) {
         .map((text) => ({ text, quoted: false, dynamic: false }));
       return { args: [...extra, ...rest], dynamicHead: false };
     }
+    // 1.20.1: a computed FOLDER with a literal program name (`$R/check.sh`, `"$(npm bin)/jest"`) runs that
+    // program, whatever the folder is: the shell looks the program up by the path's last segment, which is text.
+    const base = literalBasename(w.text);
+    if (base !== null) return isLuaBinaryText(base, afterLauncher) ? { args: rest, dynamicHead: false } : null;
     return { args: rest, dynamicHead: true };
   }
   if (isLuaBinaryText(w.text, afterLauncher)) return { args: rest, dynamicHead: false };
@@ -850,8 +895,244 @@ function sedExecutes(script) {
   return parts.length >= 4 && /e/.test(parts[parts.length - 1]);
 }
 
+// ── What a computed word may hold (1.20.1) ─────────────────────────────────
+//
+// Up to 1.20.0 a computed program run with a computed argument (`$X "$Y"`)
+// counted as `lua <unresolved verb>` whenever the WHOLE command mentioned lua
+// anywhere: a PR body saying "Lua Studio", `workspace.heylua.ai` in a grep, a
+// heredoc that writes a script mentioning `lua compile`. Long commands carry
+// both more often, so they were blocked and had to be split. Now the question
+// is asked of the computed word itself: could THIS word expand to lua? It can
+// when it names lua in its own text or substitution (`$(which lua)`,
+// `${L:-lua}`), when a variable it reads is bound to something that names lua
+// anywhere in the command (`L=lua`, `export L=$(which lua)`, `for L in lua x`),
+// when it reads a variable `read`/`mapfile` fills in a command that names lua,
+// or when the variable's own name says lua (`$LUA_BIN`). A variable nobody in
+// the command binds to lua (`$OPEN "$URL"`) is not lua.
+
 /**
- * @typedef {{nested: boolean, depth: number, mentionsLua: boolean}} Ctx
+ * @typedef {{tainted: Set<string>, values: Map<string, Array<{text: string, literal: boolean, lookup?: boolean}>>, filled: Set<string>,
+ *            tooDeep: boolean}} Bindings
+ */
+
+/** Builtins whose operands NAME variables that get a value at runtime (`read L`, `mapfile -t A`, `printf -v L`). */
+const READERS = new Set(['read', 'mapfile', 'readarray', 'getopts', 'select']);
+
+const wordMentionsLua = (w) => mentionsLuaToken(w.text) || (w.subs ?? []).some((t) => mentionsLuaToken(t));
+
+/** `LUA`, `LUA_BIN`, `lua_cli`, `HEYLUA_PATH`: a variable whose own name says it holds lua. */
+const nameMentionsLua = (name) => name.toLowerCase().split('_').some((piece) => PACKAGES.has(piece) || piece === 'luacli');
+
+/**
+ * Every variable binding in a command, at any depth (substitutions, strings a shell runs, heredoc bodies): which
+ * names may hold lua, and the literal values each name is given. Order and scope are ignored on purpose (fail
+ * closed): a binding anywhere counts everywhere.
+ *
+ * @param {string} src
+ * @param {number} depth
+ * @param {Bindings} b
+ */
+function collectBindings(src, depth, b) {
+  checkBudget();
+  if (depth > MAX_DEPTH) {
+    if (mentionsLuaToken(src)) b.tooDeep = true;
+    return;
+  }
+  const { segments, subs } = lex(src);
+  for (const seg of segments) {
+    const words = seg.words;
+    const names = words.map(nameOf);
+    for (const w of words) {
+      if (!looksLikeAssignment(w)) continue;
+      const eq = w.text.indexOf('=');
+      const name = w.text.slice(0, eq).replace(/\+$/, '');
+      const value = w.text.slice(eq + 1);
+      if (mentionsLuaToken(value) || (w.subs ?? []).some((t) => mentionsLuaToken(t))) b.tainted.add(name);
+      const list = b.values.get(name) ?? [];
+      // `L=$(which lua)` holds one path: the shell does not split it into a program and a verb.
+      const lookup = /^(?:\$\(…\)|`…`)$/.test(value) && (w.subs ?? []).length === 1 && PATH_LOOKUP.test(w.subs[0]);
+      list.push({ text: value, literal: !w.dynamic, lookup });
+      b.values.set(name, list);
+    }
+    // `for L in lua heylua; do $L $V; done`, `select L in …`
+    const loop = names.findIndex((nm) => nm === 'for' || nm === 'select');
+    if (loop >= 0 && words[loop + 1] && words[loop + 2]?.text === 'in') {
+      const name = words[loop + 1].text;
+      if (words.slice(loop + 3).some(wordMentionsLua)) b.tainted.add(name);
+      b.values.set(name, [...(b.values.get(name) ?? []), { text: '', literal: false }]);
+    }
+    // `read L <<< lua`, `… | while read L`, `printf -v L …`: the value comes from input this pass does not
+    // follow, so the variables these builtins fill count as "may be lua" in a command that names lua.
+    names.forEach((nm, k) => {
+      if (READERS.has(nm)) {
+        for (const w of words.slice(k + 1)) if (!w.dynamic && /^[A-Za-z_][A-Za-z0-9_]*$/.test(w.text)) b.filled.add(w.text);
+      } else if (nm === 'printf' && words[k + 1]?.text === '-v' && words[k + 2]) b.filled.add(words[k + 2].text);
+    });
+    for (const body of [...seg.heredocs, ...seg.herestrings]) collectBindings(body, depth + 1, b);
+    // A string a shell may run later (`bash -c '…'`, `C='L=lua; $L $V'; eval "$C"`) can bind variables too. An
+    // assignment's own text is not re-read (its value is recorded above; its substitutions are read below).
+    for (const w of words) {
+      const text = looksLikeAssignment(w) ? (w.dynamic ? '' : w.text.slice(w.text.indexOf('=') + 1)) : w.text;
+      if (/[\s;&|`$()=]/.test(text)) collectBindings(text, depth + 1, b);
+    }
+  }
+  for (const sub of subs) collectBindings(sub, depth + 1, b);
+}
+
+const VAR_REF = /\$\{?[#!]?([A-Za-z_][A-Za-z0-9_]*)/g;
+
+/** Turns a glob into a RegExp over one path segment; null when it cannot. */
+function globRegex(glob) {
+  let re = '';
+  for (let k = 0; k < glob.length; k++) {
+    const c = glob[k];
+    if (c === '*') re += '.*';
+    else if (c === '?') re += '.';
+    else if (c === '[') {
+      const close = glob.indexOf(']', k + 1);
+      if (close < 0) return null;
+      re += `[${glob.slice(k + 1, close).replace(/^!/, '^').replace(/\\/g, '\\\\')}]`;
+      k = close;
+    } else re += c.replace(/[.+^${}()|\\]/g, '\\$&');
+  }
+  try { return new RegExp(`^${re}$`, 'i'); } catch { return null; }
+}
+
+/**
+ * Could the computed word `w`, in program position, run lua?
+ *
+ * @param {Word} w
+ * @param {Ctx} ctx
+ */
+function mayRunLua(w, ctx) {
+  if (wordMentionsLua(w)) return true; // `$(which lua)`, `${L:-lua}`, `{lua,}`
+  const text = w.text;
+  if (text.includes("$'")) return true; // ANSI-C quoting can spell any name
+  const base = text.split(/[\\/]/).pop() ?? '';
+  if (/[*?[]/.test(base) && !/[$`]/.test(base)) {
+    const re = globRegex(base);
+    if (!re || [...BINARIES].some((bin) => re.test(bin))) return true;
+  }
+  const b = ctx.bindings;
+  // `X=l; Y=ua; $X$Y`, `Y=$X`: the texts it expands to.
+  if ((expandText(text, b, 0) ?? []).some((t) => mentionsLuaToken(t))) return true;
+  for (const m of text.matchAll(VAR_REF)) {
+    const name = m[1];
+    if (nameMentionsLua(name) || b?.tainted.has(name)) return true;
+    // Filled by `read`/`mapfile`/`printf -v`, or bound past the depth this pass follows: unknown, and lua is named.
+    if (ctx.mentionsLua && (b?.filled.has(name) || (b?.tooDeep && !b.values.has(name)))) return true;
+  }
+  // `bash -c '$1 $2' _ lua deploy`: positional parameters are the runner's arguments.
+  if (/\$\{?[0-9@*]/.test(text) && ctx.nested && ctx.mentionsLua) return true;
+  return false;
+}
+
+/** A program word that is exactly one variable whose every value in the command is literal text: those values. */
+function literalValuesOf(w, ctx) {
+  if (!/\$/.test(w.text) || ctx.bindings?.values.has('IFS')) return null; // a custom IFS splits differently
+  return expandText(w.text, ctx.bindings, 0);
+}
+
+const MAX_EXPANSIONS = 16;
+
+/**
+ * Every text a word made only of literal text and plain variable references (`$X`, `${X}`, `$X$Y`, `pre${X}`) can
+ * expand to, given each variable's values in this command; null when any part is computed some other way (a
+ * substitution, `${X:-…}`, a variable with no value here) or there are too many combinations.
+ *
+ * @param {string} text
+ * @param {Bindings|undefined} b
+ * @param {number} depth
+ * @returns {string[]|null}
+ */
+function expandText(text, b, depth) {
+  if (!b || depth > 4) return null;
+  const parts = text.split(/(\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*)/);
+  let out = [''];
+  for (let k = 0; k < parts.length; k++) {
+    const part = parts[k];
+    if (k % 2 === 0) {
+      if (/[$`]/.test(part)) return null;
+      out = out.map((o) => o + part);
+      continue;
+    }
+    const values = b.values.get(part.replace(/^\$\{?|\}$/g, ''));
+    if (!values?.length) return null;
+    const options = [];
+    for (const v of values) {
+      const vs = v.literal ? [v.text] : expandText(v.text, b, depth + 1);
+      if (!vs) return null;
+      options.push(...vs);
+    }
+    out = out.flatMap((o) => options.map((v) => o + v));
+    if (out.length > MAX_EXPANSIONS) return null;
+  }
+  return out;
+}
+
+/** A substitution that only looks a program up (`$(which lua)`, `$(command -v heylua)`): its output is one path. */
+const PATH_LOOKUP = /^\s*(?:which|command\s+-v|type\s+-[pP])\s+[^\s;&|]+\s*$/;
+
+/** Runners that take one positional before the command they run (`ssh HOST cmd`, `su USER -c`, `flock FILE cmd`). */
+const HOSTED_RUNNERS = new Set(['ssh', 'su', 'runuser', 'flock', 'at', 'tmux', 'screen', 'parallel']);
+
+/**
+ * The argv a runner concatenates and runs as shell code (`ssh host lua deploy all`, `eval lua deploy all`), parsed
+ * as shell (1.20.1) instead of searched as text, so `bash -c 'echo Lua deploy notes'` runs `echo`. Every start a
+ * flag value or a host could leave ambiguous is parsed (bounded: two per runner, three for a hosted one).
+ */
+function analyzeRunnerArgv(words, j, nested, hits) {
+  const starts = [];
+  const limit = HOSTED_RUNNERS.has(nameOf(words[j])) ? 3 : 2;
+  for (let q = j + 1; q < words.length && starts.length < limit; q++) {
+    if (words[q].text === '--' || isFlag(words[q])) continue;
+    starts.push(q);
+  }
+  for (const q of starts) analyzeScript(words.slice(q).map((w) => w.text).join(' '), nested, hits);
+}
+
+/** A shell flag word that sets `-c` (`-c`, `-lc`, `-ec`), or `-s` (read the script from stdin). */
+const SHELL_C_FLAG = /^-[a-zA-Z]*c[a-zA-Z]*$/;
+const SHELL_S_FLAG = /^-[a-zA-Z]*s[a-zA-Z]*$/;
+/** A `-c` string that itself reads stdin as code (`sh -c 'source /dev/stdin'`, `bash -c 'eval "$(cat)"'`). */
+const C_STRING_READS_STDIN = /\/dev\/(?:stdin|fd\/0)|\$\(\s*cat\b|`\s*cat\b|\bxargs\b|\beval\b|\bsource\b|(?:^|\s)\.\s|\b(?:ba|z|da|k)?sh\b/;
+
+/**
+ * Does the pipeline stage `words` run its STDIN as shell code? `… | sh`, `… | bash -s`, `… | source /dev/stdin`,
+ * `… | xargs sh -c '{}'`, `… | parallel`, `… | ssh host`. `… | sh -c cat` and `… | bash script.sh` do not: there
+ * the code is the `-c` string or the file, and stdin is data. `… | xargs echo` passes stdin as arguments to echo.
+ */
+function readsStdinAsCode(words) {
+  const names = words.map(nameOf);
+  for (const j of commandPositions(words)) {
+    const nm = names[j];
+    if (!SCRIPT_RUNNERS.has(nm) && !SHELLS.has(nm)) continue;
+    const rest = words.slice(j + 1);
+    if (SHELLS.has(nm)) {
+      if (rest.some((w) => SHELL_S_FLAG.test(w.text) && !SHELL_C_FLAG.test(w.text))) return true;
+      if (rest.some((w) => SHELL_C_FLAG.test(w.text))) {
+        if (rest.some((w) => w.dynamic || C_STRING_READS_STDIN.test(w.text))) return true;
+        continue;
+      }
+      if (rest.some((w) => w.text !== '-' && !isFlag(w))) continue; // runs a script file
+      return true;
+    }
+    if (nm === 'source' || nm === '.') {
+      const operand = rest.find((w) => !isFlag(w));
+      if (!operand || operand.dynamic || /^(?:-|\/dev\/stdin|\/dev\/fd\/0)$/.test(operand.text)) return true;
+      continue;
+    }
+    if (nm === 'xargs') {
+      if (names.slice(j + 1).some((n) => SHELLS.has(n) || SCRIPT_RUNNERS.has(n))) return true;
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
+ * @typedef {{nested: boolean, depth: number, mentionsLua: boolean, bindings?: Bindings}} Ctx
  * @param {Segment} seg
  * @param {Ctx} ctx
  * @param {boolean} pipedIntoRunner  another stage of this pipeline runs its input as code
@@ -864,8 +1145,9 @@ function analyzeSegment(seg, ctx, pipedIntoRunner, hits) {
   const positions = commandPositions(words);
   // A runner counts in command position (`sudo bash -c`, `xargs sh -c`); a
   // shell's name counts anywhere (`docker exec c sh -c …`). `rg x .` is not `source`.
-  const hasRunner =
-    positions.some((j) => SCRIPT_RUNNERS.has(names[j])) || names.some((nm) => SHELLS.has(nm));
+  const posSet = new Set(positions);
+  const runnerAt = names.map((nm, k) => (posSet.has(k) && SCRIPT_RUNNERS.has(nm)) || SHELLS.has(nm));
+  const hasRunner = runnerAt.some(Boolean);
   const runsStrings = pipedIntoRunner || hasRunner;
   const inline = names.some((nm) => INLINE_CODE.has(nm));
   const awk = names.some((nm) => AWK.has(nm));
@@ -874,9 +1156,10 @@ function analyzeSegment(seg, ctx, pipedIntoRunner, hits) {
   const hasEnv = names.includes('env');
   const nested = { ...ctx, nested: true, depth: ctx.depth + 1 };
 
-  // Whatever feeds a shell (`… | sh`) or a runner's argv (`ssh host lua …`,
-  // `eval lua …`) is searched as text as well as parsed.
-  if (runsStrings) rawSearch(words.map((w) => w.text).join(' '), hits);
+  // A stage whose OUTPUT a shell runs (`printf '%s' 'lua deploy all' | bash`): its argv is searched as text, since
+  // a format string or `echo -e` can assemble the code. A runner's own argv is parsed as shell (1.20.1).
+  if (pipedIntoRunner && !hasRunner) rawSearch(words.map((w) => w.text).join(' '), hits);
+  runnerAt.forEach((isRunner, j) => { if (isRunner) analyzeRunnerArgv(words, j, nested, hits); });
   words.forEach((w, k) => {
     if (k === 0) return;
     const prev = words[k - 1].text;
@@ -896,15 +1179,13 @@ function analyzeSegment(seg, ctx, pipedIntoRunner, hits) {
     }
   });
   for (const body of [...seg.heredocs, ...seg.herestrings]) {
-    // Parsed as shell AND searched as text, also when fed to
-    // python/node/ruby/perl/awk: their backticks and `${…}` templates run a
-    // command whose binary is computed (perl `\`$T deploy all\``), so the body
-    // is not text only. Python's quotes and braces no longer read as
-    // `$BIN $VERB` because "mentions lua" is a token test (1.19.1, F3).
-    if (runsStrings || inline || awk) {
-      analyzeScript(body, nested, hits);
-      rawSearch(body, hits);
-    }
+    // A body fed to a shell (or into a pipe a shell reads) is shell code:
+    // parsed. A body fed to python/node/ruby/perl/awk is parsed AND searched
+    // as text: their backticks and `${…}` templates run a command whose
+    // binary is computed (perl `\`$T deploy all\``). A body written to a file
+    // nobody runs here is text (`cat > notes.md <<EOF`).
+    if (runsStrings || inline || awk) analyzeScript(body, nested, hits);
+    if (inline || awk) rawSearch(body, hits);
   }
   // `bash < <(echo lua …)`, `source <(…)`: the substitution's OUTPUT is code.
   if (runsStrings) for (const sub of seg.subs) rawSearch(sub, hits);
@@ -915,11 +1196,31 @@ function analyzeSegment(seg, ctx, pipedIntoRunner, hits) {
     if (!inv) continue;
     // `… | xargs lua`: the verb arrives on stdin and cannot be classified.
     const fedByXargs = names.slice(0, j).includes('xargs');
-    // A computed binary with a computed verb (`$(printf lua) $(printf deploy)`)
-    // is blocked when the command mentions lua anywhere (token-based, see
-    // mentionsLuaToken: a `/lua/` folder in a `cd` path does not count).
-    let match = matchArgs(inv.args, !inv.dynamicHead || ctx.mentionsLua);
+    // A computed program with a computed verb (`$(printf lua) $(printf deploy)`, `L=lua; $L $V`) is blocked when
+    // THAT program may be lua (mayRunLua, 1.20.1); `$OPEN "$URL"` beside a PR body saying "Lua" is not. A literal
+    // verb after any computed program (`$T deploy all`) is always a hit, as before.
+    const headMayBeLua = inv.dynamicHead && mayRunLua(words[j], ctx);
+    const values = headMayBeLua ? literalValuesOf(words[j], ctx) : null;
+    if (values) {
+      // `C="lua deploy all"; $C`, `eval "$C"`: read the program as each literal value it is given here.
+      const rest = words.slice(j + 1).map((w) => w.text).join(' ');
+      for (const v of values) analyzeScript(`${v} ${rest}`, nested, hits);
+    }
+    let match = matchArgs(inv.args, !inv.dynamicHead || headMayBeLua);
     if (!match && fedByXargs && !inv.dynamicHead) {
+      match = { label: UNRESOLVED_LABEL, slash: '/lua-deploy', dynamic: true };
+    }
+    // `C=$(build lua); eval "$C"`, `C="$(printf lua) deploy"; $C all`: a program that may be lua, run with no
+    // argument to read or expanded unquoted (the shell splits it into program AND verb), can be a whole lua
+    // command line. Fail closed unless every value was read above. `"$L" status` and `$(which lua) status` name
+    // one program and are judged by their literal arguments.
+    const headSubs = words[j].subs ?? [];
+    const splitVar = [...words[j].text.matchAll(VAR_REF)].some(([, name]) => {
+      const vals = ctx.bindings?.values.get(name);
+      return !vals || vals.some((v) => !v.literal && !v.lookup);
+    });
+    const splits = !words[j].quoted && (splitVar || (headSubs.length > 0 && !headSubs.every((t) => PATH_LOOKUP.test(t))));
+    if (!match && headMayBeLua && !values && (inv.args.length === 0 || splits)) {
       match = { label: UNRESOLVED_LABEL, slash: '/lua-deploy', dynamic: true };
     }
     if (!match) continue;
@@ -948,24 +1249,36 @@ function analyzeScript(src, ctx, hits) {
 
   // A pipeline stage that runs its stdin as code (`… | sh`, `… | xargs sh -c`)
   // turns every string in the pipeline into code.
-  const runnerPipes = new Set(
-    segments
-      .filter((s) => s.pipeline && commandPositions(s.words).some((j) => SCRIPT_RUNNERS.has(nameOf(s.words[j]))))
-      .map((s) => s.pipeId),
-  );
+  const runnerPipes = new Set(segments.filter((s) => s.pipeline && readsStdinAsCode(s.words)).map((s) => s.pipeId));
   for (const seg of segments) analyzeSegment(seg, ctx, runnerPipes.has(seg.pipeId), hits);
   for (const sub of subs) analyzeScript(sub, { ...ctx, nested: true, depth: ctx.depth + 1 }, hits);
 
   // `cat > x.sh <<EOF … EOF; sh x.sh` — a script written here and run here.
-  const runsAFile = segments.some((s) => {
+  // `cat > x.sh <<EOF … EOF; sh x.sh` — a script written here and run here. Only a body written to the file that
+  // runs (same last path segment, or a target the shell computes) counts: `cat > docs/RELEASE.md <<EOF` next to
+  // `$R/check.sh` is a document (1.20.1).
+  const runFiles = [];
+  for (const s of segments) {
     const first = commandPositions(s.words)[0];
-    if (first === undefined) return false;
+    if (first === undefined) continue;
     const w = s.words[first];
-    if (/\.(?:sh|bash|zsh|command)$/i.test(w.text)) return true;
-    return FILE_RUNNERS.has(nameOf(w)) && s.words.slice(first + 1).some((a) => !isFlag(a));
-  });
-  if (runsAFile) {
-    for (const s of segments) for (const body of [...s.heredocs, ...s.herestrings]) rawSearch(body, hits);
+    if (/\.(?:sh|bash|zsh|command)$/i.test(w.text)) runFiles.push(w);
+    if (FILE_RUNNERS.has(nameOf(w))) {
+      const operand = s.words.slice(first + 1).find((a) => !isFlag(a));
+      if (operand) runFiles.push(operand);
+    }
+  }
+  if (runFiles.length) {
+    const lastSegment = (t) => t.split(/[\\/]/).pop() ?? '';
+    const runNames = new Set(runFiles.map((w) => lastSegment(w.text)));
+    const anyComputedRun = runFiles.some((w) => w.dynamic && literalBasename(w.text) === null);
+    for (const s of segments) {
+      const bodies = [...s.heredocs, ...s.herestrings];
+      if (!bodies.length) continue;
+      const targets = [...s.redirects, ...(nameOf(s.words[0] ?? { text: '', dynamic: true }) === 'tee' ? s.words.slice(1).filter((a) => !isFlag(a)) : [])];
+      const written = anyComputedRun || targets.some((t) => (t.dynamic && literalBasename(t.text) === null) || runNames.has(lastSegment(t.text)));
+      if (written) for (const body of bodies) rawSearch(body, hits);
+    }
   }
 }
 
@@ -1012,7 +1325,23 @@ export function classifyProductionCommandDetailed(command, { analyze = analyzeSc
   deadline = performance.now() + budgetMs;
   ticks = 0;
   try {
-    analyze(command, { nested: false, depth: 0, mentionsLua }, hits);
+    const bindings = { tainted: new Set(), values: new Map(), filled: new Set(), tooDeep: false };
+    {
+      // Always read (1.20.1): `X=l; Y=ua; $X$Y $V all` names lua only once it is expanded.
+      collectBindings(command, 0, bindings);
+      // `L=lua; M=$L; $M $V`: a variable bound to a tainted one is tainted too (to a fixpoint).
+      for (let changed = true, rounds = 0; changed && rounds < 16; rounds++) {
+        changed = false;
+        for (const [name, values] of bindings.values) {
+          if (bindings.tainted.has(name)) continue;
+          if (values.some((v) => [...v.text.matchAll(VAR_REF)].some(([, ref]) => bindings.tainted.has(ref)))) {
+            bindings.tainted.add(name);
+            changed = true;
+          }
+        }
+      }
+    }
+    analyze(command, { nested: false, depth: 0, mentionsLua, bindings }, hits);
   } catch {
     // A classifier bug or a spent budget must not wave a lua command through.
     return mentionsLua ? unclassifiable() : null;
@@ -1020,7 +1349,10 @@ export function classifyProductionCommandDetailed(command, { analyze = analyzeSc
     deadline = Infinity;
   }
   if (hits.length === 0) return null;
-  const { label, slash, prefixed } = hits.find((h) => !h.prefixed) ?? hits[0];
+  // The block names the most specific verb it found: `echo $($(lua deploy all))` is `lua deploy`, although the
+  // computed program around it is checked (and hit) first.
+  const { label, slash, prefixed } =
+    hits.find((h) => !h.prefixed && h.label !== UNRESOLVED_LABEL) ?? hits.find((h) => !h.prefixed) ?? hits[0];
   const unconfirmed = hits.filter((h) => !h.prefixed);
   const unresolvedHead =
     !mentionsLua && unconfirmed.length > 0 && unconfirmed.every((h) => h.unresolvedHead === true);
@@ -1085,6 +1417,33 @@ export function findLuaInvocations(command, { budgetMs = TIME_BUDGET_MS } = {}) 
     // Advisory only: keep what was found.
   } finally {
     deadline = Infinity;
+  }
+  return out;
+}
+
+/**
+ * For EVERY top-level simple command that runs lua: the directory the last literal `cd` before it moved to (1.20.1,
+ * fleet sessions: `cd /workspace/fleet/a && lua compile; cd ../b && lua compile` → `['/workspace/fleet/a', '../b']`).
+ * `undefined` = no `cd` before it; `null` = the last `cd` is computed or `-`. A lua command inside a group, a
+ * substitution or a string another shell runs is listed with the directory of the top-level command around it.
+ *
+ * @param {unknown} command
+ * @returns {Array<string|null|undefined>}
+ */
+export function luaInvocationDirs(command) {
+  if (typeof command !== 'string' || command.length > MAX_COMMAND_LENGTH) return [null];
+  const out = [];
+  let dir;
+  for (const seg of lex(command).segments) {
+    const words = seg.words;
+    if (nameOf(words[0] ?? { text: '', dynamic: true }) === 'cd') {
+      const args = words.slice(1).filter((w) => w.text !== '--');
+      dir = args.length === 0 ? '~' : args.length === 1 && !args[0].dynamic && args[0].text !== '-' ? args[0].text : null;
+    }
+    const runsLua = commandPositions(words).some((j) => invocationAt(words, j, j > 0)) ||
+      (findLuaInvocations(words.map((w) => w.text).join(' ')).length > 0 && words.some((w) => /[\s;&|`$()]/.test(w.text))) ||
+      seg.subs.some((t) => findLuaInvocations(t).length > 0);
+    if (runsLua) out.push(dir);
   }
   return out;
 }
