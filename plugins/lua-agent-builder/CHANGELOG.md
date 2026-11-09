@@ -2,6 +2,16 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.19.5 — 2026-11-09
+
+### Fixed
+
+- **A job's wall is 300 s unless it sets `timeout`** (`lib/knowledge/primitives.md` §6, `agents/lua-architect.md`, `agents/lua-skill-builder.md`, `lib/knowledge/decision-trees.md`). The knowledge said "one unit under ~10 min → `LuaJob`", and a builder planned 10-minute steps, then hit a 300 s wall: a job with no `timeout` is stored with 300 (`LUA_JOB_DEFAULT_TIMEOUT_SECONDS`) and the heavy-plane runner kills it at `min(timeout, 600 s)`. The rule is now to always set `timeout` (default 300 s, max 600 s) and to plan a run for about half of it, with file and line evidence.
+
+### New
+
+- **Long work in steps** (`lib/knowledge/workflows.md` §8): for a sweep, backfill or crawl longer than one job run, the default is one scheduled workflow with `foreach`, one step per chunk (stored progress, per-chunk retry, `ctx.once`, up to 600 s per chunk, a run budget of days), never a cursor job that resumes from `Data` every N minutes. It points at the `lua init` template's `examples/workflows/chunked-sweep.ts` and the Job tier for one indivisible unit over 600 s. `lua-architect` flags a job with no `timeout` and a cursor job as under-engineering.
+
 ## 1.19.4 — 2026-11-09
 
 ### New
