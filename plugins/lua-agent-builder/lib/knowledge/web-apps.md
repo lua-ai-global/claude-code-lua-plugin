@@ -1,4 +1,4 @@
-# Web apps — pages and typed routes on an agent (lua-cli 3.42.0+ · read at 3.45.0; §7 deploy at 3.49.0; §7a preview at 3.51.0; §4 look and theme at 3.55.0; §3 App Viewers at 3.65.0)
+# Web apps — pages and typed routes on an agent (lua-cli 3.42.0+ · read at 3.45.0; §7 deploy at 3.49.0; §7a preview at 3.51.0; §4 look and theme at 3.55.0; §4a live pages from app-client 0.1.2; §3 App Viewers at 3.65.0)
 
 Read from lua-cli `src/types/web-app.ts`, `src/commands/apps.ts`, `src/commands/test.ts` (`testWebApp`), `src/commands/push.ts`, `src/primitives/web-app.handler.ts`, `src/utils/web-app-build.ts`, `src/utils/web-app-route.ts` and `template-web-app/` at **3.45.0** (npm `latest` is 3.46.0 on 2026-10-06 — not re-read); the wire contract and limits from `@lua/shared-types` `web-route-contract.ts`; the page policy from lua-core `src/apps-gateway/web-app-html.ts`; the snapshot rule from lua-agents `agent-version.service.ts`. Product docs: docs.heylua.ai `/concepts/apps`, `/build/apps/quickstart`, `/build/apps/routes-and-pages`, `/reference/cli/apps`. Below lua-cli **3.42.0** `webapp` is not a push/test type and `lua apps` does not exist — `/lua-update` first.
 
@@ -121,6 +121,65 @@ export default defineWebApp({
 - `vite.config.ts`: keep `react()` and `tailwindcss()`. `lua push webapp` overrides `base: '/'`, `build.outDir`, `assetsDir: 'assets'` and the CSP nonce — don't fight them (no custom `base`, no assets outside `assets/`).
 - **Check after every page change**: `npm --prefix src/apps/<name>/web run typecheck`, then `npm --prefix src/apps/<name>/web run build`. That is the same Vite build the push runs; it catches type errors and missing imports. Visual check: the **user** runs `lua apps dev <name>` in their own terminal (§6).
 
+### 4a. Keep pages live — re-read while the page is open
+
+Nothing pushes a `Data` change to an open page: `@lua-ai-global/app-client` (0.1.2) has no subscription or polling helper, and `lua.chat.onTurnEnd` fires only for turns **this page** sent, never for a job, a workflow or another agent writing the rows. A page that loads once shows the state at load time for as long as it stays open (a production report: an agent shown at "part 2 of 8" for 30 minutes while it was at part 6). So any page that shows status, progress, queues or counts re-reads its routes:
+
+- every **15 s while `document.visibilityState === 'visible'`**; nothing while the tab is hidden;
+- **at once** when the page becomes visible again, and after each agent-pane turn (`lua.chat.onTurnEnd`);
+- with **backoff** after `CONCURRENCY_LIMIT` (429) or a network error (double the wait, at most 2 minutes), back to 15 s after a success;
+- keeping the **last data on screen** during a re-read (no skeleton flash), and showing when it last updated (**"Updated 20 s ago"**; past the staleness threshold, a banner says it is the last known state).
+
+Each re-read is one route call (the route wall clock and concurrency limits of §8 apply), so poll the **one** route that feeds the view, not one per card, and keep it a snapshot read (no third-party call in the route). One hook in `web/src/useLive.ts` covers it:
+
+```ts
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { lua, LuaApiError } from '@lua-ai-global/app-client';
+
+export function useLive<T>(path: string, everyMs = 15_000) {
+  const [data, setData] = useState<T | null>(null);
+  const [error, setError] = useState<LuaApiError | Error | null>(null);
+  const [at, setAt] = useState<number | null>(null);
+  const wait = useRef(everyMs);
+  const load = useCallback(async () => {
+    try {
+      setData(await lua.api<T>('GET', path));
+      setAt(Date.now());
+      setError(null);
+      wait.current = everyMs;
+    } catch (e) {
+      setError(e as Error);
+      wait.current = Math.min(wait.current * 2, 120_000); // CONCURRENCY_LIMIT / 429 / offline: back off
+    }
+  }, [path, everyMs]);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let gen = 0; // one polling loop only: a restart bumps gen, and an older tick never re-arms
+    const tick = async (mine: number) => {
+      if (document.visibilityState === 'visible') await load();
+      if (mine === gen) timer = setTimeout(() => void tick(mine), wait.current);
+    };
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      clearTimeout(timer);
+      void tick(++gen);
+    };
+    void tick(gen);
+    document.addEventListener('visibilitychange', onVisible);
+    const off = lua.chat.onTurnEnd(() => void load());
+    return () => {
+      gen++;
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      off();
+    };
+  }, [load]);
+  return { data, error, at, reload: load };
+}
+```
+
+After a page action (approve, assign) call `reload()` instead of waiting for the next tick. Show `at` as relative time and `error` next to the data (the last data stays), never as an empty page.
+
 ## 5. Testing routes — `lua test webapp`
 
 ```
@@ -192,4 +251,5 @@ Wall clock 30 s by default (60 s cap) → `WALL_TIMEOUT` · request body **1 MB*
 | `Apps.viewers` throws `app_viewers_unavailable` / `viewer_unavailable` / `test_session_write_refused` | offline (`lua test`, `lua apps dev`); called outside a `POST`/`PUT`/`PATCH`/`DELETE` route (`remove` alone also works in a job, webhook or trigger); or run in a preview (§7a), which never adds or removes anyone | test App mode after a deploy, not in a preview; add only from a write route |
 | `APP_MODE_OFF` / `APP_VIEWERS_NEED_FULL_ACCESS` / `APP_VIEWERS_CAP_REACHED` | the live version does not ask `viewers.mode: 'app'` or App access turned it off; the caller is not a full-access person; the app has as many App Viewers as the workspace allows | deploy the version with `mode: 'app'` / ask an admin; let only full-access people reach the add route; an admin raises the cap in App access |
 | An App Viewer sees no Chat button, or the pane answers 403 | the live version does not ask `viewers.chat`, `agentPane: false`, or App access turned chat off | ask `chat: true` and deploy; an editor or admin turns chat on in App access |
+| The page shows old status or progress until it is reloaded | it read its routes once; nothing pushes `Data` changes to a page | re-read while visible, on return and after a pane turn, with backoff and "Updated N s ago" (§4a) |
 | `Set-Cookie` ignored, session lost between requests | cookies are dropped both ways | keep state in `Data`, identity in `auth` |
