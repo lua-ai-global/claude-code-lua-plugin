@@ -306,7 +306,7 @@ export const chunkedSweep = createWorkflow({
   .commit();
 ```
 
-- What you get: each finished chunk's output is stored by the engine, so finished chunks never run again; a chunk that throws is retried alone per its `retry`; `once` keeps the write exactly-once across retries (dedupe across runs needs your own business key); one run may take hours (default budget 7 days). A worker-tier step with no `timeoutSeconds` runs to the 600 s cap (lua-core `workflow-step-site.service.ts` `wallMs`), but set it.
+- What you get: each finished chunk's output is stored by the engine, so finished chunks never run again; a chunk that throws is retried alone per its `retry`; `once` keeps the write exactly-once across retries (dedupe across runs needs your own business key); one run may take hours (default budget 7 days). Set `timeoutSeconds: 600` on the chunk step explicitly (the worker-tier maximum).
 - One indivisible unit over 600 s → a `tier:'job'` step (≤ 14 400 s, checkpointed segments; §4). The org admin must enable the Job tier (`job-tier-not-enabled`).
 - Full file: the `lua init` template's `examples/workflows/chunked-sweep.ts` (⏳ lua-cli after 3.67.0; compiled and run offline in lua-cli CI). Offline: `lua test workflow chunked-sweep --input '{"region":"KE","chunks":3}'`; then push, deploy (§8 step 5) and `lua workflows activate chunked-sweep`.
 
