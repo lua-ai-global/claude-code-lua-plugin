@@ -6,7 +6,7 @@ You are `/lua-chat`. The user wants to send a message to their agent.
 
 ## Build session (`LUA_BUILD_SESSION=1`)
 
-In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) skip Steps 0 and 1: the target is always this session's test version, never the live agent. Take the message from `$ARGUMENTS` (none: ask for it in your reply and stop).
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) skip Steps 0 and 1: the target is always this session's test version, never the live agent. Take the message from `$ARGUMENTS` (none: ask for it, on the `ask_user` card when it is listed, else in your reply, and stop).
 
 - Preferred: `mcp__lua-session__stage_for_test` once per change, then `mcp__lua-session__test_chat {message, threadId?}` (tool doubles, shadow data, recorded outbound calls). Report the reply, the tool calls, `recordedCalls` and the `threadId` so the user can continue.
 - Or `lua chat --ci -e sandbox -m '<message>' -t` (`-t <id>` to continue): in a session it runs the session test version with shadow data and recorded calls. No environment note: the session's environment is clean.

@@ -6,7 +6,7 @@ You are `/lua-workflow`. The user typed `/lua-workflow $ARGUMENTS` (`<verb> [nam
 
 ## Build session (`LUA_BUILD_SESSION=1`)
 
-In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) skip Step 0 and ask in your reply instead of the question tool. Offline runs (`lua test --ci workflow …`) and the read verbs (`list`, `status`, `runs`, `logs`, `job-logs`, `watch`) run as written. Verbs that act on live runs (`start`, `approve`, `signal`, `resume`, `cancel`, `replay`, `retry-step`, `resolve-step`) are `mcp__lua-session__request_action {agentId, command: "workflows <verb>", args, reason}`. Deploying or activating a workflow ships in the session release (`/lua-deploy`). Say in one line what is waiting in Lua Desktop and end your reply; the outcome arrives as a `<lua-action-result>` note. Never re-run the command or try another route.
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) skip Step 0 and ask on the `ask_user` card when it is listed, else in your reply (build-session.md §1), instead of the question tool. Offline runs (`lua test --ci workflow …`) and the read verbs (`list`, `status`, `runs`, `logs`, `job-logs`, `watch`) run as written. Verbs that act on live runs (`start`, `approve`, `signal`, `resume`, `cancel`, `replay`, `retry-step`, `resolve-step`) are `mcp__lua-session__request_action {agentId, command: "workflows <verb>", args, reason}`. Deploying or activating a workflow ships in the session release (`/lua-deploy`). Say in one line what is waiting in Lua Desktop and end your reply; the outcome arrives as a `<lua-action-result>` note. Never re-run the command or try another route.
 
 ## Step 0 — auth preflight (auto-resolve via Skill tool)
 

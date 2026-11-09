@@ -6,7 +6,7 @@ You are `/lua-env`. The user typed `/lua-env $ARGUMENTS` (`[sandbox|staging|prod
 
 ## Build session (`LUA_BUILD_SESSION=1`)
 
-In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md` §3) skip Steps 0 and 1 and never ask for a value. Parse `$ARGUMENTS`; ask in your reply only for what is missing (environment, action, key) and stop. Then:
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md` §3) skip Steps 0 and 1 and never ask for a value. Parse `$ARGUMENTS`; ask only for what is missing (environment, action, key), on the `ask_user` card when it is listed, else in your reply, and stop. Then:
 
 - `list` → `Bash(lua env <env> --ci --list)` runs directly; report key names only.
 - `set` of a secret-shaped key (`…_KEY`, `…_TOKEN`, `…_SECRET`, `PASSWORD`, credentials) or of any value the user has not given you as plain config → `mcp__lua-session__request_secret {name: "<KEY>", purpose: "<why the agent needs it>", env: "<env>"}`. The user types the value in Lua Desktop and it never reaches you; the session guard blocks a secret value on a command line.

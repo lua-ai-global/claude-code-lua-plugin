@@ -2,6 +2,14 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.20.3 — 2026-11-09
+
+### Fixed
+
+- **Build-session questions go on the `ask_user` card, with multiple choice** (`lib/knowledge/build-session.md` §1 and §2, the session brief in `lib/session-mode.mjs`, and the Build session section of 14 slash commands). Builder report from Lua Studio: "I could not select multiple options while the builder was asking me questions", and "in the chat it tells me two options, but the actual buttons show something different".
+  - **Cause:** the knowledge said the session has no question tool and to write questions in the reply. The platform's `ask_user` session tool (on in production) draws its own card, so the builder wrote the options twice, in different words, and the chat client showed buttons from the prose.
+  - **Now:** when `mcp__lua-session__ask_user` is listed, ask there with `items` (`single`, or `multi` when more than one answer can apply; 2–6 options; `recommended`, `allowOther`), and never restate the questions or their options in the reply. Without it, ask in the reply as before.
+
 ## 1.20.2 — 2026-11-09
 
 ### Fixed

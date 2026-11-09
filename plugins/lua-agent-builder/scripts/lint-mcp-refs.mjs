@@ -86,9 +86,9 @@ const REGISTRY = {
 // are absent from .mcp.json by design and always appear under their BARE name (mcp__<server>__<tool>), never the
 // plugin-prefixed one. `lua-session` is the live-build-session server (lua-core-services shared-types
 // BUILD_SESSION_MCP_TOOL_NAMES, mirrored in lib/session-mode.mjs).
-const { SESSION_MCP_SERVER, SESSION_TOOL_NAMES } = await import('../lib/session-mode.mjs');
+const { SESSION_MCP_SERVER, SESSION_TOOL_NAMES, SESSION_FLAGGED_TOOL_NAMES } = await import('../lib/session-mode.mjs');
 const EXTERNAL_REGISTRY = {
-  [SESSION_MCP_SERVER]: new Set(SESSION_TOOL_NAMES),
+  [SESSION_MCP_SERVER]: new Set([...SESSION_TOOL_NAMES, ...SESSION_FLAGGED_TOOL_NAMES]),
 };
 
 // Tool-name validity (see the header): raw names ≤ 64, composed names ≤ COMPOSED_MAX.
