@@ -33,7 +33,7 @@ Package the finished agent for other orgs? → a marketplace **agent template** 
 4. Triggered by time?                                             → LuaJob (cron/interval/once); "remind this user in 1 h" → dynamic Jobs.create from a tool
 5. Several steps, approvals, fan-out, waiting on humans/signals, or > 10 minutes of work?   → createWorkflow
 6. Uniform transform of every message / reply?                    → PreProcessor / PostProcessor
-7. Composing with another agent?                                  → Agents.invoke (full turn) — or a workflow agentStep when it is one step of many
+7. Composing with another agent?                                  → hand it RECORDS: Data.shared outbox + ack (no model in the path; primitives.md, Hand-offs) · ask it to take a TURN: Agents.invoke (full turn) — or a workflow agentStep when it is one step of many
 8. One-shot LLM call inside code?                                 → AI.generate
 9. Proactive outbound (WhatsApp template, email, SMS, Teams)?     → Channels.* (or User.get(id).send for "their last chat channel" — it never reaches email)
 10. Phone call out?                                               → Voice.call
@@ -91,7 +91,7 @@ Not a web app: a public site for anonymous visitors (every route needs a signed-
 ```
 Tied to a specific user?                      → User.get(id) → .update({...}) / .patch({ set, unset })  (cross-channel profile)
 Agent-wide config, lookups, cache, vector search? → Data.create/get/search — declare `index` on the fields you filter (from a `lua test` run: the deployed runtime drops `index`, primitives.md §12)
-Shared by several agents of one org?          → Data.shared(name) — an org admin creates it and names readers/writers (POST /admin/orgs/:orgId/shared-collections); same methods as Data; offline every call rejects shared_data_unavailable_offline (primitives.md, Data.shared)
+Shared by several agents of one org?          → Data.shared(name) — an org admin creates it and names readers/writers (POST /admin/orgs/:orgId/shared-collections, or ⏳ `lua shared-data create`, an approval card in a build session); also the hand-off channel between agents (outbox + ack); same methods as Data; offline every call rejects shared_data_unavailable_offline (primitives.md, Data.shared)
 Cart / order / catalog and no external shop?  → Products / Baskets / Orders
 Binary (image, PDF, audio)?                   → CDN.upload → store the fileId in Data/User
 Run-scoped state inside a workflow?           → ctx.state.get/set (≤ 64 KB) and step outputs; large outputs → ctx.artefacts
