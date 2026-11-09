@@ -4,7 +4,7 @@ import { describe, test, expect } from '@jest/globals';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SESSION_TOOL_NAMES } from '../../lib/session-mode.mjs';
+import { SESSION_FLAGGED_TOOL_NAMES, SESSION_TOOL_NAMES } from '../../lib/session-mode.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const HEAD = '## Build session (`LUA_BUILD_SESSION=1`)';
@@ -52,14 +52,24 @@ describe('session tool references', () => {
   test('every mcp__lua-session__ reference names a real lua-session tool', () => {
     for (const file of files) {
       for (const [, tool] of read(file).matchAll(/mcp__lua-session__([A-Za-z_-]+)/g)) {
-        expect([file, SESSION_TOOL_NAMES.includes(tool)]).toEqual([file, true]);
+        expect([file, [...SESSION_TOOL_NAMES, ...SESSION_FLAGGED_TOOL_NAMES].includes(tool)]).toEqual([file, true]);
       }
     }
   });
 
   test('the knowledge file documents every lua-session tool', () => {
     const kb = read('lib/knowledge/build-session.md');
-    for (const tool of SESSION_TOOL_NAMES) expect(kb).toContain(`mcp__lua-session__${tool}`);
+    for (const tool of [...SESSION_TOOL_NAMES, ...SESSION_FLAGGED_TOOL_NAMES]) expect(kb).toContain(`mcp__lua-session__${tool}`);
+  });
+
+  // Lua Studio report (9 Nov 2026): no multi-select, and the chat's options differed from the card's buttons. The card
+  // (ask_user) is the one place the questions and their options live; the reply never restates them.
+  test('questions go on the ask_user card (multi when several apply), never restated in the reply', () => {
+    const kb = read('lib/knowledge/build-session.md');
+    expect(kb).toMatch(/When the session lists `mcp__lua-session__ask_user` \(§2\), ask there/);
+    expect(kb).toMatch(/`multi` when more than one answer can apply/);
+    expect(kb).toMatch(/never restate the questions or their options in your reply/);
+    expect(kb).not.toMatch(/The interactive question tool is not available in a session\. Where a slash command would ask its single question, write the questions in your reply/);
   });
 
   test('a session path never offers production chat or a deploy verb as the way to ship', () => {

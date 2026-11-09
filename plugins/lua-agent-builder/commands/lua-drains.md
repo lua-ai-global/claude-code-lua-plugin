@@ -8,7 +8,7 @@ A drain is an **organization** resource, so this slash works outside a project d
 
 ## Build session (`LUA_BUILD_SESSION=1`)
 
-In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md` §3) skip Steps 0 and 1's question (ask in your reply what is missing). `list`, `status`, `deliveries` and `test` run as written. Every mutation (`create`, `update`, `delete`, `verify`, `pause`, `resume`, `rotate-secret`) is `mcp__lua-session__request_action {agentId, command: "drains <verb>", args: [<the flags Step 2 would pass>], reason}`. A header value is never an argument: name it with `mcp__lua-session__request_secret`. The signing secret is shown to the user in Lua Desktop, never to you. Say in one line what is waiting in Lua Desktop and end your reply; the outcome arrives as a `<lua-action-result>` note. Never re-run the command or try another route.
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md` §3) skip Steps 0 and 1's question (ask what is missing, on the `ask_user` card when it is listed, else in your reply). `list`, `status`, `deliveries` and `test` run as written. Every mutation (`create`, `update`, `delete`, `verify`, `pause`, `resume`, `rotate-secret`) is `mcp__lua-session__request_action {agentId, command: "drains <verb>", args: [<the flags Step 2 would pass>], reason}`. A header value is never an argument: name it with `mcp__lua-session__request_secret`. The signing secret is shown to the user in Lua Desktop, never to you. Say in one line what is waiting in Lua Desktop and end your reply; the outcome arrives as a `<lua-action-result>` note. Never re-run the command or try another route.
 
 ## Step 0 — auth preflight (auto-resolve via Skill tool)
 
