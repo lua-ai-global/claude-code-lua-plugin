@@ -237,7 +237,7 @@ const job = new LuaJob({
   name: 'daily-digest',                 // required, non-empty
   description: 'Send the morning digest',
   schedule: { type: 'cron', expression: '0 9 * * *', timezone: 'Europe/London' },
-  timeout?: number,                     // seconds; integer 1..600; default 300 — a non-integer throws TypeError
+  timeout?: number,                     // seconds; integer 1..600; DEFAULT 300 — set it; omitting it is NOT the 600 s max
   retry?: { maxAttempts: number; backoffSeconds?: number },
   metadata?: Record<string, any>,
   execute: async (job: JobInstance) => { /* job.metadata, await job.user() */ },   // ONE argument
@@ -245,6 +245,8 @@ const job = new LuaJob({
 export default job;
 ```
 
+- **The wall is `timeout`, and it defaults to 300 s, not 600.** "10 minutes" is the maximum one run can ask for, not what it gets: a job that sets no `timeout` is stored with 300 (lua-core-services `shared-types/src/job-timeout.constants.ts` `LUA_JOB_DEFAULT_TIMEOUT_SECONDS`; lua-api `developer.job.service.ts` ~751/~809), and the heavy-plane runner sizes the kill from it (`lua-sandbox-runner/src/worker/job-consumer.ts` `wallMs = min(timeout, LUA_SANDBOX_MAX_EXECUTION_MS)`, 600 000 on the heavy Deployment in lua-iac). The child is killed with `wall timeout after 300000ms` (`executor-pool.ts` ~332). Live: a builder split a sweep into a 10-step job sized for the "10-minute limit"; a step hit a 300-second wall timeout and succeeded on the next run, which is the 300 s default at work. Rules: **always set `timeout` explicitly** (`timeout: 600` when one run may need up to ten minutes) and size one run to about half of it. ⏳ From the lua-cli release after 3.67.0, `lua compile` refuses a `timeout` it cannot read statically (which used to deploy silently as 300 s) and one outside 1..600, and the wall error names the budget and the fix.
+- **Work longer than one run → a scheduled workflow with `foreach`, not a cursor job.** Do not build "a job every 20 minutes that saves a cursor in `Data`": the workflow engine already keeps per-chunk progress, retries a failed chunk alone, runs `ctx.once` exactly-once writes, gives each chunk step up to 600 s (`timeoutSeconds`) and lets one run last up to its budget (7 days by default). Recipe: workflows.md §8 "Long work in steps"; the `lua init` template's `examples/workflows/chunked-sweep.ts` (⏳ lua-cli after 3.67.0). One indivisible unit over 600 s → a Job-tier step (`tier:'job'`, ≤ 14 400 s; the org admin must enable the Job tier).
 - Jobs run agent-wide. For per-user work iterate users inside `execute`; `job.user()` resolves only for dynamic jobs created from a user's tool (throws `User API not initialized` otherwise).
 - **Retries** (`retry: { maxAttempts, backoffSeconds? }`; lua-core `src/services/job.service.ts`). Production and staging run code jobs through the **queued (heavy-jobs) path**: lua-iac pins `LUA_JOBS_INTAKE_MODE = "enqueue"` in both environments (`services/lua-core/{prod,staging}/k8s/config-map.tf`) and `run()` routes to `enqueueJob` whenever that queue is wired (~302-323). The algorithm is flat: a **fixed** wait of `backoffSeconds` (default **60**, no jitter) before every retry (`backoff: { type: 'fixed', delay: backoffSeconds * 1000 }` ~372/~409; `scheduleHeavyRetry` ~572-607), and `effectiveMaxAttempts = min(maxAttempts, 10)` — 10 is a platform ceiling (`PLATFORM_MAX_HEAVY_ATTEMPTS` ~132), your `maxAttempts` still bounds it, and a job with **no finite `maxAttempts` gets zero app-level retries** (`getHeavyRetryEligibility` ~512-531: `!Number.isFinite(retryConfig.maxAttempts)` ⇒ ineligible). Every deployed run receives `job.execution = { executionId, attempt, occurrenceId, … }` from the runner (`lua-sandbox-runner` `executor-entry.ts` ~231-239; `attempt` is 1 on a fresh run) — read it as `job.execution?.attempt ?? 1` so the same code runs under `lua test`, which never sets it. The exponential-backoff-with-jitter path in the same file (base × 2^n, +≤ 25 %, 900 s cap, ~1363-1374) belongs to the legacy in-process executor, which production reaches only for the platform's own `agent`-kind jobs (scheduled agent turns — `enqueueJob` ~349 sends those to `processJob`, and `DEFAULT_AGENT_JOB_RETRY` applies to them alone); your `LuaJob` / `Jobs.create` code never sees it. Practical rule: always set a finite `maxAttempts` (otherwise you get one attempt), expect each retry after exactly `backoffSeconds`, and make `execute` idempotent.
 - Versioned: `lua push job --name daily-digest`; live via `lua deploy job --name daily-digest --set-version latest --force`; `lua jobs activate|deactivate|trigger|history -i <name>`.
@@ -514,7 +516,7 @@ Every production-affecting verb above is gated by this plugin: bare forms are de
 ## 14. Gotchas the agents must not get wrong
 
 1. `LuaSkill`, `LuaJob`, `LuaWebhook`, `LuaTrigger`, `PreProcessor`, `PostProcessor`, `LuaMCPServer`, `LuaVoice` throw on an empty `name`. `LuaAgent` does not validate `name`/`persona` strings (the template ships them empty and `lua init` fills them).
-2. `JobSchedule` keys are `expression` / `executeAt` / `seconds`. `LuaJob.timeout` is an integer 1..600.
+2. `JobSchedule` keys are `expression` / `executeAt` / `seconds`. `LuaJob.timeout` is an integer 1..600 seconds, default **300** (not 600).
 3. `Jobs.create` serialises `execute` — no closures; `activate` defaults true.
 4. `Data.get` returns `{ data, pagination }`; `Data.search` returns `DataEntryInstance[]`.
 5. `AI.generate(a, b)` — `a` is the **system** prompt when `b` is present.
@@ -568,6 +570,7 @@ Channel constraints the architect should plan for: WhatsApp → template strateg
 | "When an external system posts an event, run my code" | `LuaWebhook` |
 | "When an external system posts an event, wake the agent / run one tool / start a workflow" | `defineTrigger` |
 | "At time T / every N, do Z" | `LuaJob` (cron / interval / once) |
+| "Every N, do Z, and Z takes more than 10 minutes" | a workflow with `schedule` + `foreach`, one step per chunk (workflows.md §8 "Long work in steps") |
 | "Remind this user in 1 hour" | dynamic `Jobs.create` from a tool |
 | "Multi-step, long-running, approvals, fan-out, retries, Job-tier code" | `createWorkflow` (workflows.md) |
 | "Filter / rewrite every message before the agent" | `PreProcessor` |

@@ -271,6 +271,45 @@ Exit codes: `0` ok · `1` API refusal (4xx other than 404) · `2` usage · `3` n
 6. Run on the platform: `lua workflows start <name> --input @in.json --follow --timeout 3600` (exit `8` when it parks — the approval id is in the output; `--wait-for-human` would instead keep streaming through the park until a human acts or the timeout fires with exit `7`); inspect `lua workflows status <runId> --steps`; answer gates with `approve` / `signal` / `resume` / `retry-step` / `resolve-step` / `raise-budget` (⏳ and `clear-gate <runId> --kind model_policy` for a step parked on an unresolvable model class; a consent gate is a person's from the desktop — `status` exits 6 on it under `--strict`); `lua workflows replay <runId> --local` checks the run against your compiled artifact. For what it cost, read `status`'s `Budget:` sentence (which plan priced it and what the unit buys) and ⏳ 3.37.0+ its `Tokens:` line, the `Uncached`/`Cached`/`Output` columns and the `⚙` Job-model line (§2 "Reading what a run cost").
 7. Evidence: `lua workflows archive-runs --since 8d --out ./archive`.
 
+### Long work in steps (a sweep past one job run)
+
+One `LuaJob` run gets its `timeout`: 300 s by default, 600 s at most (primitives.md §6). For a sweep, backfill or crawl that takes longer, use ONE scheduled workflow, one `foreach` step per chunk. This is the default: do not write a cursor job that runs every N minutes and resumes from a row in `Data`.
+
+```ts
+const sweepChunk = createStep({
+  id: 'sweepChunk',
+  inputSchema: chunk,                                // foreach passes the RAW item
+  outputSchema: z.object({ chunk: z.number().int(), records: z.number().int() }),
+  timeoutSeconds: 600,                               // worker-tier max; size a chunk for ~half
+  retry: { maxAttempts: 3, backoffSeconds: 60 },     // a failed chunk retries alone
+  async execute({ inputData, once }) {
+    const rows = await fetchOneChunk(inputData);
+    await once(`sweep:${inputData.region}:${inputData.chunk}`, async () => {
+      await Data.create('sweep_results', { ...inputData, rows });
+      return { saved: rows.length };
+    });
+    return { chunk: inputData.chunk, records: rows.length };
+  },
+});
+
+export const chunkedSweep = createWorkflow({
+  name: 'chunked-sweep', inputSchema, outputSchema,
+  schedule: { type: 'cron', expression: '0 */6 * * *', timezone: 'Africa/Nairobi' },
+  scheduleInput: { region: 'KE', chunks: 10 },
+  concurrencyPolicy: 'forbid',                       // an overlapping scheduled fire is skipped
+})
+  .then(planChunks)                                  // returns { items: chunk[] }: cheap, names the slices only
+  .map({ '': fromStep('planChunks', 'items') }, { id: 'items' })
+  .foreach(sweepChunk, { concurrency: 2, maxItems: 256 })
+  .map({ results: fromStep('sweepChunk') }, { id: 'results' })
+  .then(summarise)
+  .commit();
+```
+
+- What you get: each finished chunk's output is stored by the engine, so finished chunks never run again; a chunk that throws is retried alone per its `retry`; `once` keeps the write exactly-once across retries (dedupe across runs needs your own business key); one run may take hours (default budget 7 days). A worker-tier step with no `timeoutSeconds` runs to the 600 s cap (lua-core `workflow-step-site.service.ts` `wallMs`), but set it.
+- One indivisible unit over 600 s → a `tier:'job'` step (≤ 14 400 s, checkpointed segments; §4). The org admin must enable the Job tier (`job-tier-not-enabled`).
+- Full file: the `lua init` template's `examples/workflows/chunked-sweep.ts` (⏳ lua-cli after 3.67.0; compiled and run offline in lua-cli CI). Offline: `lua test workflow chunked-sweep --input '{"region":"KE","chunks":3}'`; then push, deploy (§8 step 5) and `lua workflows activate chunked-sweep`.
+
 Chat-composed ("dynamic") workflows cannot be deployed from the CLI (`WORKFLOW_DYNAMIC`, 409) — recompose them in chat, or `lua workflows export <name>` to bring one into source.
 
 ---
