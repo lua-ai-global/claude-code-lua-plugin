@@ -2,6 +2,17 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.19.3 — 2026-11-09
+
+### New
+
+- **Keep web-app pages live** (`lib/knowledge/web-apps.md` §4a, with a Troubleshooting row). Nothing pushes a `Data` change to an open page: app-client 0.1.2 has no subscription, and `lua.chat.onTurnEnd` fires only for the page's own turns. So a page that loaded once kept showing old progress (a Lua Studio report: an agent at "part 2 of 8" for 30 minutes while it was at part 6). Pages that show status, progress, queues or counts now:
+  - re-read every 15 s while visible, at once on return and after a pane turn;
+  - back off on `CONCURRENCY_LIMIT`;
+  - keep the last data on screen during a re-read and show "Updated N s ago".
+  
+  §4a has a `useLive` hook, type-checked against `@lua-ai-global/app-client` 0.1.2. Build sessions get the same rule from lua-core's session rules.
+
 ## 1.19.2 — 2026-11-06
 
 ### New
