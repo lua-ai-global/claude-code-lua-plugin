@@ -69,6 +69,11 @@ export const SESSION_TOOL_NAMES = Object.freeze([
   'request_action',
   'request_secret',
 ]);
+/**
+ * shared-types `BUILD_SESSION_FLAGGED_MCP_TOOL_NAMES`: session tools the platform lists only when a flag turns them on
+ * (`ask_user`: LUA_BUILD_SESSION_ASK_USER, on in production since Nov 2026).
+ */
+export const SESSION_FLAGGED_TOOL_NAMES = Object.freeze(['ask_user']);
 /** The id Claude Code shows for a session tool: `mcp__lua-session__<name>`. */
 export const sessionTool = (name) => `mcp__${SESSION_MCP_SERVER}__${name}`;
 
@@ -77,6 +82,8 @@ const ACTION = sessionTool('request_action');
 const SECRET = sessionTool('request_secret');
 const STAGE = sessionTool('stage_for_test');
 const TEST_CHAT = sessionTool('test_chat');
+/** shared-types `BUILD_SESSION_FLAGGED_MCP_TOOL_NAMES`: listed only when the platform turns it on (on in production). */
+const ASK_USER = sessionTool(SESSION_FLAGGED_TOOL_NAMES[0]);
 
 /** One sentence every session-mode hook message can end with. */
 export const SESSION_NOTE =
@@ -392,6 +399,6 @@ export function sessionStartBrief(env = process.env) {
     `- Secret values are typed by the user in Desktop: ${SECRET} {name, purpose, env}. Never ask for one in chat.`,
     '- Not available: `lua auth|login|logout|configure`, `lua admin`, `lua docs` (use the lua-docs MCP), `lua update`, `lua destroy`.',
     '- There is no `lua new` command and no `lua-docs` program: a new primitive is files you write (the knowledge file below says how), and docs come from the lua-docs MCP tools. `lua test` runs Data, AI, Channels and the other platform calls on offline doubles here (always pass `--name` and `--input`), and `lua compile` fails on a type error.',
-    `- Slash commands follow their "Build session" section; the full table is ${SESSION_KNOWLEDGE_PATH}. Ask questions in your reply and stop instead of using an interactive question tool, and follow subagent playbooks inline.`,
+    `- Slash commands follow their "Build session" section; the full table is ${SESSION_KNOWLEDGE_PATH}. Ask questions on the ${ASK_USER} card when it is listed (multi when several answers apply; never restate them or their options in your reply), else in your reply, and stop; there is no interactive question tool. Follow subagent playbooks inline.`,
   ].join('\n');
 }

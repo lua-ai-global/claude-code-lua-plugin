@@ -10,7 +10,7 @@ Writing a new decision is `/lua-new decision <name>` (the builder writes the `Lu
 
 ## Build session (`LUA_BUILD_SESSION=1`)
 
-In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) skip Step 0 and ask in your reply instead of the question tool. `list`, `versions` and `run` run as written (`run` is a session test). `publish` and `delete` are `mcp__lua-session__request_action {agentId, command: "decisions <verb>", args, reason}`. Say in one line what is waiting in Lua Desktop and end your reply; the outcome arrives as a `<lua-action-result>` note. Never re-run the command or try another route.
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) skip Step 0 and ask on the `ask_user` card when it is listed, else in your reply (build-session.md §1), instead of the question tool. `list`, `versions` and `run` run as written (`run` is a session test). `publish` and `delete` are `mcp__lua-session__request_action {agentId, command: "decisions <verb>", args, reason}`. Say in one line what is waiting in Lua Desktop and end your reply; the outcome arrives as a `<lua-action-result>` note. Never re-run the command or try another route.
 
 ## Step 0 — auth preflight (auto-resolve via Skill tool)
 

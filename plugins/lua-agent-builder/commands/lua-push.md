@@ -6,7 +6,7 @@ You are `/lua-push`. The user wants to push local changes to the server.
 
 ## Build session (`LUA_BUILD_SESSION=1`)
 
-In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) this slash works as written, against the session's own tree and store, with three changes: skip any auth preflight (Lua access comes from the session; on exit 9 report it, never `/lua-auth`), ask any missing input in your reply and stop instead of using the question tool, and follow a subagent playbook (`${CLAUDE_PLUGIN_ROOT}/agents/<name>.md`) inline instead of the Agent tool. A push lands in the session, never in production; `--auto-deploy` stays blocked.
+In a live build session (`${CLAUDE_PLUGIN_ROOT}/lib/knowledge/build-session.md`) this slash works as written, against the session's own tree and store, with three changes: skip any auth preflight (Lua access comes from the session; on exit 9 report it, never `/lua-auth`), ask any missing input on the `ask_user` card when it is listed, else in your reply (build-session.md §1), and stop instead of using the question tool, and follow a subagent playbook (`${CLAUDE_PLUGIN_ROOT}/agents/<name>.md`) inline instead of the Agent tool. A push lands in the session, never in production; `--auto-deploy` stays blocked.
 
 ## Step 0 — auth preflight (auto-resolve via Skill tool)
 
