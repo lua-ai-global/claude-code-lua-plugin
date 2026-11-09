@@ -34,6 +34,8 @@ You are in a session when the SessionStart brief says `[lua] Live build session`
 
 `agentId` is `agent.agentId` in `lua.skill.yaml` (in a fleet session, the folder of the agent you mean).
 
+**Fleet sessions: one folder per command.** Every Bash call shares one working directory, and a `cd` in one call carries into the next, so a bare `lua compile` runs in whichever agent folder the shell was left in. Start every lua command with that agent's absolute folder in the same call (`cd /workspace/fleet/<agent> && lua compile --ci`), also when you send calls for several agents at once; the session guard blocks one that does not (`FLEET_FOLDER_UNPINNED`).
+
 ## 3. What each `lua` command does in a session
 
 | Class | Examples | In a session |
