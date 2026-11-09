@@ -2,6 +2,16 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.20.2 — 2026-11-09
+
+### Fixed
+
+- **Web-app routes can be tested in a live build session** (`lib/knowledge/build-session.md` §1 and §2, `lib/knowledge/web-apps.md` §5 and §9, `agents/lua-skill-builder.md`). A builder could neither run `lua test webapp` (it needed a signed-in person) nor open the preview link. The routes were checked only by type checks and builds until they were live. The knowledge now covers:
+  - `preview_webapp {name, route, body?}` calls a route of the staged version on the preview's isolated data, as the session's test user;
+  - `lua test webapp` in a session runs as the synthetic user `lua:build-session-test-user` on the offline doubles;
+  - the preview link is for the user.
+- **Routing descriptions in a session** (`build-session.md` §1 and §3, `lib/knowledge/primitives.md`). `lua push agent` stages an editable agent's `description` with the session; it goes live with the release, and a rollback restores it. On a read-only fleet member it becomes one approval card that names the agent and shows the old and new text. Both need the platform update of November 2026, marked ⏳ in the text.
+
 ## 1.20.1 — 2026-11-09
 
 ### Fixed
