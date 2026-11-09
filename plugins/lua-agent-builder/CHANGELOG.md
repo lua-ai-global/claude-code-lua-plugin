@@ -8,7 +8,8 @@ All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `
 
 - **Hand-offs between agents go through `Data.shared`, never through an `Agents.invoke` prompt** (`lib/knowledge/primitives.md` § `Data.shared` › Hand-offs, `decision-trees.md`, `build-session.md`). A builder on a real fleet passed records by asking the receiving agent's model to copy JSON into a tool. A curly apostrophe changed on the way, the receiver's hash check refused the record, and the sender had already marked it sent, so it would have been lost. The knowledge now gives one pattern:
   - two shared collections per arrow, one writer each: the outbox (`a_to_b`) and the receiver's acks (`b_acks`);
-  - a deterministic `idempotencyKey` and a `contentHash` on every record;
+  - a deterministic `idempotencyKey`, and the record as a `recordJson` string with a `contentHash` of exactly that string (`Data.update` merges objects);
+  - a sender-owned `state: 'pending' | 'delivered'` that the receiver filters on, page by page, so handled rows never starve new ones;
   - the sender's states are `written → delivered`, and never `sent` before an `accepted` ack with the same key and hash;
   - the receiver dedupes on key + hash, and each side runs a single poller (delivery is at least once);
   - how to test it, since `lua test` and Try it cannot write a shared collection.
