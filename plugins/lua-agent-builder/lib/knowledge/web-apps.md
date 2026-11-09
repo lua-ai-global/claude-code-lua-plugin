@@ -131,6 +131,7 @@ lua test --ci webapp --name <app> --route '<METHOD> /path?query' [--input '{"bod
 - `--route` is required with `--json` (exit 2). Path params are filled from the path (`'POST /tickets/42/close'` matches `POST /tickets/:id/close`). A path no route matches is exit 2 listing the routes. A 5xx is exit 1. `--json` prints `{ status, headers, body: { kind: json|text|base64, value } }`.
 - ⚠ **Live data.** `auth` is you (your user, the project's org and agent) and `Data` / `env()` are the **live** ones — a `POST`/`PUT`/`PATCH`/`DELETE` writes real rows. The plugin runs `GET` freely and asks once before any other method (`/lua-test` Step 2).
 - ⚠ No web apps in the compiled output (app not in `webApps`) prints `❌ No web apps found` and exits **0** — a false pass. Check the output, not only the exit code.
+- **In a live build session** (`build-session.md` §1; ⏳ platform update of Nov 2026): `lua test webapp` runs the route as the synthetic signed-in user `lua:build-session-test-user`, on the session's offline doubles, so no live data and no write is real. To test the **staged** version on Lua, call `mcp__lua-session__preview_webapp {name, route: '<METHOD> /path?query', body?}` after `stage_for_test`. It runs the route on the preview's isolated data, as the session test user (the owner's id, no roles or scopes), and returns `call: {route, status, headers, body}`. You cannot open the preview link: it needs the user's signed-in browser.
 
 ## 6. Running locally — `lua apps dev <name>` (the user's terminal)
 
@@ -177,6 +178,7 @@ Wall clock 30 s by default (60 s cap) → `WALL_TIMEOUT` · request body **1 MB*
 |---|---|---|
 | `No Vite installation found for …` | `npm install` never ran in `web/` | `npm --prefix src/apps/<name>/web install --ignore-scripts` |
 | A route works in `lua test webapp` but errors in a preview with `TEST_EGRESS_BLOCKED` / `test_session_tier_unsupported` / `viewer_unavailable` | previews block outside calls and refuse those runtime objects (§7a) | expected in a preview; test that path with `lua test webapp` (live) or after the deploy |
+| In a build session, `lua test webapp` says "this credential has no user", or you cannot open the preview link | an older platform (before the Nov 2026 update), or a link that needs the user's signed-in browser | call `preview_webapp {name, route}` (§5); on an older platform list the routes as not tested and ask the user to try them in the preview |
 | `lua compile` fails on JSX / React types | `src/apps/*/web` missing from `tsconfig.json` `exclude` (tsconfig had comments, `apps new` skipped it) | add `"src/apps/*/web"` to `exclude` |
 | `❌ No web apps found` / `No web app named …` | app not in `webApps` on the `LuaAgent` | import it in `src/index.ts`, add to `webApps` |
 | `defineWebApp(<n>): route key … must look like 'GET /path'` | key typo (`'get /x'`, two spaces, no leading `/`) | `'<METHOD> /<path>'` |
