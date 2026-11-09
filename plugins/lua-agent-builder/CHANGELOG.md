@@ -17,6 +17,34 @@ All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `
   The intent table now separates "hand records to another agent" (`Data.shared`) from "ask another agent to take a turn" (`Agents.invoke`). The `Agents.invoke` section says it is not a data channel.
 - **⏳ `lua shared-data list|create|update`** (the lua-cli release after 3.67.0; lua-core-services `feat/agent-record-handoff`). An org admin manages a shared collection's readers and writers from the CLI. In a Live Build Session, `create` / `update` are approval cards, limited to the session's editable agents. Build-session mode (`lib/session-commands.mjs`) mirrors the server's new rows: `shared-data.read` (`list`, direct) and the `shared-data.write` catch-all (approval), with parity cases in `test/lib/session-commands.test.mjs`. `lua shared-data list` is allowed and `create` / `update` are `ask` rules in `lib/permissions-template.json`. They change which agents read an organization dataset; they are not deploy verbs, so `confirm-deploy` does not gate them.
 
+## 1.19.5 — 2026-11-09
+
+### Fixed
+
+- **A job's wall is 300 s unless it sets `timeout`** (`lib/knowledge/primitives.md` §6, `agents/lua-architect.md`, `agents/lua-skill-builder.md`, `lib/knowledge/decision-trees.md`). The knowledge said "one unit under ~10 min → `LuaJob`", and a builder planned 10-minute steps, then hit a 300 s wall: a job with no `timeout` is stored with 300 (`LUA_JOB_DEFAULT_TIMEOUT_SECONDS`) and the heavy-plane runner kills it at `min(timeout, 600 s)`. The rule is now to always set `timeout` (default 300 s, max 600 s) and to plan a run for about half of it, with file and line evidence.
+
+### New
+
+- **Long work in steps** (`lib/knowledge/workflows.md` §8): for a sweep, backfill or crawl longer than one job run, the default is one scheduled workflow with `foreach`, one step per chunk (stored progress, per-chunk retry, `ctx.once`, up to 600 s per chunk, a run budget of days), never a cursor job that resumes from `Data` every N minutes. It points at the `lua init` template's `examples/workflows/chunked-sweep.ts` and the Job tier for one indivisible unit over 600 s. `lua-architect` flags a job with no `timeout` and a cursor job as under-engineering.
+
+## 1.19.4 — 2026-11-09
+
+### New
+
+- **Keep web-app pages live** (`lib/knowledge/web-apps.md` §4a, with a Troubleshooting row). Nothing pushes a `Data` change to an open page: app-client 0.1.2 has no subscription, and `lua.chat.onTurnEnd` fires only for the page's own turns. So a page that loaded once kept showing old progress (a Lua Studio report: an agent at "part 2 of 8" for 30 minutes while it was at part 6). Pages that show status, progress, queues or counts now:
+  - re-read every 15 s while visible, at once on return and after a pane turn;
+  - back off on `CONCURRENCY_LIMIT`;
+  - keep the last data on screen during a re-read and show "Updated N s ago".
+  
+  §4a has a `useLive` hook, type-checked against `@lua-ai-global/app-client` 0.1.2. Build sessions get the same rule from lua-core's session rules.
+
+## 1.19.3 — 2026-11-08
+
+### Fixed
+
+- **Saved browser logins in a build session** (`lib/knowledge/build-session.md` "Saved browser logins in a session", `lib/knowledge/browser.md` §7). A session no longer sends the person out of the build to chat with the agent and type "connect LinkedIn": a session cannot chat with the live agent, Try it refuses browser logins, and the link the agent sends from a chat has no page behind it yet. In Lua Studio the builder raises the sign-in card (a fenced `lua-browser-login` block); the person signs in there, and the job counts as done only after a signed-in read worked (the card's check, or `lua browser read <url> --login <name>`, which signs in with the approver's own login). Try it cases no longer depend on the browser or the login; those are listed as "after connect".
+- `lua browser run` is unavailable in a session (`browser.execute`, as on the server: a run belongs to the user who starts it). The `/lua-browser` row no longer lists it as an approval.
+
 ## 1.19.2 — 2026-11-06
 
 ### New

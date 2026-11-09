@@ -10,7 +10,7 @@ Quick-reference flowcharts the architect uses when mapping a user's task to prim
 What's the agent's primary job?
 ├── Answer questions / support users              → persona + 2-5 tools (+ Data for a knowledge table, or the RAG feature via `lua features enable --feature-name rag` + `lua resources`)
 ├── Take actions in external systems              → integrations (MCP auto-provisioned) + tools for derived logic + integration event subscriptions
-├── Run on a schedule with no chat                → LuaJob(s) for simple recurring work; a workflow with `schedule` when the job is multi-step
+├── Run on a schedule with no chat                → LuaJob(s) for simple recurring work that fits one run (`timeout` default 300 s, max 600 s); a workflow with `schedule` when it is multi-step or longer than one run (`foreach`, one step per chunk)
 ├── Orchestrate multi-step / long-running work    → createWorkflow (approvals, fan-out, retries, budgets, Job-tier code)
 ├── Talk on the phone                             → LuaVoice (+ the persona's `voice` variant, fast tools)
 ├── Control hardware / a local machine            → a device: self-describing client, or defineDevice + defineDeviceTrigger (devices.md §2; /lua-devices)

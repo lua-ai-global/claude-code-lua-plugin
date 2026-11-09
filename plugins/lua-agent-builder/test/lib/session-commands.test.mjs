@@ -178,6 +178,19 @@ describe('B23 command classes (shared spec parity)', () => {
   });
 });
 
+describe('the browser in a session (shared spec parity: action-routes.ts browser.execute / browser.run)', () => {
+  test('a browser run is unavailable: the run belongs to the user who starts it', () => {
+    const out = classifyLuaCommand('lua browser run Read-my-inbox --login linkedin'.split(' '));
+    expect(out).toMatchObject({ class: 'unavailable', ruleId: 'browser.execute' });
+    expect(out.note).toMatch(/--login <name>/);
+  });
+
+  test('a read, with or without a saved login, stays an approval', () => {
+    expect(classifyLuaCommand('lua browser read https://www.linkedin.com/messaging/ --login linkedin'.split(' '))).toMatchObject({ class: 'approval' });
+    expect(classifyLuaCommand('lua browser read https://example.com'.split(' '))).toMatchObject({ class: 'approval' });
+  });
+});
+
 describe('webhook keys in a session (shared spec parity)', () => {
   test.each([
     'lua webhooks protect --webhook-name orders',
