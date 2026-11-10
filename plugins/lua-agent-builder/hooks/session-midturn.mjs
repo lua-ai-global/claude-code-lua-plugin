@@ -25,8 +25,8 @@ const MAX_CONTEXT_CHARS = 200_000;
  * @returns {string|null}
  */
 export function midturnTakeUrl(env = process.env) {
-  if (!isBuildSession(env) || env?.[MIDTURN_ENV_FLAG] !== '1') return null;
-  const raw = String(env?.[MIDTURN_URL_ENV] ?? '').trim();
+  if (!isBuildSession(env) || env[MIDTURN_ENV_FLAG] !== '1') return null;
+  const raw = String(env[MIDTURN_URL_ENV] ?? '').trim();
   try {
     const u = new URL(raw);
     if (u.protocol !== 'http:' || u.hostname !== '127.0.0.1' || u.pathname !== '/midturn/take') return null;

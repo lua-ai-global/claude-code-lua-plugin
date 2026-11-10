@@ -22,6 +22,7 @@ describe('session-midturn: when it is on', () => {
       { ...ON, LUA_BS_MIDTURN: 'true' },
       { ...ON, LUA_BS_MIDTURN: '0' },
       { ...ON, LUA_BS_MIDTURN_URL: '' },
+      { LUA_BUILD_SESSION: '1', LUA_BS_MIDTURN: '1' },
       { ...ON, LUA_BS_MIDTURN_URL: 'http://evil.example/midturn/take' },
       { ...ON, LUA_BS_MIDTURN_URL: 'https://127.0.0.1:4100/midturn/take' },
       { ...ON, LUA_BS_MIDTURN_URL: 'http://localhost:4100/midturn/take' },
@@ -41,6 +42,17 @@ describe('session-midturn: when it is on', () => {
     expect(await decide({ tool_use_id: 'toolu_1' }, {}, fetchFn)).toBeNull();
     expect(await decide({ tool_use_id: 'toolu_1' }, { LUA_BUILD_SESSION: '1' }, fetchFn)).toBeNull();
     expect(calls).toBe(0);
+  });
+
+  test('defaults: reads process.env (no switches here: off) and never needs a fetch', async () => {
+    const saved = { ...process.env };
+    try {
+      for (const k of ['LUA_BUILD_SESSION', 'LUA_BS_MIDTURN', 'LUA_BS_MIDTURN_URL']) delete process.env[k];
+      expect(midturnTakeUrl()).toBeNull();
+      expect(await decide({ tool_use_id: 'toolu_1' })).toBeNull();
+    } finally {
+      process.env = saved;
+    }
   });
 });
 
