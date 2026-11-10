@@ -2,6 +2,14 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.20.6 — 2026-11-10
+
+### Fixed
+
+- **The builder no longer predicts the browser sign-in limit, and knows the owner's own budget** (`lib/knowledge/browser.md` §7 and its limit table, `lib/knowledge/build-session.md` "Saved browser logins in a session", `agents/lua-debug.md`, `agents/lua-architect.md`). In Lua Studio the builder told a user "It's been well over 30 minutes since the last attempt, so the limit won't block you this time".
+  - **Cause:** browser.md gave one sign-in policy, one attempt per 30 minutes, for every sign-in. lua-core now budgets attempts by who starts them (`shared-types/src/browser-logins.types.ts`, `BROWSER_LOGIN_SIGN_IN_CLASSES`, `signInClassOf`).
+  - **Now:** the agent's own runs (`unattended`) keep the login's policy (default 1 per 30 minutes, 30-minute cooldown). The owner's own check (`interactive`: Studio's sign-in card, `lua browser read --login`) has a fixed 3 attempts in 10 minutes, a 60-second pause after a wrong password, and no pause after a code or a security check. The builder never says how long ago the last try was or that the limit won't block; it passes on the retry time the result or the card gives.
+
 ## 1.20.5 — 2026-11-09
 
 ### Fixed
