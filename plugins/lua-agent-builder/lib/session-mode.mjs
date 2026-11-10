@@ -21,6 +21,7 @@
 // SessionStart probes (auth, CLI version) and the post-deploy production ping, and adds context. With
 // LUA_BUILD_SESSION unset every hook behaves exactly as before.
 
+import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { findLuaInvocations, luaInvocationDirs, UNCLASSIFIABLE_LABEL, UNRESOLVED_LABEL } from './tokenizer.mjs';
 import { classifyLuaCommand, flagValue, isSecretKeyName } from './session-commands.mjs';
@@ -281,14 +282,15 @@ function approvalNote(argv, c) {
  * @param {unknown} command
  * @param {Record<string, string|undefined>} [env]
  * @param {string} [cwd] — the hook input's `cwd` (Claude Code's shell directory when the call was made)
+ * @param {() => string[]} [fleetFolders] — the fleet's agent folders now (test seam; read only when needed)
  * @returns {{block: true, reason: string}|{warn: string}|null}
  */
-export function sessionCommandDecision(command, env = process.env, cwd = undefined) {
+export function sessionCommandDecision(command, env = process.env, cwd = undefined, fleetFolders = fleetAgentFolders) {
   if (!isBuildSession(env)) return null;
   const blocks = [];
   const warns = [];
   const invocations = findLuaInvocations(command);
-  const folder = fleetFolderReason(command, invocations, cwd);
+  const folder = fleetFolderReason(command, invocations, cwd, fleetFolders);
   if (folder) blocks.push(folder);
   for (const { argv } of invocations) {
     if (argv.length === 0) continue; // bare `lua` prints help
@@ -308,6 +310,23 @@ export const FLEET_DIR = '/workspace/fleet';
 const inFleet = (dir) => typeof dir === 'string' && (dir === FLEET_DIR || dir.startsWith(`${FLEET_DIR}/`));
 
 /**
+ * The agent folders a fleet session holds now: one directory per agent under the fleet dir (an agent added during
+ * the session appears when its folder does). Hidden entries and files are not agents. Unreadable → none.
+ *
+ * @param {string} [root]
+ * @returns {string[]}
+ */
+export function fleetAgentFolders(root = FLEET_DIR) {
+  try {
+    return readdirSync(root, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && !d.name.startsWith('.'))
+      .map((d) => d.name);
+  } catch {
+    return [];
+  }
+}
+
+/**
  * 1.20.1 (build-session report: "parallel tool calls once compiled the wrong project folder"). A fleet session is ONE
  * Claude Code process whose Bash calls share one working directory (lua-workflow-job session-loop.ts: `cwd` =
  * /workspace/fleet), and Claude Code carries a `cd` from one call into the next. lua-cli finds the project only from
@@ -319,18 +338,28 @@ const inFleet = (dir) => typeof dir === 'string' && (dir === FLEET_DIR || dir.st
  * literal `cd` before EACH of them is an absolute path inside /workspace/fleet/<agent>. Help and version output need
  * none.
  *
+ * With ONE agent folder in the fleet there is no other folder to land in: a bare lua command (no `cd` before it)
+ * from inside that folder runs there, so it is not blocked (prod 10 Nov: a one-agent fleet build lost 24 turns to
+ * this block, every one of them already in the right folder).
+ *
  * @param {unknown} command
  * @param {Array<{argv: string[]}>} invocations
  * @param {string|undefined} cwd
+ * @param {() => string[]} fleetFolders
  * @returns {string|null}
  */
-function fleetFolderReason(command, invocations, cwd) {
+function fleetFolderReason(command, invocations, cwd, fleetFolders) {
   const projectCommands = invocations.filter(({ argv }) => argv.length > 0 && !isHelpOrVersion(argv) && argv[0] !== 'build-session');
   if (!projectCommands.length) return null;
   const dirs = luaInvocationDirs(command);
   if (!inFleet(cwd) && !dirs.some((d) => d && inFleet(d))) return null; // not a fleet session
   const pinned = (d) => !!d && d.startsWith(`${FLEET_DIR}/`) && !!d.slice(FLEET_DIR.length + 1).replace(/\/+$/, '');
   if (dirs.length && dirs.every(pinned)) return null;
+  const cwdFolder = typeof cwd === 'string' && cwd.startsWith(`${FLEET_DIR}/`) ? cwd.slice(FLEET_DIR.length + 1).split('/')[0] : '';
+  if (cwdFolder && dirs.every((d) => d === undefined)) {
+    const folders = fleetFolders();
+    if (folders.length === 1 && folders[0] === cwdFolder) return null;
+  }
   const example = projectCommands[0].argv.slice(0, 2).join(' ');
   return (
     `FLEET_FOLDER_UNPINNED: in a fleet session every Bash call shares one working directory and a \`cd\` in one call ` +
