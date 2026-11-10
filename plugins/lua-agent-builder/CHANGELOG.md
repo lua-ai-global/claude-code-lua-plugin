@@ -2,6 +2,26 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.20.7 — 2026-11-10
+
+### Fixed
+
+Builder-side findings from round 2 of Lua Studio's 8-persona production test (10 Nov 2026): N4, N6, N9, N11, N12, N14 and N18.
+
+- **The builder never puts an id it did not read on a card** (N6; `lib/knowledge/build-session.md` §1). A sign-off lock card would have set "claims approver user ids" to `""`, so approving it could not lock sign-off to the user and could have locked everyone out.
+  - **Cause:** the builder had no id for the session owner and proposed the card anyway.
+  - **Now:** the owner's id comes from a `preview_webapp {route}` call, which runs as the owner (`auth.userId`). Anyone else is named on the `ask_user` card and added from inside the app. With no id, the builder leaves the lock off and says so, or builds a "Make me the approver" action. lua-core now also refuses an empty value for such a setting (lua-core-services #8040).
+- **A newer stage replaces the waiting release card** (N4; build-session.md §5). A law firm approved an outdated card after a restage, and the builder told a gym owner "only you can decline". The builder now calls `request_release` again after a restage that should ship. The platform closes the outdated card and names `replacedCandidateId` (lua-core-services #8040), and the builder tells the user they need not decline it. On an older platform, it says the waiting card shows the earlier version.
+- **The builder re-reads state before reporting it** (N12; build-session.md §1). It called a live release "still open", said a change was in the preview when it was not, and said the audit log did not record who acted when it did. Before stating what a card, a release or the app holds, it now reads `lua version list`, the newest result note, its own release summary, or a route call.
+- **Queued messages, progress lines and one-agent plans** (N11, N14, N9; build-session.md §1):
+  - when a tool result says the user sent messages it has not read, the builder ends the turn before asking anything;
+  - progress lines say what changes for the user, never tool names, paths or job slugs;
+  - a one-role fleet plan is never called complete, because Studio's check needs 2 to 6 roles.
+- **Generated web apps: titles, sticky headers, plurals, counts and imports** (N18; `lib/knowledge/web-apps.md` §4b, new §4b2):
+  - phone titles wrap by word on their own row, and sticky headers are opaque;
+  - counts are pluralised by one helper and counted from the list they describe;
+  - an import lists the columns it ignored, and judges freshness by the end date ("Valid until").
+
 ## 1.20.6 — 2026-11-10
 
 ### Fixed
