@@ -190,8 +190,17 @@ People open the app on a phone (390 CSS px wide), in Lua Studio's App pane (abou
 - **Navs and tab rows wrap or scroll in their own box.** ui's `TabsList` is `inline-flex w-fit` with `whitespace-nowrap` triggers: with more than three tabs it widens the page. Give it `className="max-w-full overflow-x-auto"` (or swap it for a `Select` below `sm:`). A header that puts the title and the page nav in one `justify-between` row stacks them below `md:` (`flex flex-col gap-2 md:flex-row md:items-center`), and the nav row gets `flex-wrap` or `overflow-x-auto`, never `overflow-hidden` with `whitespace-nowrap`.
 - **Grids start narrow.** `grid-cols-1` (or `2` for small stat tiles), then `md:grid-cols-3`/`4`; `StatGrid` already does this. Side panels and drawers become full-width sheets below `md:`.
 - **Badge and button rows wrap** (`flex flex-wrap gap-2`), and touch targets are at least 40 px tall.
+- **Titles wrap by word, and a sticky header is opaque.** Round 2 of the Studio test found a phone title that broke one word per line next to its buttons, and a sticky header the rows showed through. Put the page title on its own row above the actions below `md:` (`flex flex-col gap-2 md:flex-row`), give it `min-w-0 text-xl md:text-2xl` and never `break-all` or a fixed width. A `sticky top-0` header gets `bg-background` (or `bg-card`), a bottom `border-b` and `z-10`.
 - **Keep the template's `<meta name="viewport" content="width=device-width, initial-scale=1">`** in `index.html`.
 - **Check it.** You cannot see the page in a build session (no browser in the pod): check the code against this list, and the plugin's `check-webapp-release` hook does the same static check before `stage_for_test` and `request_release` (build-session.md §5). Never say the page fits a phone unless the user looked: ask them to open the App tab's phone view. On a laptop with a browser, `lua apps dev <name>` plus the browser's device toolbar at 390 × 844 (or a Playwright screenshot asserting no sideways scroll) is the real check.
+
+### 4b2. Words and numbers on the page
+
+Round 2 of the Studio test (10 Nov 2026) found "1 reviews", a banner saying "3 more" connections when there was 1, and a CSV import that ignored a "Valid until" column and still called the data "Fresh enough".
+
+- **Counts agree with the word.** Pluralise with one helper (``const plural = (n: number, one: string, many = one + 's') => `${n} ${n === 1 ? one : many}`;``), never a bare `s`.
+- **A count is counted from the list it describes**, in the same render: `items.length`, never a constant or the length of another list ("3 more" when there is 1).
+- **An import maps every column it reads.** Match headers case-insensitively, list the columns it did not use on the result ("Ignored: Valid until"), and base a freshness or validity verdict on the end date ("Valid until", "Expires", "End date") when the file has one, never on the import date alone.
 
 ### 4c. Styles the page CSP blocks
 

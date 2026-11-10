@@ -86,6 +86,28 @@ describe('session tool references', () => {
     expect(read('agents/lua-architect.md')).not.toMatch(/tried once per 30 minutes;/);
   });
 
+  // Lua Studio round 2 (10 Nov 2026), N6: a sign-off lock card would set the approver ids to "". N4: an outdated
+  // release card was approved after a restage, and the builder said "only you can decline". N12: it reported card and
+  // release state from memory. N11 / N14 / N9: queued messages, tool narration, a one-role plan.
+  test('round 2: ids from a result, a newer stage replaces the card, state re-read, queue, progress, plan size', () => {
+    const kb = read('lib/knowledge/build-session.md');
+    expect(kb).toMatch(/\*\*Never put an id you did not read on a card\.\*\*/);
+    expect(kb).toMatch(/call a route of the staged app that returns it[^\n]*read `call\.body\.userId`\. Never a placeholder, a guess, an empty string or a shell variable/);
+    expect(kb).toMatch(/Never ask the user to type a user id/);
+    expect(kb).toMatch(/\*\*One release card at a time; a newer stage replaces it\*\*/);
+    expect(kb).toMatch(/call `request_release` again with the new summary/);
+    expect(kb).toMatch(/`replacedCandidateId`/);
+    expect(kb).toMatch(/Never say only the user can decline a card/);
+    expect(kb).toMatch(/\*\*Re-read the state before you report it\.\*\*/);
+    expect(kb).toMatch(/finish the step you are on and end the turn before you ask anything/);
+    expect(kb).toMatch(/never how you do it: no tool names/);
+    expect(kb).toMatch(/Studio's check also needs \*\*2 to 6 roles\*\*/);
+    const web = read('lib/knowledge/web-apps.md');
+    expect(web).toMatch(/### 4b2\. Words and numbers on the page/);
+    expect(web).toMatch(/A `sticky top-0` header gets `bg-background`/);
+    expect(web).toMatch(/freshness or validity verdict on the end date/);
+  });
+
   test('a session path never offers production chat or a deploy verb as the way to ship', () => {
     for (const file of commands) {
       const section = sessionSection(read(join('commands', file))) ?? '';
