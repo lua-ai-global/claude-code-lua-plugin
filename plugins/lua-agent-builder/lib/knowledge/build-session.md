@@ -125,6 +125,7 @@ A site the agent signs in to (LinkedIn, a supplier portal) uses the person's own
 - **It is done only after a signed-in read worked**: the card's check, or `request_action {command: "browser read", args: ["<checkUrl>", "--login", "<name>"]}`. Report what came back (the page title, what it showed) before you say the job is done.
 - **Try it cases** must not depend on the browser or the login (both are refused in a test chat, which shows as "a platform call is not available in a test" and "changed tools not tested"). Test the tool's logic offline with `lua test`, and list the browser cases as **after connect**.
 - A job uses the login only once the person allows that job (the card's job button, or `Browser.allowJobLogin` on their own chat turn).
+- **Never predict the sign-in limit.** The card's check is the owner's own sign-in: 3 attempts in 10 minutes and a 60-second pause after a wrong password, separate from the agent's own runs (`browser.md` §7). Do not tell the person how long ago the last try was or that the limit will not block them; the card shows when they can try again. After a wrong password, ask them once to fix it on the card.
 
 ## 7. What the hooks do in a session
 

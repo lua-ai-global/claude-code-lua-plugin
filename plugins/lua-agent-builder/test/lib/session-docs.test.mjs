@@ -72,6 +72,20 @@ describe('session tool references', () => {
     expect(kb).not.toMatch(/The interactive question tool is not available in a session\. Where a slash command would ask its single question, write the questions in your reply/);
   });
 
+  // Lua Studio (10 Nov 2026): the builder told a user "it's been well over 30 minutes since the last attempt, so the
+  // limit won't block you". The owner's own check has its own budget (lua-core browser-logins.types.ts: 3 in 10 min,
+  // 60 s after a wrong password); 30 minutes is the agent's own runs only, and the builder never predicts the limit.
+  test('browser sign-in limits: two budgets, and the builder never predicts whether the limit blocks', () => {
+    const browser = read('lib/knowledge/browser.md');
+    expect(browser).toMatch(/\*\*The agent's own sign-ins\*\* \(`unattended`[^\n]*one attempt per 30 minutes with a 30-minute cooldown/);
+    expect(browser).toMatch(/\*\*The owner checking their own login right now\*\* \(`interactive`[^\n]*\*\*3 attempts in 10 minutes\*\*, a \*\*60-second pause after a wrong password\*\*/);
+    expect(browser).toMatch(/\*\*Never predict the limit\*\*/);
+    expect(browser).not.toMatch(/The default policy is \*\*one attempt per 30 minutes/);
+    expect(read('lib/knowledge/build-session.md')).toMatch(/\*\*Never predict the sign-in limit\.\*\* The card's check is the owner's own sign-in: 3 attempts in 10 minutes/);
+    expect(read('agents/lua-debug.md')).toMatch(/3 in 10 minutes, a 60-second pause after a wrong password/);
+    expect(read('agents/lua-architect.md')).not.toMatch(/tried once per 30 minutes;/);
+  });
+
   test('a session path never offers production chat or a deploy verb as the way to ship', () => {
     for (const file of commands) {
       const section = sessionSection(read(join('commands', file))) ?? '';
