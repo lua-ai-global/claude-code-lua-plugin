@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import {
   agentRoots,
   checkAgentSource,
+  checkAppSources,
   checkIndexHtml,
   checkPageSource,
   checkWebApps,
@@ -145,9 +146,45 @@ describe('the folders it reads', () => {
 
   test('checkWebApps: pages, index.html and seed code; skips node_modules and huge files', () => {
     const found = checkWebApps(join(dir, 'fleet', 'manager'));
-    expect(rules(found).sort()).toEqual(['seed-rewrites', 'tabs-width', 'viewport']);
+    expect(rules(found).sort()).toEqual(['seed-rewrites', 'status-strip', 'tabs-width', 'viewport']);
+    expect(found.find((f) => f.rule === 'status-strip').file).toBe(join('src', 'apps', 'desk', 'web', 'src'));
     expect(found.find((f) => f.rule === 'tabs-width').file).toBe(join('src', 'apps', 'desk', 'web', 'src', 'pages', 'Runs.tsx'));
     expect(found.find((f) => f.rule === 'seed-rewrites').file).toBe(join('..', 'intake', 'src', 'sample-data.ts'));
+  });
+});
+
+describe('colour and the status strip (1.20.8: "very monochrome"; web-apps.md §4d-§4e)', () => {
+  const app = (...texts) => texts.map((text, i) => ({ file: `src/P${i}.tsx`, text }));
+  const STRIP = "<StatusStrip />";
+  test('palette classes and hex colours, but not the theme tokens', () => {
+    expect(rules(checkPageSource('a.tsx', '<span className="bg-amber-50 text-sm" />'))).toEqual(['palette-colour']);
+    expect(rules(checkPageSource('a.tsx', '<span className="dark:text-red-600/80" />'))).toEqual(['palette-colour']);
+    expect(rules(checkPageSource('a.tsx', '<span className="bg-[#7c3aed]" />'))).toEqual(['palette-colour']);
+    expect(checkPageSource('a.tsx', '<span className="bg-success/10 text-success border-t-brand fill-chart-2" />')).toEqual([]);
+    expect(checkPageSource('a.tsx', '<span className="text-muted-foreground bg-card" />')).toEqual([]);
+  });
+
+  test('an app of numbers with no colour token is monochrome', () => {
+    const grey = app("import { Stat, StatGrid } from '@lua-ai-global/ui/page';\n<StatGrid><Stat label='Leads' value={3} /></StatGrid>", STRIP);
+    expect(rules(checkAppSources('src/App.tsx', grey))).toEqual(['monochrome']);
+    expect(checkAppSources('src/App.tsx', grey)[0].message).toContain('bg-brand/10');
+    const chart = app("import { Bar } from 'recharts';\n<Bar dataKey='n' />", STRIP);
+    expect(rules(checkAppSources('src/App.tsx', chart))).toEqual(['monochrome']);
+  });
+
+  test('any colour token anywhere in the app is enough; an app without numbers is not judged', () => {
+    for (const touch of ['<Bar fill="var(--chart-2)" />', '<span className="bg-brand/10 text-brand" />', '<Badge variant="success">Live</Badge>', '<Alert variant="info" />']) {
+      expect(checkAppSources('src/App.tsx', app("import { Stat } from '@lua-ai-global/ui/page';", touch, STRIP))).toEqual([]);
+    }
+    expect(checkAppSources('src/App.tsx', app('<p className="text-foreground">Notes</p>', STRIP))).toEqual([]);
+  });
+
+  test('the status strip: its component, its route or its words count', () => {
+    expect(rules(checkAppSources('src/App.tsx', app('<p>Leads</p>')))).toEqual(['status-strip']);
+    for (const s of [STRIP, "useLive('/status')", '<span>Last run 13:02</span>', 'Waiting for first run at 13:00']) {
+      expect(checkAppSources('src/App.tsx', app('<p>Leads</p>', s))).toEqual([]);
+    }
+    expect(checkAppSources('src/App.tsx', [])).toEqual([]);
   });
 });
 

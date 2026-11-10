@@ -2,6 +2,47 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.20.8 — 2026-11-10
+
+### Fixed
+
+Builder-side feedback from production Lua Studio: a power user's 6-agent TypeScript dev fleet, and the founder's own build.
+
+- **Faster builds: test what changed, stage what changed** (`lib/knowledge/build-session.md` new §2a, the session brief). The supervisor and the web app took about 20 minutes, "especially the tests", each step revisited a few times.
+  - **Evidence** (production session pods, 10 Nov 2026):
+    - first-release builder turns took 9 to 18 minutes;
+    - release candidates took 23 to 26 s for one agent, 47 to 71 s for two and 97 s for three;
+    - one session failed its candidate three times (60, 122 and 123 s) before the fourth passed, 22 minutes after the first.
+  - **Cause** (lua-core `session-tools.service.ts` `stageForTest`, lua-workflow-job `release-candidate.ts`):
+    - with no `agentIds`, `stage_for_test` and `request_release` take every editable agent, one after the other;
+    - a candidate runs compile, `npm test` and `push all` per agent, then re-runs every distinct Try it message of the session (up to 50), serially.
+  - **Now:**
+    - the builder passes `agentIds` for changed agents only;
+    - it keeps one or two Try it messages per agent and reuses their exact text to re-test;
+    - it runs test chats on different agents together;
+    - it runs `lua test` only on what changed and keeps `npm test` fast and offline;
+    - it passes compile, typecheck and build before the first stage, and installs only after a `package.json` change.
+  - **Hook:** `check-webapp-release` adds a speed note when a fleet call names no `agentIds`.
+- **Agents first, the app last, the preview early** (build-session.md §5). "Before building all agents in the fleet, it doesn't work."
+  - The app is shown early in the preview, with labelled sample data naming the missing agents.
+  - The agents are built and tested first, and each page is wired to live records once its agent passes.
+  - The first release ships the agents with the app, never the app alone ahead of the agents it needs (web-apps.md §5a).
+- **Done means it ran** (build-session.md new §5a). The founder's build stopped after the release with "next run at 13:00".
+  - After a release, the builder gets a safe first run of each job (`request_action` `jobs trigger` for a read-only or dry-run job, or waiting for a run due within about 10 minutes).
+  - It reads the run from `lua logs`, fixes what fails, and reports done only with the run id, time, result, records saved and what the app's status strip shows.
+  - A session has no timer: for a later run it says when and checks on the user's next message (build memory). It never says "press X" without making sure X exists.
+  - Platform gap named: a `wake_at` session tool, or a note on a released agent's first job run.
+- **Colour: polished, on the design system** (web-apps.md new §4d, `agents/lua-skill-builder.md`). The founder: "very monochrome". In ui 0.3 and 0.4 `--primary` is near-black, and the Workspace default accent (`mono`) keeps it so.
+  - Colour comes from `brand`, `chart-1`…`chart-5` and `success` / `info` / `warning`, with `destructive` only for a real failure.
+  - KPI tiles get coloured icon chips (`Stat` has no tone prop), charts get series colours on the element, and statuses are calm badges.
+  - The snippets were type-checked and built against ui 0.3.4: the Tailwind build emits `bg-brand/10`, `text-success`, `text-info`.
+- **Every web app has a status strip** (web-apps.md new §4e). It shows each agent's state (live, paused, error), its last run (time and result), its next run, the records processed, and "Waiting for first run at HH:MM" before any data.
+  - It reads one `GET /status` route over the jobs' run records (`job_runs`) and the fleet's status rows, and never invents data.
+- **`check-webapp-release` checklist** (`lib/webapp-check.mjs`, warn-only), three new rules:
+  - `palette-colour`: palette classes and hex colours;
+  - `monochrome`: an app with charts or KPI tiles and no colour token;
+  - `status-strip`: no status strip in the app.
+
 ## 1.20.7 — 2026-11-10
 
 ### Fixed

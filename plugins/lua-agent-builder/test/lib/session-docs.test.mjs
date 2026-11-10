@@ -108,6 +108,28 @@ describe('session tool references', () => {
     expect(web).toMatch(/freshness or validity verdict on the end date/);
   });
 
+  test('1.20.8: fast loops, agents before the app, done means it ran, colour and the status strip', () => {
+    const kb = read('lib/knowledge/build-session.md');
+    expect(kb).toMatch(/### 2a\. Fast loops: test what changed, stage what changed/);
+    expect(kb).toMatch(/\*\*Pass `agentIds`\*\* with only the agents that changed/);
+    expect(kb).toMatch(/send the \*\*same message text\*\*/);
+    expect(kb).toMatch(/calls on different agents in the same turn run in parallel; never two on the same agent/);
+    expect(kb).toMatch(/\*\*Build order for a fleet with a web app: agents first, the app last, the preview early\.\*\*/);
+    expect(kb).toMatch(/never the app alone ahead of the agents it needs/);
+    expect(kb).toMatch(/### 5a\. Done means it ran: after the release/);
+    expect(kb).toMatch(/command: "jobs trigger", args: \["-i", "<job name>"\]/);
+    expect(kb).toMatch(/A session has no timer/);
+    expect(kb).toMatch(/Never leave the person with "press X"/);
+    const web = read('lib/knowledge/web-apps.md');
+    expect(web).toMatch(/### 4d\. Colour: polished, on the design system/);
+    expect(web).toMatch(/\*\*a real failure only\*\*/);
+    expect(web).toMatch(/### 4e\. The status strip: is it running, and when\?/);
+    expect(web).toMatch(/Waiting for first run at 13:00/);
+    const builder = read('agents/lua-skill-builder.md');
+    expect(builder).toMatch(/\*\*But not monochrome\*\*/);
+    expect(builder).toMatch(/\*\*Every app's home page starts with a status strip\*\*/);
+  });
+
   test('a session path never offers production chat or a deploy verb as the way to ship', () => {
     for (const file of commands) {
       const section = sessionSection(read(join('commands', file))) ?? '';
