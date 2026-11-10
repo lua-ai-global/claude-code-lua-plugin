@@ -76,7 +76,7 @@ So:
 - **Install once.** Page dependencies are installed when the pod starts; run `npm install` again only after you change a `package.json`.
 - **Replace a waiting release card only when the change should ship now** (§5): every replacement rebuilds the agents and re-runs every Try it case.
 
-**Fleet sessions: one folder per command.** Every Bash call shares one working directory, and a `cd` in one call carries into the next, so a bare `lua compile` runs in whichever agent folder the shell was left in. Start every lua command with that agent's absolute folder in the same call (`cd /workspace/fleet/<agent> && lua compile --ci`), also when you send calls for several agents at once; the session guard blocks one that does not (`FLEET_FOLDER_UNPINNED`).
+**Fleet sessions: one folder per command.** Every Bash call shares one working directory, and a `cd` in one call carries into the next, so a bare `lua compile` runs in whichever agent folder the shell was left in. Start every lua command with that agent's absolute folder in the same call (`cd /workspace/fleet/<agent> && lua compile --ci`), also when you send calls for several agents at once; the session guard blocks one that does not (`FLEET_FOLDER_UNPINNED`). The one exception: while the fleet holds a single agent folder and the shell is inside it, a bare lua command can only mean that agent, so it runs.
 
 ## 3. What each `lua` command does in a session
 

@@ -1,8 +1,9 @@
 // 1.17.0 — live build session mode (spec v3 B22/B23): the shared library behind the session-mode hooks.
 
-import { describe, test, expect } from '@jest/globals';
-import { existsSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
+import { describe, test, expect, jest } from '@jest/globals';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { isAbsolute, join } from 'node:path';
 import {
   SESSION_KNOWLEDGE_PATH,
   APPROVAL_WAIT_NOTE,
@@ -10,6 +11,7 @@ import {
   RELEASE_LABELS,
   SESSION_TOOL_NAMES,
   buildSessionId,
+  fleetAgentFolders,
   isBuildSession,
   sessionCommandDecision,
   sessionDeployBlockReason,
@@ -406,6 +408,46 @@ describe('sessionCommandDecision in a fleet session: each lua command names its 
     expect(sessionCommandDecision('cd sub && lua compile --ci', SESSION, '/workspace/agent')).toBeNull();
     expect(sessionCommandDecision('lua compile --ci', SESSION)).toBeNull();
     expect(sessionCommandDecision('lua compile --ci', {}, FLEET)).toBeNull();
+  });
+
+  // Prod 10 Nov: a one-agent fleet build blocked 24 bare `lua …` calls (all in the agent's own folder), each a turn.
+  describe('a fleet with ONE agent folder: a bare command in that folder can only mean that agent', () => {
+    const one = () => ['alpha'];
+    const two = () => ['alpha', 'beta'];
+    test.each([
+      ['lua test skill --ci --name t --input \'{}\' 2>&1 | tail -8', `${FLEET}/alpha`],
+      ['lua push agent --ci --force 2>&1 | tail -6', `${FLEET}/alpha`],
+      ['for t in a b; do lua test skill --ci --name $t --input \'{}\'; done', `${FLEET}/alpha`],
+      ['lua compile --ci', `${FLEET}/alpha/src/skills`],
+    ])('%s (shell in %s) → allowed', (command, cwd) => {
+      expect(sessionCommandDecision(command, SESSION, cwd, one)?.block).toBeFalsy();
+    });
+
+    test.each([
+      ['lua compile --ci', `${FLEET}/alpha`, two],
+      ['lua compile --ci', FLEET, one],
+      ['cd ../beta && lua compile --ci', `${FLEET}/alpha`, one],
+      ['lua compile --ci', `${FLEET}/beta`, one],
+      ['lua compile --ci', `${FLEET}/alpha`, () => []],
+    ])('%s (shell in %s, other folders or none) → still blocked', (command, cwd, folders) => {
+      expect(sessionCommandDecision(command, SESSION, cwd, folders)?.block).toBe(true);
+    });
+
+    test('the folders are read only when a bare lua command needs them', () => {
+      const folders = jest.fn(one);
+      sessionCommandDecision(`cd ${FLEET}/alpha && lua compile --ci`, SESSION, `${FLEET}/alpha`, folders);
+      sessionCommandDecision('git status', SESSION, `${FLEET}/alpha`, folders);
+      expect(folders).not.toHaveBeenCalled();
+    });
+
+    test('fleetAgentFolders lists the directories under the fleet dir, hidden ones and files left out', () => {
+      const root = mkdtempSync(join(tmpdir(), 'fleet-'));
+      mkdirSync(join(root, 'alpha'));
+      mkdirSync(join(root, '.cache'));
+      writeFileSync(join(root, 'notes.md'), '');
+      expect(fleetAgentFolders(root)).toEqual(['alpha']);
+      expect(fleetAgentFolders(join(root, 'missing'))).toEqual([]);
+    });
   });
 
   test('a fleet folder named by the cd itself counts even when the hook gives no cwd', () => {

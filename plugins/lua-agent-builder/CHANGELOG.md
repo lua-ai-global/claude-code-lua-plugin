@@ -2,6 +2,15 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.20.9 — 2026-11-10
+
+### Fixed
+
+- **A one-agent fleet build no longer loses turns to `FLEET_FOLDER_UNPINNED`** (`lib/session-mode.mjs`, `lib/knowledge/build-session.md`).
+  - **Evidence** (production fleet session, 10 Nov 2026): the guard blocked 24 bare `lua test skill` / `lua push` / `lua compile` calls. Each block cost Claude a turn. The build looked like the guard refused correct commands "about every second try".
+  - **What was really happening:** all 18 calls that started with `cd /workspace/fleet/<agent> &&` ran, and all 24 blocked calls had no `cd` at all. Claude alternated between the two forms. The fleet held one agent folder, and the shell was already inside it every time, so there was no other folder the command could reach.
+  - **The fix:** while `/workspace/fleet` holds exactly one agent folder and the shell is inside it, a lua command with no `cd` before it is not blocked. With two or more agent folders the rule is unchanged: each lua command names its own folder, because a `cd` from a parallel call can carry over. The folder list is read when a bare lua command needs it, so an agent added during the session counts at once.
+
 ## 1.20.8 — 2026-11-10
 
 ### Fixed
