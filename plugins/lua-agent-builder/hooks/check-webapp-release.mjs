@@ -7,10 +7,14 @@
 //
 // It only WARNS (context after the call, never a block): a heuristic must never stop a release the user wants.
 // Outside a session it does nothing, and it ignores every other tool.
+//
+// 1.20.8: in a fleet session (more than one agent folder), a call with no `agentIds` restages or rebuilds EVERY
+// editable agent, one after the other (lua-core session-tools.service.ts stageForTest; lua-workflow-job
+// release-candidate.ts). A power user's 6-agent build took ~20 minutes; the note names the cost (build-session.md §2a).
 
 import { runHook, checkNodeVersion, isMainScript } from '../lib/hook-runtime.mjs';
 import { isBuildSession, SESSION_MCP_SERVER } from '../lib/session-mode.mjs';
-import { checkWebApps, formatFindings } from '../lib/webapp-check.mjs';
+import { agentRoots, checkWebApps, formatFindings } from '../lib/webapp-check.mjs';
 
 const WHEN = {
   [`mcp__${SESSION_MCP_SERVER}__stage_for_test`]: 'stage',
@@ -18,15 +22,35 @@ const WHEN = {
 };
 
 /**
- * @param {{tool_name?: string, cwd?: string}|null} input
+ * @param {{tool_name?: string, cwd?: string, tool_input?: unknown}|null} input
  * @param {Record<string, string|undefined>} [env] — defaults to process.env (build-session switch)
  * @param {(cwd: string) => Array<{rule: string, file: string, line: number, message: string}>} [check]
+ * @param {(cwd: string) => string[]} [roots] — the agent folders under the session (fleet: more than one)
  */
-export function decide(input, env = process.env, check = checkWebApps) {
+export function decide(input, env = process.env, check = checkWebApps, roots = agentRoots) {
   const when = WHEN[input?.tool_name ?? ''];
   if (!when || !isBuildSession(env)) return null;
-  const note = formatFindings(check(input?.cwd || process.cwd()), when);
-  return note ? { warn: note } : null;
+  const cwd = input?.cwd || process.cwd();
+  const notes = [formatFindings(check(cwd), when), allAgentsNote(input?.tool_input, roots(cwd).length, when)].filter(Boolean);
+  return notes.length ? { warn: notes.join('\n') } : null;
+}
+
+/**
+ * The cost note for a fleet call that names no agents.
+ * @param {unknown} toolInput
+ * @param {number} agentCount
+ * @param {'stage'|'release'} when
+ * @returns {string|null}
+ */
+export function allAgentsNote(toolInput, agentCount, when) {
+  if (agentCount < 2) return null;
+  const ids = /** @type {{agentIds?: unknown}} */ (toolInput ?? {}).agentIds;
+  if (Array.isArray(ids) && ids.length) return null;
+  const what =
+    when === 'release'
+      ? 'builds every editable agent of this session in turn (compile, npm test, push)'
+      : 'restages every editable agent of this session, one after the other';
+  return `[lua] Speed: this call names no agentIds, so it ${what} (${agentCount} agent folders here). When only some agents changed (since the last stage; for a release, since the last release), pass agentIds of those agents only next time (build-session.md §2a).`;
 }
 
 /* istanbul ignore next */

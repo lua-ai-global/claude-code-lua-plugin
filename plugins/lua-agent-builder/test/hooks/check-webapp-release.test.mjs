@@ -5,7 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { decide } from '../../hooks/check-webapp-release.mjs';
+import { allAgentsNote, decide } from '../../hooks/check-webapp-release.mjs';
 import { runHook } from '../helpers/run-hook.mjs';
 
 const SESSION = { LUA_BUILD_SESSION: '1' };
@@ -47,6 +47,27 @@ describe('decide', () => {
     } finally {
       rmSync(empty, { recursive: true, force: true });
     }
+  });
+});
+
+describe('fleet speed note (1.20.8, build-session.md §2a)', () => {
+  const two = () => ['/w/a', '/w/b'];
+  test('a fleet call with no agentIds names the cost; with agentIds or one agent it says nothing', () => {
+    const stage = decide({ tool_name: STAGE, cwd: '/w', tool_input: {} }, SESSION, () => [], two);
+    expect(stage.warn).toContain('restages every editable agent');
+    expect(stage.warn).toContain('2 agent folders');
+    const release = decide({ tool_name: RELEASE, cwd: '/w', tool_input: { summary: 's' } }, SESSION, () => [], two);
+    expect(release.warn).toContain('compile, npm test, push');
+    expect(release.warn).toContain('since the last release');
+    expect(decide({ tool_name: STAGE, cwd: '/w', tool_input: { agentIds: ['a'] } }, SESSION, () => [], two)).toBeNull();
+    expect(decide({ tool_name: STAGE, cwd: '/w', tool_input: {} }, SESSION, () => [], () => ['/w'])).toBeNull();
+  });
+  test('joins with the web-app findings; an empty agentIds list counts as none', () => {
+    const both = decide({ tool_name: STAGE, cwd: '/w', tool_input: { agentIds: [] } }, SESSION, () => ONE, two);
+    expect(both.warn).toContain('[tabs-width]');
+    expect(both.warn).toContain('[lua] Speed');
+    expect(allAgentsNote(undefined, 3, 'stage')).toContain('3 agent folders');
+    expect(allAgentsNote(null, 1, 'release')).toBeNull();
   });
 });
 

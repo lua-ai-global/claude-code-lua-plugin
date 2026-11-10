@@ -110,7 +110,7 @@ export default defineWebApp({
   - `@lua-ai-global/app-client` **0.1 or later** (the lua-cli 3.55.0+ template, or any app after `lua apps upgrade`): the page **never manages the theme itself** — `main.tsx` keeps `void lua.start()` and adds no `classList.toggle('dark', …)` / `lua.onInit` theme lines. Lines an older template already wrote agree with the client and are harmless; `lua apps upgrade` removes them.
   - app-client **0.0.x**, or the copied client of lua-cli 3.42–3.45 (`web/src/lua/client.ts`): the client applies nothing, so **keep the template's theme lines** in `main.tsx` (they are what follows dark mode) and recommend `lua apps upgrade <name>`.
 
-  Either way, style only with ui's semantic tokens (`bg-background`, `text-foreground`, `text-muted-foreground`, `bg-card`, `bg-primary`, `text-primary-foreground`, `border-border`, `ring-ring`, …) — no palette classes (`bg-blue-500`) and no hex / `rgb()`, or the page ignores the accent and dark mode. `lua.theme`, `lua.accent`, `lua.hue` say what is applied.
+  Either way, style only with ui's semantic tokens (`bg-background`, `text-foreground`, `text-muted-foreground`, `bg-card`, `bg-primary`, `text-primary-foreground`, `border-border`, `ring-ring`, and the colour tokens of §4d: `brand`, `success`, `warning`, `info`, `destructive`, `chart-1`…`chart-5`) — no palette classes (`bg-blue-500`) and no hex / `rgb()`, or the page ignores the accent and dark mode. `lua.theme`, `lua.accent`, `lua.hue` say what is applied.
 - **Component catalog: the `ui` MCP server** (`https://ui.lua.dev/mcp`, public Storybook MCP, registered by this plugin): `mcp__plugin_lua-agent-builder_ui__list-all-documentation` lists every component, `mcp__plugin_lua-agent-builder_ui__get-documentation` (`id`: `"button"`, `"list-row"`, …) gives props, variants and example code, `mcp__plugin_lua-agent-builder_ui__get-documentation-for-story` one story's code. Look a component up before writing it. (Server key `ui`, kept short so every composed `mcp__plugin_<plugin>_<server>__<tool>` name stays within 64 characters.) **Fallback** when those tools are unavailable: read the installed package — the component list is the `exports` of `web/node_modules/@lua-ai-global/ui/package.json`, the props are in `web/node_modules/@lua-ai-global/ui/dist/components/{ui,lua}/<component>.d.ts`; never guess props. The catalog follows the **latest** ui: a component missing from the installed `web/node_modules/@lua-ai-global/ui` needs `lua apps upgrade <name>` first.
 - **`lua apps upgrade <name>`** (lua-cli 3.54.0+; the ui 0.3 / app-client 0.1 raise and the theme-line removal from 3.55.0; `--dry-run`, `--ci`/`--force`, `--skip-install`) brings an app made by an older `lua apps new` up to the current template: raises `@lua-ai-global/ui` and `@lua-ai-global/app-client` to at least the template's ranges, removes the old template's theme lines from `main.tsx` (only when they are exactly the template's), swaps the copied `web/src/lua/` client for the package, takes out the bundled agent pane, then runs `npm install` in `web/`. ui 0.2 → 0.3 keeps every export and variant name, so no page code changes; afterwards the user looks the pages over with `lua apps dev <name>` (§6). It edits local files and installs packages, so the plugin's subagents do not run it — they name it for the user. Until an app is rebuilt on ui 0.3, the gateway restyles an older one (ui < 0.3) with the new tokens; upgrading is still the fix.
 - **Client** (`import { lua, LuaApiError } from '@lua-ai-global/app-client'`): `lua.api<T>(method, path, body?)` → parsed JSON or throws `LuaApiError { status, code, message }`; `lua.appName`; `lua.theme` / `lua.accent`; `lua.onInit(init => …)` (locale / path from the shell; appearance is already applied); **`void lua.start()` must run once in `main.tsx`** — it exchanges the one-time handoff code, applies the shell's appearance and tells the shell it is ready. A 401 renews the session once, then asks the shell for a new code; never store tokens (no cookie, no localStorage — a reload asks the shell again).
@@ -210,6 +210,85 @@ The gateway's per-request CSP allows a style only from the app's own files or wi
 - **Chart colours.** `ChartContainer` (`@lua-ai-global/ui/chart`) writes a `<style>` with `--color-<key>` variables for every config entry that has `color` or `theme`. It is blocked, the variables stay unset, and the series render black (the finance app's payment-run chart). Keep the config to `label`s (and `icon`s) and colour each series on the element with the theme's chart tokens: `<Bar dataKey="paid" fill="var(--chart-1)" />`, `<Line stroke="var(--chart-2)" />`. SVG presentation attributes are not styles and pass the CSP.
 - Never build HTML with a `style` attribute or a `<style>` element (`dangerouslySetInnerHTML`, `innerHTML`, `insertAdjacentHTML`, `setAttribute('style', …)`). The React `style` prop is fine: React sets it through the DOM, which the CSP allows. Tailwind classes are better still.
 
+### 4d. Colour: polished, on the design system
+
+Lua's founder on the generated apps: "very monochrome, with not much exciting colours". The cause is the tokens the pages used. In ui 0.3 (and 0.4) `--primary` is near-black, and the Workspace default accent (`mono`) keeps it black, so a page built only from `primary`, `muted`, `card` and `border` is grey whatever the person picked. Colour comes from the other tokens, which every theme defines in light and dark (ui `src/styles/globals.css`; app-client applies the person's accent to `--primary`, `--brand`, `--ring` and `--chart-1…5`):
+
+| Token (Tailwind: `bg-*`, `text-*`, `border-*`, `fill-*`, `/10` tints) | What it is | Use it for |
+|---|---|---|
+| `brand` | Lua violet by default, the person's accent when they picked one | the app's identity: the header mark, the active nav item, the headline KPI's icon chip, the main series |
+| `chart-1` … `chart-5` | a five-step ramp of the accent hue (light to deep) | chart series in order, and the icon chips of a row of KPI tiles |
+| `success` | green | done, healthy, on track, a run that worked |
+| `info` | blue | in progress, scheduled, waiting for the first run, neutral counts |
+| `warning` | amber | needs a person, overdue, paused, stale data |
+| `destructive` | red | **a real failure only**: a run that failed, an error the person must fix. Never for "pending", "not started", "no data yet", a low number or a rejected lead |
+
+How to use them, still clean and flat:
+
+- **KPI tiles have colour.** `Stat` takes only `label`, `value` and `sub`, so put the colour inside them: an icon chip in the label (`<span className="inline-flex size-7 items-center justify-center rounded-md bg-brand/10 text-brand"><ChartLineUp /></span>`), one chip colour per tile from `chart-1`…`chart-5` or by meaning (`bg-success/10 text-success` for "Qualified this week", `bg-warning/10 text-warning` for "Waiting for you"), and a coloured trend in `sub` (`text-success` up when up is good). A tile built from `Card` may also take a coloured top or left border (`border-t-2 border-t-brand`).
+- **Charts have series colours** on the element (§4c): `<Area fill="var(--chart-2)" fillOpacity={0.25} stroke="var(--chart-2)" />`, bars of one series in `var(--brand)`, several series in `var(--chart-1)` … `var(--chart-5)` order. An outcome split uses meaning: `var(--success)` won, `var(--info)` open, `var(--warning)` stalled, `var(--destructive)` failed. Never leave a series black or grey.
+- **Statuses are calm.** `Badge` variants `success`, `warning`, `secondary` and `outline`, plus `destructive` only for failures; an informational status is `secondary` or an `outline` badge with `text-info`. `Alert` has `success`, `warning`, `info` and `destructive` variants: an empty or not-yet-measured state is `info`, never `destructive`. Agent states: working is `success`, idle or scheduled is `info`, paused is `warning`, failed is `destructive`, unknown is `outline`.
+- **Section headers and empty states** can carry one brand touch: a small `text-brand` icon beside the section title, an `EmptyState` with a brand-tinted icon.
+- **Restraint.** One accent (`brand`) for identity, status colours only where they mean something, tints at `/10` to `/15` for fills, white space kept. No gradients over text, no rainbow of unrelated colours, no palette classes (`bg-amber-50`, even though one ui story shows it), no hex.
+- Look a component up in the ui catalog before using it (§4); never invent a `tone`, `color` or `variant` it does not list.
+
+### 4e. The status strip: is it running, and when?
+
+Every generated web app shows, at the top of its home page (under the title, above the KPIs), a status strip that answers "is it working?" without the person asking the builder. One compact row per agent (stacked on a phone), from data the app can read, never invented:
+
+- **State** of each agent: Live (`success`), Paused (`warning`), Error (`destructive`, only after a run that failed or a status row that says so), Unknown (`outline`) when no status row was read or it is older than its staleness limit.
+- **Last run**: its time ("13:02") and result ("14 saved", "failed: the CRM refused the key"), from the newest run record.
+- **Next run**: the time of the next scheduled run ("next 14:00"), worked out from the job's own schedule (keep the cron expression in one shared constant the job and the route both import), or "on demand" for agents without a schedule.
+- **Records processed**: the count of the last run and today's total, counted from the run records.
+- **Before any data**: "Waiting for first run at 13:00" (`info`), never 0, never an empty table without a reason.
+
+Where the data comes from:
+
+- **Each job writes one run record when it finishes** (and one when it fails), in its agent's `Data` (`job_runs`: `runId`, `job`, `startedAt`, `finishedAt`, `result: 'ok' | 'failed'`, `processed`, `message`), and logs the same one-line summary (build-session.md §5a reads it). In a fleet, each agent also keeps its status row (the fleet's `agent_status` row with `state`, `now`, `lastRun`, `nextRunAt`), which the supervisor's app reads.
+- **One route feeds the strip** (`GET /status`), returning per agent `{ name, state, lastRun?: { at, result, processed }, nextRunAt?, todayProcessed, asOf }`, with `null` for what it could not read. Poll it with `useLive` (§4a).
+- In a preview before any agent has run, the strip shows what the route returns: "Waiting for first run". Sample rows (§5a) never feed the strip.
+
+```tsx
+// web/src/StatusStrip.tsx — Badge variants from the ui catalog: success, warning, destructive, outline.
+import { Badge } from '@lua-ai-global/ui/badge';
+import { useLive } from './useLive';
+
+type AgentStatus = {
+  name: string;
+  state: 'live' | 'paused' | 'error' | 'unknown';
+  lastRun: { at: string; result: 'ok' | 'failed'; processed: number } | null;
+  nextRunAt: string | null;
+  todayProcessed: number | null;
+};
+const BADGE = { live: 'success', paused: 'warning', error: 'destructive', unknown: 'outline' } as const;
+const LABEL = { live: 'Live', paused: 'Paused', error: 'Error', unknown: 'Unknown' } as const;
+const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+export function StatusStrip() {
+  const { data, error } = useLive<{ agents: AgentStatus[] }>('/status');
+  if (!data) return <p className="text-sm text-muted-foreground">{error ? 'Status not available right now' : 'Reading status…'}</p>;
+  return (
+    <ul className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+      {data.agents.map((a) => (
+        <li key={a.name} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-card px-3 py-2 text-sm">
+          <span className="font-medium">{a.name}</span>
+          <Badge variant={BADGE[a.state]}>{LABEL[a.state]}</Badge>
+          {a.lastRun ? (
+            <span className={a.lastRun.result === 'failed' ? 'text-destructive' : 'text-muted-foreground'}>
+              Last run {time(a.lastRun.at)} · {a.lastRun.result === 'failed' ? 'failed' : `${a.lastRun.processed} processed`}
+            </span>
+          ) : (
+            <span className="text-info">{a.nextRunAt ? `Waiting for first run at ${time(a.nextRunAt)}` : 'Waiting for first run'}</span>
+          )}
+          {a.lastRun && a.nextRunAt && <span className="text-muted-foreground">Next {time(a.nextRunAt)}</span>}
+          {a.todayProcessed !== null && a.lastRun && <span className="text-muted-foreground">Today {a.todayProcessed}</span>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
 ## 5. Testing routes — `lua test webapp`
 
 ```
@@ -227,6 +306,7 @@ lua test --ci webapp --name <app> --route '<METHOD> /path?query' [--input '{"bod
 Pages often need rows before the agents have written any: sample leads, a sample payment run. The same code then runs on every release against the **live** app's rows, where people have acted on them. In the Studio test a release reshaped the sample payment runs, the user's approval was tied to the run's exact content, and the approved run went back to "Waiting for your sign-off".
 
 - **Seed by a stable id, insert only when absent.** `const have = await Data.get('runs', { sampleKey: 'run-nov-8' }); if (!have.data.length) await Data.create('runs', { sampleKey: 'run-nov-8', sample: true, … });`. Never update, replace or delete an existing row from seed code, and never regenerate sample rows on a deploy (no clear-and-reseed, no copies shifted to `Date.now()`). Label sample rows (`sample: true`) and show them as "Sample data" on the page, never as real numbers.
+- **Pages for agents that are not built yet** (build-session.md §5, build order) show sample rows under a "Sample data" banner that names what is missing ("Sample data: the Lead Scorer is not built yet"), and their actions are off with the reason in a tooltip. A page never calls a route or reads a collection nothing writes yet, and the live app never shows a broken page: wire it to live records when its agent passes its tests.
 - **A row a person acted on is theirs.** A decision (approved, rejected, assigned, edited) is stored with the row id, who and when (`decidedBy: auth.userId`, `decidedAt`), and, if the decision depends on what they saw, the content beside it (`approvedTotal`, `approvedHash`), so a later change is shown as "changed since you approved" instead of silently clearing the approval.
 - **Change shapes additively.** Add new fields with defaults and read the old shape as well; a migration only fills new fields. Never rename, drop or re-key a field that holds a person's decision. If a change truly has to reset their data, tell them before staging it and put it in the release summary (build-session.md §1, §5).
 - **Who did what.** Every write route stamps where the record came from, so a build session's test calls never count as the user's work:

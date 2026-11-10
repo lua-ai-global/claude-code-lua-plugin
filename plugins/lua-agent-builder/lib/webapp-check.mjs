@@ -8,6 +8,8 @@
 //   - seed code that rewrote sample rows on a release and reset a payment run the user had approved in the live app.
 // A build-session pod has no browser, so a real 390 x 844 screenshot cannot be taken there; this is the static
 // stand-in. It only ever warns (hooks/check-webapp-release.mjs): a heuristic never blocks a release.
+// 1.20.8 adds the colour checks (palette classes; an app of numbers with no colour token: the founder's "very
+// monochrome") and the status strip every app's home page carries (web-apps.md §4d-§4e).
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
@@ -154,6 +156,11 @@ export function checkPageSource(file, text) {
       add('clipped-row', line, 'a no-wrap flex row with overflow-hidden clips its items on a phone (finance\'s nav read "yment r"): let it wrap (flex-wrap) or scroll in its own box (overflow-x-auto).');
     }
   }
+  // Colour (1.20.8, web-apps.md §4d): palette classes and hex colours bypass the theme (accent, dark mode).
+  for (const { cls, line } of classStrings(text)) {
+    const tok = cls.split(/\s+/).find((t) => /^(?:[a-z0-9]+:)*(?:bg|text|border|fill|stroke|ring|from|via|to)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}(?:\/\d+)?$|^(?:[a-z0-9]+:)*(?:bg|text|border|fill|stroke)-\[#[0-9a-fA-F]{3,8}\]$/.test(t));
+    if (tok) add('palette-colour', line, `\`${tok}\` is a fixed palette colour: it ignores the person's accent and dark mode. Use the theme's colour tokens (brand, chart-1…5, success, info, warning; destructive only for a failure), e.g. bg-success/10 text-success.`);
+  }
   for (const m of text.matchAll(/\b(?:width|minWidth)\s*:\s*['"]?(\d{3,4})(?:px)?['"]?/g)) {
     if (Number(m[1]) > PHONE_WIDTH - 32) add('fixed-width', m.index, `a style width of ${m[1]} px is wider than a phone: use max-width with width: 100%.`);
   }
@@ -174,6 +181,41 @@ export function checkPageSource(file, text) {
   if (/<(?:Table|table)\b/.test(text) && !/(?:^|[\s"'`])(?:sm|md|lg):(?:hidden|block|table|flex|grid)|(?:^|[\s"'`])hidden(?:\s|$)|matchMedia|useMediaQuery|useIsMobile/.test(text)) {
     const m = /<(?:Table|table)\b/.exec(text);
     add('table-phone', m.index, 'a table with no phone layout: on a phone it only scrolls sideways. Show the rows as stacked cards below md: (`md:hidden` list + `hidden md:block` table).');
+  }
+  return out;
+}
+
+/** A colour token in page code: the theme's accent, chart and status colours (web-apps.md §4d). */
+const COLOUR_TOKEN = /(?:\b(?:bg|text|border|fill|stroke|ring|from|via|to|border-[trblxy])-(?:brand|success|info|warning|chart-[1-5])\b|var\(--(?:brand|success|info|warning|chart-[1-5])\)|variant=["'](?:success|warning|info)["'])/;
+/** A page that shows numbers or charts: KPI tiles, a chart or a stat grid. */
+const SHOWS_NUMBERS = /from\s+["']@lua-ai-global\/ui\/(?:chart|page)["']|from\s+["']recharts["']|<Stat(?:Grid)?\b/;
+/** Signs of the status strip (web-apps.md §4e): its component, its route or its words. */
+const STATUS_STRIP = /StatusStrip|['"`]\/status['"`]|Last run|Next run|first run/i;
+
+/**
+ * Findings for one web app as a whole (all of its `web/src` sources).
+ * @param {string} appFile — shown in the finding (the app's main page, relative path)
+ * @param {Array<{file: string, text: string}>} sources
+ */
+export function checkAppSources(appFile, sources) {
+  const out = [];
+  if (!sources.length) return out;
+  const all = sources.map((s) => s.text).join('\n');
+  if (SHOWS_NUMBERS.test(all) && !COLOUR_TOKEN.test(all)) {
+    out.push({
+      rule: 'monochrome',
+      file: appFile,
+      line: 1,
+      message: 'the app shows numbers or charts but uses no colour token: in ui 0.3 `primary` is near-black, so the pages read grey ("very monochrome"). Give KPI tiles coloured icon chips (bg-brand/10 text-brand, bg-success/10 text-success), chart series their colours on the element (fill="var(--chart-2)"), and statuses success / info / warning badges (web-apps.md §4d).',
+    });
+  }
+  if (!STATUS_STRIP.test(all)) {
+    out.push({
+      rule: 'status-strip',
+      file: appFile,
+      line: 1,
+      message: 'no status strip: the home page should show each agent\'s state (live, paused, error), its last run (time and result), its next run, the records processed, and "Waiting for first run at HH:MM" before any data, from one GET /status route over the jobs\' run records (web-apps.md §4e).',
+    });
   }
   return out;
 }
@@ -214,10 +256,15 @@ export function checkWebApps(cwd) {
     for (const web of webAppDirs(root)) {
       const html = readSmall(join(web, 'index.html'));
       if (html !== null) findings.push(...checkIndexHtml(rel(join(web, 'index.html')), html));
+      const sources = [];
       for (const f of listFiles(join(web, 'src'), (n) => PAGE_EXT.test(n))) {
         const text = readSmall(f);
-        if (text !== null) findings.push(...checkPageSource(rel(f), text));
+        if (text === null) continue;
+        sources.push({ file: rel(f), text });
+        findings.push(...checkPageSource(rel(f), text));
       }
+      const main = sources.find((x) => /App\.(?:tsx|jsx)$/.test(x.file))?.file ?? rel(join(web, 'src'));
+      findings.push(...checkAppSources(main, sources));
     }
     for (const f of listFiles(join(root, 'src'), (n) => AGENT_EXT.test(n), AGENT_SKIP_DIRS)) {
       const text = readSmall(f);
