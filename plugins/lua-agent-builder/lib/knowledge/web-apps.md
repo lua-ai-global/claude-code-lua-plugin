@@ -244,7 +244,8 @@ Every generated web app shows, at the top of its home page (under the title, abo
 
 Where the data comes from:
 
-- **Each job writes one run record when it finishes** (and one when it fails), in its agent's `Data` (`job_runs`: `runId`, `job`, `startedAt`, `finishedAt`, `result: 'ok' | 'failed'`, `processed`, `message`), and logs the same one-line summary (build-session.md §5a reads it). In a fleet, each agent also keeps its status row (the fleet's `agent_status` row with `state`, `now`, `lastRun`, `nextRunAt`), which the supervisor's app reads.
+- **Each job writes one run record when it finishes** (and one when it fails), in its agent's `Data` (`job_runs`: `runId`, `job`, `startedAt`, `finishedAt`, `result: 'ok' | 'failed'`, `processed`, `message`), and logs the same one-line summary (build-session.md §5a reads it). A route reads `job_runs` of **its own agent only**.
+- **Other agents of a fleet** reach the app through their status row (the fleet's `agent_status` row, key `status:latest`, read through the supervisor's supervision grant) or a `Data.shared` collection, never through their `job_runs`. So each agent puts its own `lastRun` (`at`, `result`, `processed`), `nextRunAt` and `todayProcessed` into its status row's `statusJson`, next to `state` and `now`. One vocabulary for both: the status row's `working` or `idle` shows as Live, `paused` or `frozen` as Paused, a failed last run as Error, and a missing, unreadable or stale row as Unknown.
 - **One route feeds the strip** (`GET /status`), returning per agent `{ name, state, lastRun?: { at, result, processed }, nextRunAt?, todayProcessed, asOf }`, with `null` for what it could not read. Poll it with `useLive` (§4a).
 - In a preview before any agent has run, the strip shows what the route returns: "Waiting for first run". Sample rows (§5a) never feed the strip.
 
