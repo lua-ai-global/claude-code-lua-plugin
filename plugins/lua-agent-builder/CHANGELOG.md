@@ -2,6 +2,17 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.20.10 — 2026-11-10
+
+### Added
+
+- **A message the user sends while the builder works reaches it at the next tool call** (new PostToolUse hook `hooks/session-midturn.mjs`, `lib/knowledge/build-session.md`). Today such a message waits until the builder's whole turn ends, which can be many minutes.
+  - **How:** after every tool call the hook posts the call's `tool_use_id` to the session pod's loopback take route (`LUA_BS_MIDTURN_URL`). The pod answers with the plain-text messages queued behind the turn, already marked delivered, fenced in `<lua-user-message-midturn>`, and the hook adds them as context after the tool result. The pod answers only for a top-level tool call of the running turn, once per call, so each message is delivered exactly once: here, or as the next turn.
+  - **Why a hook and not stdin:** probed against the pinned Claude Code 2.1.294. A user message written to stdin mid-turn is folded into the turn only when another tool call follows; written after the last tool call, it opens a second turn the pod never started.
+  - **Secret:** each take carries the route's current secret in `x-lua-midturn-secret`. The hook reads it fresh from the 0600 file `LUA_BS_MIDTURN_SECRET_FILE` names, because the secret rotates after every take and is never in the env. The pod refuses a request without it (401), and the pod only answers for a tool call still in flight.
+  - **Off by default:** the hook does nothing unless `LUA_BUILD_SESSION`, `LUA_BS_MIDTURN=1`, a loopback `LUA_BS_MIDTURN_URL` and an absolute `LUA_BS_MIDTURN_SECRET_FILE` are all set (lua-core-services sets them only with its own `LUA_BS_MIDTURN=1`). Any error or a 2 s timeout is silent: the message then arrives as the next turn, as before.
+  - Messages with files, `interrupt` messages and anything queued behind them keep the old path.
+
 ## 1.20.9 — 2026-11-10
 
 ### Fixed
