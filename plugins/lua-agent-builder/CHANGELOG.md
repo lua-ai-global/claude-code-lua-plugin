@@ -2,6 +2,14 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.20.11 (F36, build-session QA)
+
+### Fixed
+
+- **`FLEET_FOLDER_UNPINNED` says the exact command to run** (`lib/session-mode.mjs`). It showed `cd /workspace/fleet/<agent> && lua compile --ci …`; fleet 08 then retried `lua compile` / `lua apps new` 5-9 times with flags stripped and no `cd` (23 blocks). With the shell inside an agent folder the message is now `Run exactly this: \`cd /workspace/fleet/<that agent> && <the same command>\``; from the fleet root it lists the agent folders; `lua init` is told to make the new folder first. Every suggested command passes the guard (tested).
+- **Pinned forms for lua-cli's new flags.** `--dir /workspace/fleet/<agent>` on the command counts as pinned (a CLI without the flag refuses it as an unknown option), and `lua push all --all-agents` is allowed from `/workspace/fleet` itself. `--dir` is a value flag for the session classifier (`lib/session-commands.mjs`, mirrors lua-core-services shared-types `commands.ts`).
+- **A blocked push loop explains why and names the allowed form** (`DEPLOY_DENIED_SESSION` for an unresolved command, `lib/knowledge/build-session.md`): a lua command built from shell variables (`lua push $1 $2` in a loop or function) could be a deploy, so it is always refused; write each push out in one chain.
+
 ## 1.20.10 — 2026-11-10
 
 ### Added

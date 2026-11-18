@@ -24,6 +24,7 @@ import {
   UNRESOLVED_LABEL,
   findLuaInvocations,
 } from '../../lib/tokenizer.mjs';
+import { classifyLuaCommand } from '../../lib/session-commands.mjs';
 
 const SESSION = { LUA_BUILD_SESSION: '1' };
 const SLASH = /(?:^|[\s`(])\/lua-[a-z]/;
@@ -388,7 +389,7 @@ describe('sessionCommandDecision in a fleet session: each lua command names its 
   ])('%s (shell in %s) → blocked FLEET_FOLDER_UNPINNED', (command, cwd) => {
     const d = sessionCommandDecision(command, SESSION, cwd);
     expect(d?.block).toBe(true);
-    expect(d.reason).toMatch(/^FLEET_FOLDER_UNPINNED: .*cd \/workspace\/fleet\/<agent> && lua /);
+    expect(d.reason).toMatch(/^FLEET_FOLDER_UNPINNED: .*`cd \/workspace\/fleet\/(<agent>|alpha) && /);
   });
 
   test.each([
@@ -453,6 +454,74 @@ describe('sessionCommandDecision in a fleet session: each lua command names its 
   test('a fleet folder named by the cd itself counts even when the hook gives no cwd', () => {
     expect(sessionCommandDecision(`cd ${FLEET}/a && lua compile --ci`, SESSION)).toBeNull();
     expect(sessionCommandDecision(`cd ${FLEET} && lua compile --ci`, SESSION)?.block).toBe(true);
+  });
+});
+
+// F36 (build-session QA fleet 08): 23 FLEET_FOLDER_UNPINNED blocks; the builder retried `lua compile` / `lua apps new`
+// 5-9 times, stripping flags, because the message showed `cd /workspace/fleet/<agent> && …` and not the command to run.
+describe('F36: FLEET_FOLDER_UNPINNED names the exact command, and lua-cli --dir / --all-agents are pinned forms', () => {
+  const FLEET = '/workspace/fleet';
+  const two = () => ['lead-intake', 'revenue-fleet-manager'];
+  const fixOf = (reason) => /(?:Run exactly this|in front): `([^`]+)`/.exec(reason)?.[1];
+
+  test.each([
+    ['lua compile --ci 2>&1 | tail -15', `${FLEET}/revenue-fleet-manager`],
+    ['timeout 590 lua compile --ci 2>&1 | tail -40', `${FLEET}/revenue-fleet-manager`],
+    ['lua apps new pipeline-studio --ci', `${FLEET}/revenue-fleet-manager`],
+    ["cp src/index.ts /tmp/i.ts && timeout 580 lua apps new pipeline-studio --ci 2>&1 | tail -30", `${FLEET}/revenue-fleet-manager`],
+  ])('fleet 08 %s → "Run exactly this" with the shell folder, and that command is allowed', (command, cwd) => {
+    const d = sessionCommandDecision(command, SESSION, cwd, two);
+    expect(d?.block).toBe(true);
+    const fix = fixOf(d.reason);
+    expect(fix).toBe(`cd ${cwd} && ${command}`);
+    expect(sessionCommandDecision(fix, SESSION, cwd, two)?.block).toBeFalsy();
+  });
+
+  test('from the fleet root it names the real agent folders, and each filled-in command is allowed', () => {
+    const d = sessionCommandDecision('lua test skill --ci --name t --input \'{"a": 1}\'', SESSION, FLEET, two);
+    expect(d.reason).toMatch(/<agent> is one of: lead-intake, revenue-fleet-manager/);
+    const fix = fixOf(d.reason);
+    expect(fix).toBe(`cd ${FLEET}/<agent> && lua test skill --ci --name t --input '{"a": 1}'`);
+    for (const a of two()) {
+      expect(sessionCommandDecision(fix.replace('<agent>', a), SESSION, FLEET, two)?.block).toBeFalsy();
+    }
+  });
+
+  test('a multi-line command is suggested in its argv form, so the fence holds', () => {
+    const d = sessionCommandDecision('lua compile --ci\necho `date`', SESSION, `${FLEET}/lead-intake`, two);
+    expect(fixOf(d.reason)).toBe(`cd ${FLEET}/lead-intake && lua compile --ci`);
+  });
+
+  test('lua init (fleet 08 seq 51/59) is told to make the new folder first', () => {
+    const d = sessionCommandDecision('cd /workspace/fleet && lua init --ci --agent-name "Lead Intake"', SESSION, FLEET, two);
+    expect(d.reason).toMatch(/mkdir -p \/workspace\/fleet\/<new-agent> && cd \/workspace\/fleet\/<new-agent> && lua init --ci --agent-name 'Lead Intake'/);
+  });
+
+  test.each([
+    [`lua compile --ci --dir ${FLEET}/lead-intake`, FLEET],
+    [`lua --dir ${FLEET}/lead-intake compile --ci`, `${FLEET}/revenue-fleet-manager`],
+    [`lua compile --ci --dir=${FLEET}/lead-intake 2>&1 | tail -5`, FLEET],
+    [`cd ${FLEET} && lua push all --all-agents --ci --force`, `${FLEET}/lead-intake`],
+    ['lua push all --all-agents --ci --force', FLEET],
+  ])('%s (shell in %s) → allowed', (command, cwd) => {
+    expect(sessionCommandDecision(command, SESSION, cwd, two)?.block).toBeFalsy();
+  });
+
+  test.each([
+    [`lua compile --ci --dir ${FLEET}`, FLEET],
+    ['lua compile --ci --dir lead-intake', FLEET],
+    ['lua compile --ci --dir "$D"', FLEET],
+    ['lua push all --all-agents --ci --force', `${FLEET}/lead-intake`],
+    ['lua chat -e sandbox -m --all-agents -t', FLEET],
+    [`lua push all --all-agents --ci --force; cd ${FLEET}/lead-intake && lua compile --ci; cd .. && lua compile --ci`, FLEET],
+  ])('%s (shell in %s) → still blocked', (command, cwd) => {
+    expect(sessionCommandDecision(command, SESSION, cwd, two)?.block).toBe(true);
+  });
+
+  test('--dir is a value flag for the classifier, before or after the command', () => {
+    expect(classifyLuaCommand(['--dir', `${FLEET}/a`, 'compile', '--ci'])).toMatchObject({ ruleId: 'compile' });
+    expect(classifyLuaCommand(['push', 'all', '--dir', `${FLEET}/a`, '--ci'])).toMatchObject({ ruleId: 'push' });
+    expect(classifyLuaCommand(['--dir'])).toMatchObject({ ruleId: 'default', class: 'approval' });
   });
 });
 

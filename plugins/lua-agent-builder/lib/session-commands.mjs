@@ -84,6 +84,8 @@ const VALUE_TAKING_FLAGS = [
   '--tag', '--device-name', '--operations', '--group', '--payload', '--command', '--trigger', '--timeout', '--out', '--org',
   '--integration', '--scope', '--connection-id', '--connection', '--webhook-id', '--template-id', '--skill-name',
   '--query', '--version-id', '--model', '--reason', '--direction', '--batch-id', '--id', '--file', '--path',
+  // F36: lua-cli's global `--dir <agent folder>` (lua-core-services shared-types commands.ts, same change).
+  '--dir',
 ];
 
 /** Tokens that change something outside the session: a read / session-write match becomes `approval`. */
@@ -310,6 +312,10 @@ export function normaliseLuaArgv(argv) {
   const out = (Array.isArray(argv) ? argv : []).filter((a) => typeof a === 'string');
   if (out[0] === 'npx') out.shift();
   if (out[0] === 'lua' || out[0] === 'lua-cli') out.shift();
+  // F36: a leading global `--dir <folder>` only picks the folder; the rules match the command behind it.
+  let head = 0;
+  while (out[head] === '--dir' || out[head]?.startsWith('--dir=')) head += out[head] === '--dir' ? 2 : 1;
+  if (head > 0 && head < out.length) return [...out.slice(head), ...out.slice(0, head)];
   return out;
 }
 
