@@ -143,7 +143,10 @@ export function sessionDeployBlockReason(label) {
   if (label === UNCLASSIFIABLE_LABEL || label === UNRESOLVED_LABEL) {
     return (
       `DEPLOY_DENIED_SESSION: \`${label}\` — this command mentions lua in a way the guard cannot check (computed, ` +
-      'too long or too complex), so it is blocked. Run each lua command on its own, spelled out. A production ' +
+      'too long or too complex), so it is blocked. Run each lua command on its own, spelled out: a lua command built ' +
+      'from shell variables (a loop or function such as `lua push $1 $2`) could be a deploy, so it is never run. To ' +
+      `push several agents, write each one out: \`cd ${FLEET_DIR}/<a> && lua push all --ci --force; cd ` +
+      `${FLEET_DIR}/<b> && lua push all --ci --force\`. A production ` +
       `change is asked for with ${RELEASE} (deploy, promote) or ${ACTION} (anything else). ${SESSION_NOTE}`
     );
   }
@@ -352,21 +355,71 @@ function fleetFolderReason(command, invocations, cwd, fleetFolders) {
   const projectCommands = invocations.filter(({ argv }) => argv.length > 0 && !isHelpOrVersion(argv) && argv[0] !== 'build-session');
   if (!projectCommands.length) return null;
   const dirs = luaInvocationDirs(command);
-  if (!inFleet(cwd) && !dirs.some((d) => d && inFleet(d))) return null; // not a fleet session
+  const flagDirs = projectCommands.map(({ argv }) => dirFlag(argv));
+  if (!inFleet(cwd) && !dirs.some((d) => d && inFleet(d)) && !flagDirs.some((d) => d && inFleet(d))) return null; // not a fleet session
   const pinned = (d) => !!d && d.startsWith(`${FLEET_DIR}/`) && !!d.slice(FLEET_DIR.length + 1).replace(/\/+$/, '');
   if (dirs.length && dirs.every(pinned)) return null;
+  // F36: lua-cli's `--dir /workspace/fleet/<agent>` names the folder on the command itself (a CLI without the flag
+  // refuses it as an unknown option, so it can never run in the wrong folder).
+  if (flagDirs.every(pinned)) return null;
+  // F36: `lua push all --all-agents` runs from the fleet folder itself and visits every agent folder in turn.
+  const atFleetRoot = (d) => d === FLEET_DIR || d === `${FLEET_DIR}/`;
+  if (
+    projectCommands.every(({ argv }) => argv[0] === 'push' && argv.includes('--all-agents')) &&
+    (dirs.every(atFleetRoot) || (dirs.every((d) => d === undefined) && atFleetRoot(cwd)))
+  ) {
+    return null;
+  }
   const cwdFolder = typeof cwd === 'string' && cwd.startsWith(`${FLEET_DIR}/`) ? cwd.slice(FLEET_DIR.length + 1).split('/')[0] : '';
-  if (cwdFolder && dirs.every((d) => d === undefined)) {
+  const noCd = dirs.every((d) => d === undefined);
+  if (cwdFolder && noCd) {
     const folders = fleetFolders();
     if (folders.length === 1 && folders[0] === cwdFolder) return null;
   }
-  const example = projectCommands[0].argv.slice(0, 2).join(' ');
   return (
     `FLEET_FOLDER_UNPINNED: in a fleet session every Bash call shares one working directory and a \`cd\` in one call ` +
-    `carries into the next, so \`lua ${example}\` would run in whichever agent folder the shell was left in ` +
-    `(${cwd ? `now ${cwd}` : 'unknown'}). Start the same command with the agent's absolute folder: ` +
-    `\`cd ${FLEET_DIR}/<agent> && lua ${example} …\`, one agent per command, also when you send several at once.`
+    `carries into the next, so \`lua ${projectCommands[0].argv.slice(0, 2).join(' ')}\` would run in whichever agent ` +
+    `folder the shell was left in (${cwd ? `now ${cwd}` : 'unknown'}). ` +
+    fleetFolderFix(command, projectCommands[0].argv, noCd ? cwdFolder : '', fleetFolders) +
+    ' Keep the `cd` in front; removing flags or `| tail` does not help. One agent per command, also when you send ' +
+    'several at once.'
   );
+}
+
+/** The literal value of `--dir X` / `--dir=X` in an argv, or undefined. */
+function dirFlag(argv) {
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--dir') return argv[i + 1];
+    if (argv[i].startsWith('--dir=')) return argv[i].slice('--dir='.length);
+  }
+  return undefined;
+}
+
+const shellWord = (w) => (/^[A-Za-z0-9_@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'\\''`)}'`);
+const FIX_MAX_CHARS = 400;
+
+/**
+ * F36 (fleet 08: 23 blocks, `lua compile` / `lua apps new` retried 5-9 times with flags stripped and no `cd`): the
+ * exact command to run instead. With the shell already inside an agent folder it is THAT folder in front of the same
+ * command, word for word; otherwise the folder is named from the fleet's agent folders.
+ */
+function fleetFolderFix(command, argv, cwdFolder, fleetFolders) {
+  const lua = `lua ${argv.map(shellWord).join(' ')}`;
+  if (argv[0] === 'init') {
+    return (
+      `A new agent gets its own folder first: \`mkdir -p ${FLEET_DIR}/<new-agent> && cd ${FLEET_DIR}/<new-agent> && ` +
+      `${lua}\`.`
+    );
+  }
+  if (cwdFolder) {
+    const original = String(command).trim();
+    // Verbatim only when it fits the message's backtick fence: one line, no backticks.
+    const same = original.length <= FIX_MAX_CHARS && !/[\n`]/.test(original) ? original : lua;
+    return `Run exactly this: \`cd ${FLEET_DIR}/${cwdFolder} && ${same}\`.`;
+  }
+  const folders = fleetFolders();
+  const named = folders.length ? ` (<agent> is one of: ${folders.slice(0, 12).join(', ')})` : '';
+  return `Run it with the agent's absolute folder in front: \`cd ${FLEET_DIR}/<agent> && ${lua}\`${named}.`;
 }
 
 /**
