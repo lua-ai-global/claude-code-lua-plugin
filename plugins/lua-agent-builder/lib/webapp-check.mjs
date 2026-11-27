@@ -10,6 +10,9 @@
 // stand-in. It only ever warns (hooks/check-webapp-release.mjs): a heuristic never blocks a release.
 // 1.20.8 adds the colour checks (palette classes; an app of numbers with no colour token: the founder's "very
 // monochrome") and the status strip every app's home page carries (web-apps.md §4d-§4e).
+// 1.20.12 (LUA-2498) adds the crash checks (web-apps.md §4f): one page that threw while sorting a viewing with no time
+// and no agent blanked a whole built app, and nobody but the owner found out. Pages sit inside a PageBoundary, and
+// main.tsx keeps the template's createRoot error options that report a crash to the platform.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
@@ -121,6 +124,14 @@ export function checkPageSource(file, text) {
   const out = [];
   const add = (rule, index, message) => out.push({ rule, file, line: typeof index === 'number' ? lineOf(text, index) : index, message });
 
+  // Crash reports (1.20.12, web-apps.md §4f): the root's error options are what report a crash to the platform.
+  if (/(?:^|[\\/])main\.(?:tsx|jsx|ts|js)$/.test(file)) {
+    const root = /\bcreateRoot\s*\(/.exec(text);
+    if (root && !/\bonUncaughtError\b/.test(text)) {
+      add('root-error-handlers', root.index, 'main.tsx calls createRoot without `onUncaughtError` / `onCaughtError`: a page crash is never reported, so nobody but the person who saw it finds out. Keep the template\'s createRoot options that call `lua.reportError` (older apps: `lua apps upgrade <name>` adds them).');
+    }
+  }
+
   // CSP: style elements without the page nonce.
   for (const m of text.matchAll(/from\s+["'](@lua-ai-global\/ui\/sonner|sonner)["']/g)) {
     add('csp-toast', m.index, `imports ${m[1]}: sonner adds a <style> at import that the page CSP blocks (unstyled toasts, console errors). Show the result inline next to the action (an Alert or a status line) instead of a toast.`);
@@ -192,6 +203,28 @@ const SHOWS_NUMBERS = /from\s+["']@lua-ai-global\/ui\/(?:chart|page)["']|from\s+
 /** Signs of the status strip (web-apps.md §4e): its component, its route or its words. */
 const STATUS_STRIP = /StatusStrip|['"`]\/status['"`]|Last run|Next run|first run/i;
 
+/** A client router: the app shows more than one page (web-apps.md §4f). */
+const ROUTER = /from\s+["'](?:react-router(?:-dom)?|wouter|@tanstack\/react-router)["']|<Routes\b|\buseRoutes\s*\(|\bcreate(?:Browser|Hash|Memory)Router\s*\(/;
+/** A hand-rolled page switch: `case '/runs':`. */
+const PATH_CASE = /\bcase\s+["'`]\//g;
+/** An error boundary around the pages: ui's PageBoundary, or one the app wrote itself. */
+const BOUNDARY = /\bPageBoundary\b|\bErrorBoundary\b|\bgetDerivedStateFromError\b|\bcomponentDidCatch\b/;
+
+/** Where the app switches pages, or null when it shows one page. */
+function pageSwitch(sources) {
+  for (const s of sources) {
+    const m = ROUTER.exec(s.text);
+    if (m) return { file: s.file, line: lineOf(s.text, m.index), how: 'a router' };
+  }
+  for (const s of sources) {
+    const cases = [...s.text.matchAll(PATH_CASE)];
+    if (cases.length >= 2) return { file: s.file, line: lineOf(s.text, cases[0].index), how: `${cases.length} page cases` };
+  }
+  const pages = sources.filter((s) => /(?:^|[\\/])pages[\\/][^\\/]+\.(?:tsx|jsx)$/.test(s.file));
+  if (pages.length >= 2) return { file: pages[0].file, line: 1, how: `${pages.length} files in pages/` };
+  return null;
+}
+
 /**
  * Findings for one web app as a whole (all of its `web/src` sources).
  * @param {string} appFile — shown in the finding (the app's main page, relative path)
@@ -207,6 +240,15 @@ export function checkAppSources(appFile, sources) {
       file: appFile,
       line: 1,
       message: 'the app shows numbers or charts but uses no colour token: in ui 0.3 `primary` is near-black, so the pages read grey ("very monochrome"). Give KPI tiles coloured icon chips (bg-brand/10 text-brand, bg-success/10 text-success), chart series their colours on the element (fill="var(--chart-2)"), and statuses success / info / warning badges (web-apps.md §4d).',
+    });
+  }
+  const pagesAt = pageSwitch(sources);
+  if (pagesAt && !BOUNDARY.test(all)) {
+    out.push({
+      rule: 'page-boundary',
+      file: pagesAt.file,
+      line: pagesAt.line,
+      message: `the app shows several pages (${pagesAt.how}) but none sits inside a PageBoundary: one page that throws blanks the whole app. Wrap each page's element in \`<PageBoundary resetKey={location.pathname}>\` (\`@lua-ai-global/ui/page-boundary\`), so a broken page says "This page hit a problem" and the rest keeps working (web-apps.md §4f).`,
     });
   }
   if (!STATUS_STRIP.test(all)) {

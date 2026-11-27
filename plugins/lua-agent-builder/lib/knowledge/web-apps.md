@@ -1,4 +1,4 @@
-# Web apps — pages and typed routes on an agent (lua-cli 3.42.0+ · read at 3.45.0; §7 deploy at 3.49.0; §7a preview at 3.51.0; §4 look and theme at 3.55.0; §4a live pages from app-client 0.1.2; §3 App Viewers at 3.65.0; §4b-§4c and §5a from the Lua Studio production test of 2026-11-09, ui 0.3.4)
+# Web apps — pages and typed routes on an agent (lua-cli 3.42.0+ · read at 3.45.0; §7 deploy at 3.49.0; §7a preview at 3.51.0; §4 look and theme at 3.55.0; §4a live pages from app-client 0.1.2; §3 App Viewers at 3.65.0; §4b-§4c and §5a from the Lua Studio production test of 2026-11-09, ui 0.3.4; §4f page crashes, Nov 2026)
 
 Read from lua-cli `src/types/web-app.ts`, `src/commands/apps.ts`, `src/commands/test.ts` (`testWebApp`), `src/commands/push.ts`, `src/primitives/web-app.handler.ts`, `src/utils/web-app-build.ts`, `src/utils/web-app-route.ts` and `template-web-app/` at **3.45.0** (npm `latest` is 3.46.0 on 2026-10-06 — not re-read); the wire contract and limits from `@lua/shared-types` `web-route-contract.ts`; the page policy from lua-core `src/apps-gateway/web-app-html.ts`; the snapshot rule from lua-agents `agent-version.service.ts`. Product docs: docs.heylua.ai `/concepts/apps`, `/build/apps/quickstart`, `/build/apps/routes-and-pages`, `/reference/cli/apps`. Below lua-cli **3.42.0** `webapp` is not a push/test type and `lua apps` does not exist — `/lua-update` first.
 
@@ -116,7 +116,7 @@ export default defineWebApp({
 - **Client** (`import { lua, LuaApiError } from '@lua-ai-global/app-client'`): `lua.api<T>(method, path, body?)` → parsed JSON or throws `LuaApiError { status, code, message }`; `lua.appName`; `lua.theme` / `lua.accent`; `lua.onInit(init => …)` (locale / path from the shell; appearance is already applied); **`void lua.start()` must run once in `main.tsx`** — it exchanges the one-time handoff code, applies the shell's appearance and tells the shell it is ready. A 401 renews the session once, then asks the shell for a new code; never store tokens (no cookie, no localStorage — a reload asks the shell again).
 - **The agent pane from the page** (app-client 0.0.5+): `lua.pane.open()`, `lua.pane.close()`, `lua.pane.ask(text, { context? })` (opens the pane and sends `text` as the person's next message; one turn at a time) and `lua.pane.setContext(value | () => value)` (what the agent sees with each pane turn, at most 4096 bytes as JSON: the record the person has open; a function is read at send time, so keep it a cheap read and return only what the agent may see). `await lua.chat.available()` says whether this person has the pane in this app — show a "Ask the agent" button only when it is `true` (an App Viewer gets it only when the app asks `viewers.chat` and App access allows it). `lua.chat.send` / `history` / `onTurnEnd` talk to the agent from the page itself, on the person's same thread.
 - Paths given to `lua.api` are the route paths (`'/tickets'`), not `/_lua/api/...`.
-- `pages.spa` defaults to `true`: client-side routing (React Router etc.) works; `pages.nav` entries should name the client routes.
+- `pages.spa` defaults to `true`: client-side routing (React Router etc.) works; `pages.nav` entries should name the client routes. List every page there: only listed pages are opened by the pre-release check, and each page sits in a `PageBoundary` (§4f).
 - **The page CSP is strict and per request** (gateway `web-app-html.ts`): scripts and styles only from the app itself with a nonce (no CDN `<script>`, no remote stylesheet, no Google Fonts link, and no `<style>` element or style attribute a library writes at run time: §4c), `connect-src` = the app + Lua auth only, `frame-src 'none'`, images from self/`data:`/`blob:`/Lua CDN. Bundle dependencies with npm instead of linking them. When an external origin is truly needed, add it per directive in `pages.csp` — keys `scriptSrc styleSrc imgSrc connectSrc fontSrc frameSrc workerSrc`, values are source lists (`{ connectSrc: ['https://api.example.com'] }`); `frame-ancestors`, `base-uri`, `object-src` cannot be widened. Prefer calling third-party APIs **from a route** (server side, secrets in `env()`) over widening `connectSrc`.
 - `vite.config.ts`: keep `react()` and `tailwindcss()`. `lua push webapp` overrides `base: '/'`, `build.outDir`, `assetsDir: 'assets'` and the CSP nonce — don't fight them (no custom `base`, no assets outside `assets/`).
 - **Check after every page change**: `npm --prefix src/apps/<name>/web run typecheck`, then `npm --prefix src/apps/<name>/web run build`. That is the same Vite build the push runs; it catches type errors and missing imports. Visual check: the **user** runs `lua apps dev <name>` in their own terminal (§6).
@@ -289,6 +289,44 @@ export function StatusStrip() {
   );
 }
 ```
+
+### 4f. One broken page, not a blank app
+
+A render error that nothing catches unmounts the whole React tree: the app goes blank on every page, and nobody but the person looking finds out. A production app's Viewings page sorted its rows by time; one viewing with no time and no agent threw inside the sort and took the whole app down. So:
+
+- **Wrap each page in a `PageBoundary`** (`@lua-ai-global/ui/page-boundary`; an app on an older ui: `lua apps upgrade <name>`). A page that throws shows "This page hit a problem" in its place; the nav and the other pages keep working. `resetKey={location.pathname}` clears it when the person moves to another page. Props: `children`, `resetKey`, optional `fallback` and `onError`. With React Router, wrap each route's element:
+
+  ```tsx
+  import { Route, Routes, useLocation } from 'react-router-dom';
+  import { PageBoundary } from '@lua-ai-global/ui/page-boundary';
+
+  export function App() {
+    const location = useLocation();
+    const page = (el: React.ReactNode) => <PageBoundary resetKey={location.pathname}>{el}</PageBoundary>;
+    return (
+      <Routes>
+        <Route path="/" element={page(<Leads />)} />
+        <Route path="/viewings" element={page(<Viewings />)} />
+      </Routes>
+    );
+  }
+  ```
+
+  With a hand-rolled switch, wrap what the switch returns:
+
+  ```tsx
+  function Page({ path }: { path: string }) {
+    switch (path) {
+      case '/viewings': return <Viewings />;
+      default: return <Leads />;
+    }
+  }
+  // in App: <PageBoundary resetKey={location.pathname}><Page path={location.pathname} /></PageBoundary>
+  ```
+
+- **Keep the template's `createRoot` options in `main.tsx`.** `onUncaughtError` and `onCaughtError` call `lua.reportError(…)` (app-client), which reports the crash to the platform: during the release watch the builder hears of it, and the owner gets a line in Needs you. Never drop them when you edit `main.tsx`. A `main.tsx` from an older template has `createRoot(el)` with no options: `lua apps upgrade <name>` adds them.
+- **List every page in `pages.nav`.** Before a release the platform opens each listed path once against the build's test data (build-session.md §5); a page that is not listed is never checked. At most 10 pages per app are opened.
+- **Read missing fields safely.** Sample and live rows are often incomplete. A sort, a date format or a lookup must survive a missing value: `(a.time ?? '').localeCompare(b.time ?? '')`, `v.agent?.name ?? 'Unassigned'`, `v.time ? formatTime(v.time) : 'No time set'`. `new Date(undefined)` is an Invalid Date, and `toISOString()` or `Intl.DateTimeFormat#format` on it throws. Give the sample data (§5a) at least one row with the optional fields empty, so the pre-release check exercises it.
 
 ## 5. Testing routes — `lua test webapp`
 

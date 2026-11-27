@@ -188,6 +188,48 @@ describe('colour and the status strip (1.20.8: "very monochrome"; web-apps.md §
   });
 });
 
+describe('crash checks (1.20.12, LUA-2498: one page blanked a whole app; web-apps.md §4f)', () => {
+  const app = (...pairs) => pairs.map(([file, text]) => ({ file, text }));
+  const STRIP = ['src/Status.tsx', '<StatusStrip />'];
+  const ROUTED = "import { Routes, Route } from 'react-router-dom';\n<Routes>\n<Route path='/' element={<Leads />} />\n</Routes>";
+  const pageRules = (sources) => rules(checkAppSources('src/App.tsx', sources));
+
+  test('a router with no boundary around its pages', () => {
+    const found = checkAppSources('src/App.tsx', app(['src/App.tsx', ROUTED], STRIP));
+    expect(found).toMatchObject([{ rule: 'page-boundary', file: 'src/App.tsx', line: 1 }]);
+    expect(found[0].message).toContain('<PageBoundary resetKey={location.pathname}>');
+    expect(found[0].message).toContain('a router');
+    expect(pageRules(app(['src/App.tsx', "const router = createBrowserRouter([{ path: '/' }]);"], STRIP))).toEqual(['page-boundary']);
+    expect(pageRules(app(['src/App.tsx', "import { Route } from 'wouter';"], STRIP))).toEqual(['page-boundary']);
+  });
+
+  test('a hand-rolled switch or a pages/ folder of two or more pages', () => {
+    const sw = "switch (path) {\n  case '/runs': return <Runs />;\n  case '/leads': return <Leads />;\n}";
+    expect(checkAppSources('src/App.tsx', app(['src/App.tsx', sw], STRIP))).toMatchObject([{ rule: 'page-boundary', line: 2 }]);
+    const two = app(['src/pages/Leads.tsx', '<p />'], ['src/pages/Runs.tsx', '<p />'], STRIP);
+    expect(checkAppSources('src/App.tsx', two)).toMatchObject([{ rule: 'page-boundary', file: 'src/pages/Leads.tsx' }]);
+  });
+
+  test('a boundary anywhere in the app is enough; one page is not judged', () => {
+    const wrapped = "import { PageBoundary } from '@lua-ai-global/ui/page-boundary';\n<PageBoundary resetKey={location.pathname}><Leads /></PageBoundary>";
+    expect(checkAppSources('src/App.tsx', app(['src/App.tsx', ROUTED], ['src/Shell.tsx', wrapped], STRIP))).toEqual([]);
+    expect(checkAppSources('src/App.tsx', app(['src/App.tsx', ROUTED], ['src/Boundary.tsx', 'static getDerivedStateFromError() {}'], STRIP))).toEqual([]);
+    expect(checkAppSources('src/App.tsx', app(['src/App.tsx', "<ErrorBoundary>{sw}</ErrorBoundary>\ncase '/a': case '/b':"], STRIP))).toEqual([]);
+    expect(checkAppSources('src/App.tsx', app(['src/App.tsx', "switch (x) { case '/only': return <A />; }"], ['src/pages/Home.tsx', '<p />'], STRIP))).toEqual([]);
+  });
+
+  test('main.tsx: createRoot without onUncaughtError', () => {
+    const bare = "import { createRoot } from 'react-dom/client';\n\ncreateRoot(document.getElementById('root')!).render(<App />);";
+    expect(checkPageSource('src/apps/desk/web/src/main.tsx', bare)).toMatchObject([{ rule: 'root-error-handlers', line: 3 }]);
+    expect(rules(checkPageSource('web\\src\\main.jsx', bare))).toEqual(['root-error-handlers']);
+    const reported = "createRoot(el, {\n  onUncaughtError: (e, i) => lua.reportError(e, { source: 'render', componentStack: i.componentStack, fatal: true }),\n  onCaughtError: (e, i) => lua.reportError(e, { source: 'boundary', componentStack: i.componentStack }),\n}).render(<App />);";
+    expect(checkPageSource('src/main.tsx', reported)).toEqual([]);
+    expect(checkPageSource('src/App.tsx', bare)).toEqual([]);
+    expect(checkPageSource('src/domain.tsx', bare)).toEqual([]);
+    expect(checkPageSource('src/main.tsx', 'void lua.start();')).toEqual([]);
+  });
+});
+
 describe('formatFindings', () => {
   const f = (i) => ({ rule: 'fixed-width', file: `a${i}.tsx`, line: i, message: 'too wide' });
   test('null with nothing to say', () => {

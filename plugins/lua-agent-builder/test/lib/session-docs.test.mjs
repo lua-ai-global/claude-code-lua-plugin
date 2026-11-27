@@ -130,6 +130,20 @@ describe('session tool references', () => {
     expect(builder).toMatch(/\*\*Every app's home page starts with a status strip\*\*/);
   });
 
+  // LUA-2498: one page threw while sorting a viewing with no time and no agent, and the whole app went blank.
+  test('1.20.12: a PageBoundary per page, crash reporting kept, every page listed and checked before release', () => {
+    const web = read('lib/knowledge/web-apps.md');
+    expect(web).toMatch(/### 4f\. One broken page, not a blank app/);
+    expect(web).toMatch(/<PageBoundary resetKey=\{location\.pathname\}>/);
+    expect(web).toMatch(/\*\*Keep the template's `createRoot` options in `main\.tsx`\.\*\*/);
+    expect(web).toMatch(/a page that is not listed is never checked/);
+    const kb = read('lib/knowledge/build-session.md');
+    expect(kb).toMatch(/\*\*Each listed page is opened once before the card\*\*/);
+    expect(kb).toMatch(/"Pages not checked" on the card means the check itself could not run, not that the pages passed/);
+    expect(kb).toMatch(/\*\*A page crash in the live app comes to you\*\*/);
+    expect(read('agents/lua-skill-builder.md')).toMatch(/\*\*One broken page must not blank the app\*\*/);
+  });
+
   test('a session path never offers production chat or a deploy verb as the way to ship', () => {
     for (const file of commands) {
       const section = sessionSection(read(join('commands', file))) ?? '';
