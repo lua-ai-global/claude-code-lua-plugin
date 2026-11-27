@@ -211,7 +211,7 @@ describe('crash checks (1.20.12, LUA-2498: one page blanked a whole app; web-app
   });
 
   test('a boundary anywhere in the app is enough; one page is not judged', () => {
-    const wrapped = "import { PageBoundary } from '@lua-ai-global/ui/page-boundary';\n<PageBoundary resetKey={location.pathname}><Leads /></PageBoundary>";
+    const wrapped = "import { PageBoundary } from './PageBoundary';\n<PageBoundary resetKey={location.pathname}><Leads /></PageBoundary>";
     expect(checkAppSources('src/App.tsx', app(['src/App.tsx', ROUTED], ['src/Shell.tsx', wrapped], STRIP))).toEqual([]);
     expect(checkAppSources('src/App.tsx', app(['src/App.tsx', ROUTED], ['src/Boundary.tsx', 'static getDerivedStateFromError() {}'], STRIP))).toEqual([]);
     expect(checkAppSources('src/App.tsx', app(['src/App.tsx', "<ErrorBoundary>{sw}</ErrorBoundary>\ncase '/a': case '/b':"], STRIP))).toEqual([]);

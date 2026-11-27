@@ -207,7 +207,7 @@ const STATUS_STRIP = /StatusStrip|['"`]\/status['"`]|Last run|Next run|first run
 const ROUTER = /from\s+["'](?:react-router(?:-dom)?|wouter|@tanstack\/react-router)["']|<Routes\b|\buseRoutes\s*\(|\bcreate(?:Browser|Hash|Memory)Router\s*\(/;
 /** A hand-rolled page switch: `case '/runs':`. */
 const PATH_CASE = /\bcase\s+["'`]\//g;
-/** An error boundary around the pages: ui's PageBoundary, or one the app wrote itself. */
+/** An error boundary around the pages: the template's PageBoundary, or one the app wrote itself. */
 const BOUNDARY = /\bPageBoundary\b|\bErrorBoundary\b|\bgetDerivedStateFromError\b|\bcomponentDidCatch\b/;
 
 /** Where the app switches pages, or null when it shows one page. */
@@ -248,7 +248,7 @@ export function checkAppSources(appFile, sources) {
       rule: 'page-boundary',
       file: pagesAt.file,
       line: pagesAt.line,
-      message: `the app shows several pages (${pagesAt.how}) but none sits inside a PageBoundary: one page that throws blanks the whole app. Wrap each page's element in \`<PageBoundary resetKey={location.pathname}>\` (\`@lua-ai-global/ui/page-boundary\`), so a broken page says "This page hit a problem" and the rest keeps working (web-apps.md §4f).`,
+      message: `the app shows several pages (${pagesAt.how}) but none sits inside a PageBoundary: one page that throws blanks the whole app. Wrap each page's element in \`<PageBoundary resetKey={location.pathname}>\` (\`web/src/PageBoundary.tsx\`, added by \`lua apps upgrade\` when missing), so a broken page says "This page hit a problem" and the rest keeps working (web-apps.md §4f).`,
     });
   }
   if (!STATUS_STRIP.test(all)) {

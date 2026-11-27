@@ -294,11 +294,11 @@ export function StatusStrip() {
 
 A render error that nothing catches unmounts the whole React tree: the app goes blank on every page, and nobody but the person looking finds out. A production app's Viewings page sorted its rows by time; one viewing with no time and no agent threw inside the sort and took the whole app down. So:
 
-- **Wrap each page in a `PageBoundary`** (`@lua-ai-global/ui/page-boundary`; an app on an older ui: `lua apps upgrade <name>`). A page that throws shows "This page hit a problem" in its place; the nav and the other pages keep working. `resetKey={location.pathname}` clears it when the person moves to another page. Props: `children`, `resetKey`, optional `fallback` and `onError`. With React Router, wrap each route's element:
+- **Wrap each page in a `PageBoundary`** (the app's own `web/src/PageBoundary.tsx`: new apps get it from the template; an older app gets it from `lua apps upgrade <name>`, which never overwrites one it already has. Keep its `data-lua-page-error` marker: the pre-release page check reads it). A page that throws shows "This page hit a problem" in its place; the nav and the other pages keep working. `resetKey={location.pathname}` clears it when the person moves to another page. Props: `children`, `resetKey`, optional `fallback` and `onError`. With React Router, wrap each route's element:
 
   ```tsx
   import { Route, Routes, useLocation } from 'react-router-dom';
-  import { PageBoundary } from '@lua-ai-global/ui/page-boundary';
+  import { PageBoundary } from './PageBoundary';
 
   export function App() {
     const location = useLocation();
