@@ -2,6 +2,13 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.20.13 (LUA-2372)
+
+### Fixed
+
+- **Integration catalog reads are no longer refused in a fleet session** (`lib/session-mode.mjs`). `lua integrations available|catalog|info|inspect` answer the same from every agent folder (the org's catalog), so they now run from whichever agent folder the shell is in. Prod 20-27 Nov: 872 `FLEET_FOLDER_UNPINNED` refusals across 51 builds, about 1 in 16 of them these reads. From the fleet root they are still refused (lua-cli needs a project folder), and `integrations list` is still pinned: it lists the connections of the agent whose folder it runs in.
+- **A relative `cd` is told its absolute folder.** `cd kitchen && lua compile --ci` stays refused (a parallel call can move the shell between the check and the run), but the message now says `Run exactly this: \`cd /workspace/fleet/kitchen && lua compile --ci\`` instead of a `<agent>` placeholder, when the `cd`s lead to a real agent folder.
+
 ## 1.20.12 (LUA-2498, one broken page blanked a whole app)
 
 ### Added

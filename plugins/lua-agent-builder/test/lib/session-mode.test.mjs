@@ -541,3 +541,48 @@ describe('fleet folder guard: every lua command in a chain is checked', () => {
     expect(sessionCommandDecision(command, SESSION, '/workspace/fleet')?.block).toBeFalsy();
   });
 });
+
+// LUA-2372 (prod 20-27 Nov: 872 FLEET_FOLDER_UNPINNED refusals in 51 builds; `integrations info|available` about 1 in
+// 16 of them): a catalog read is the same from every agent folder, and a relative `cd` gets its absolute fix.
+describe('LUA-2372: folder-free catalog reads pass; a relative cd is told its absolute folder', () => {
+  const FLEET = '/workspace/fleet';
+  const two = () => ['front-desk', 'kitchen'];
+  const fixOf = (reason) => /Run exactly this: `([^`]+)`/.exec(reason)?.[1];
+
+  test.each([
+    'lua integrations info hubspot --json',
+    'lua integrations available --ci',
+    'lua integrations catalog',
+    'lua integrations inspect google-calendar --json 2>&1 | head -40',
+    'lua integrations info hubspot --json && lua integrations info slack --json',
+  ])('%s (shell in an agent folder) → allowed', (command) => {
+    expect(sessionCommandDecision(command, SESSION, `${FLEET}/kitchen`, two)?.block).toBeFalsy();
+  });
+
+  test.each([
+    ['lua integrations info hubspot --json', FLEET],
+    ['lua integrations list --json', `${FLEET}/kitchen`],
+    ['lua integrations connect --integration hubspot', `${FLEET}/kitchen`],
+    ['lua integrations info hubspot && lua compile --ci', `${FLEET}/kitchen`],
+    ['lua channels list --ci', `${FLEET}/kitchen`],
+  ])('%s (shell in %s) → still blocked', (command, cwd) => {
+    expect(sessionCommandDecision(command, SESSION, cwd, two)?.block).toBe(true);
+  });
+
+  test.each([
+    ['cd kitchen && lua compile --ci', FLEET, 'kitchen'],
+    ['cd ../kitchen && lua push skill --name menu --ci --force', `${FLEET}/front-desk`, 'kitchen'],
+    ['cd .. && cd kitchen && lua compile --ci 2>&1 | tail -5', `${FLEET}/front-desk`, 'kitchen'],
+  ])('%s (shell in %s) → blocked, and the fix names %s absolutely and is allowed', (command, cwd, folder) => {
+    const d = sessionCommandDecision(command, SESSION, cwd, two);
+    expect(d?.block).toBe(true);
+    const fix = fixOf(d.reason);
+    expect(fix).toMatch(new RegExp(`^cd ${FLEET}/${folder} && lua `));
+    expect(sessionCommandDecision(fix, SESSION, FLEET, two)?.block).toBeFalsy();
+  });
+
+  test('a relative cd to a folder that is not an agent keeps the general wording', () => {
+    const d = sessionCommandDecision('cd nowhere && lua compile --ci', SESSION, FLEET, two);
+    expect(d.reason).toMatch(/<agent> is one of: front-desk, kitchen/);
+  });
+});

@@ -22,9 +22,10 @@
 // LUA_BUILD_SESSION unset every hook behaves exactly as before.
 
 import { readdirSync } from 'node:fs';
+import { posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { findLuaInvocations, luaInvocationDirs, UNCLASSIFIABLE_LABEL, UNRESOLVED_LABEL } from './tokenizer.mjs';
-import { classifyLuaCommand, flagValue, isSecretKeyName } from './session-commands.mjs';
+import { findLuaInvocations, luaInvocationDirs, luaWorkingDirs, UNCLASSIFIABLE_LABEL, UNRESOLVED_LABEL } from './tokenizer.mjs';
+import { classifyLuaCommand, flagValue, isSecretKeyName, normaliseLuaArgv } from './session-commands.mjs';
 
 /**
  * Absolute path of the session knowledge file. Hook output is not expanded (`${CLAUDE_PLUGIN_ROOT}` would stay
@@ -373,17 +374,57 @@ function fleetFolderReason(command, invocations, cwd, fleetFolders) {
   const cwdFolder = typeof cwd === 'string' && cwd.startsWith(`${FLEET_DIR}/`) ? cwd.slice(FLEET_DIR.length + 1).split('/')[0] : '';
   const noCd = dirs.every((d) => d === undefined);
   if (cwdFolder && noCd) {
+    // LUA-2372: a catalog read answers the same from every agent folder, so the folder the shell is in is fine.
+    if (projectCommands.every(({ argv }) => isFolderFreeRead(argv))) return null;
     const folders = fleetFolders();
     if (folders.length === 1 && folders[0] === cwdFolder) return null;
   }
+  // LUA-2372: `cd beta && lua …` names its agent, but relative to a shell another call may move; name it absolutely.
+  const relativeFolder = noCd ? '' : relativeCdFolder(command, projectCommands, cwd, fleetFolders);
   return (
     `FLEET_FOLDER_UNPINNED: in a fleet session every Bash call shares one working directory and a \`cd\` in one call ` +
     `carries into the next, so \`lua ${projectCommands[0].argv.slice(0, 2).join(' ')}\` would run in whichever agent ` +
     `folder the shell was left in (${cwd ? `now ${cwd}` : 'unknown'}). ` +
-    fleetFolderFix(command, projectCommands[0].argv, noCd ? cwdFolder : '', fleetFolders) +
+    (relativeFolder
+      ? `Run exactly this: \`cd ${FLEET_DIR}/${relativeFolder} && lua ${projectCommands[0].argv.map(shellWord).join(' ')}\` ` +
+        '(an absolute folder, not a relative `cd`).'
+      : fleetFolderFix(command, projectCommands[0].argv, noCd ? cwdFolder : '', fleetFolders)) +
     ' Keep the `cd` in front; removing flags or `| tail` does not help. One agent per command, also when you send ' +
     'several at once.'
   );
+}
+
+/**
+ * LUA-2372: lua reads whose answer is the same from every agent folder of a fleet (the org's integration catalog), so
+ * running one in whichever agent folder the shell is in cannot give the wrong agent's answer. lua-cli still needs a
+ * project folder for them (it reads lua.skill.yaml for the credential), so the fleet root itself stays blocked.
+ * `integrations list` is NOT here: it lists the connections of the agent whose folder it runs in.
+ */
+const FOLDER_FREE_READS = [
+  ['integrations', 'available'],
+  ['integrations', 'catalog'],
+  ['integrations', 'info'],
+  ['integrations', 'inspect'],
+];
+
+function isFolderFreeRead(argv) {
+  const words = normaliseLuaArgv(argv).filter((w) => !w.startsWith('-'));
+  return FOLDER_FREE_READS.some((path) => path.every((p, i) => words[i] === p));
+}
+
+/**
+ * The agent folder a single lua command's relative `cd`s lead to from the shell's directory, when that folder exists
+ * in the fleet; else ''. Used only to word the refusal: a relative `cd` is still refused, because a parallel call can
+ * move the shell between the check and the run.
+ */
+function relativeCdFolder(command, projectCommands, cwd, fleetFolders) {
+  if (projectCommands.length !== 1 || typeof cwd !== 'string' || !inFleet(cwd)) return '';
+  const steps = luaWorkingDirs(command);
+  if (!steps || !steps.length || steps.some((d) => d.startsWith('~'))) return '';
+  const target = posix.resolve(cwd, ...steps);
+  if (!target.startsWith(`${FLEET_DIR}/`)) return '';
+  const folder = target.slice(FLEET_DIR.length + 1).split('/')[0];
+  return fleetFolders().includes(folder) ? folder : '';
 }
 
 /** The literal value of `--dir X` / `--dir=X` in an argv, or undefined. */
