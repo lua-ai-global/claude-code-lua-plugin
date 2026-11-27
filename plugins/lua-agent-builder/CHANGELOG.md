@@ -2,6 +2,14 @@
 
 All notable changes to the `lua-agent-builder` plugin. Versions follow the tag `release-prod.yml` cuts from `package.json` (`v<version>`). lua-cli is a TypeScript SDK/CLI; it is unrelated to the Lua programming language.
 
+## 1.20.12 (LUA-2498, one broken page blanked a whole app)
+
+### Added
+
+- **Each page sits in a `PageBoundary`** (`lib/knowledge/web-apps.md` new §4f, `agents/lua-skill-builder.md`). A production app's Viewings page threw while sorting a viewing with no time and no agent; nothing caught it, so the whole app went blank and nobody but the owner found out. Pages are now wrapped in `<PageBoundary resetKey={location.pathname}>` from `@lua-ai-global/ui` (React Router and a hand-rolled switch both shown), `main.tsx` keeps the template's `createRoot` `onUncaughtError` / `onCaughtError` options that call `lua.reportError`, every page is listed in `pages.nav`, and sorts and date formats read missing fields safely.
+- **Two warn-only rules in the web-app check** (`lib/webapp-check.mjs`, run by `hooks/check-webapp-release.mjs` before `stage_for_test` / `request_release`): `page-boundary` (the app switches pages through a router, two or more `case '/…'` page cases, or two or more files in `pages/`, and nothing in it is a `PageBoundary` or another error boundary) and `root-error-handlers` (`main.tsx` calls `createRoot(` without `onUncaughtError`). Like every rule there, they never block.
+- **The pre-release page check and live crash notes** (`lib/knowledge/build-session.md` §5, §5a, §7; ⏳ platform update of Nov 2026). The pod still has no browser, but the release candidate opens each `pages.nav` path once against the build's test data: a page that throws or renders nothing discards the candidate and the builder gets the path and the error; "Pages not checked" means the check could not run, and the builder says so. A crash in the live app reaches the builder during the release watch as a `<lua-system-note>`: fix it at once.
+
 ## 1.20.11 (F36, build-session QA)
 
 ### Fixed
